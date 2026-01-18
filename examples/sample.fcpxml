@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.11">
+    <resources>
+        <format id="r1" name="FFVideoFormat1080p24" frameDuration="1/24s" width="1920" height="1080"/>
+        <asset id="r2" name="Interview_A" src="file:///Media/Interview_A.mov" start="0s" duration="300s" hasVideo="1" hasAudio="1" format="r1"/>
+        <asset id="r3" name="Broll_City" src="file:///Media/Broll_City.mov" start="0s" duration="120s" hasVideo="1" hasAudio="1" format="r1"/>
+        <asset id="r4" name="Broll_Studio" src="file:///Media/Broll_Studio.mov" start="0s" duration="90s" hasVideo="1" hasAudio="1" format="r1"/>
+    </resources>
+    <library location="file:///Users/editor/Movies/Sample.fcpbundle/">
+        <event name="Sample Event">
+            <project name="Music Video Edit" modDate="2025-01-15 10:30:00 -0500">
+                <sequence format="r1" duration="2880/24s" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+                    <spine>
+                        <asset-clip ref="r2" offset="0s" name="Interview_A" start="10s" duration="72/24s" format="r1">
+                            <marker start="24/24s" duration="1/24s" value="Good take"/>
+                            <keyword start="0s" duration="72/24s" value="Interview"/>
+                        </asset-clip>
+                        <asset-clip ref="r3" offset="72/24s" name="Broll_City" start="5s" duration="48/24s" format="r1">
+                            <keyword start="0s" duration="48/24s" value="B-Roll"/>
+                        </asset-clip>
+                        <asset-clip ref="r2" offset="120/24s" name="Interview_A" start="45s" duration="96/24s" format="r1">
+                            <marker start="48/24s" duration="1/24s" value="Key quote"/>
+                            <keyword start="0s" duration="96/24s" value="Interview"/>
+                        </asset-clip>
+                        <asset-clip ref="r4" offset="216/24s" name="Broll_Studio" start="0s" duration="6/24s" format="r1">
+                            <keyword start="0s" duration="6/24s" value="Flash"/>
+                        </asset-clip>
+                        <asset-clip ref="r4" offset="222/24s" name="Broll_Studio" start="10s" duration="120/24s" format="r1">
+                            <keyword start="0s" duration="120/24s" value="B-Roll"/>
+                        </asset-clip>
+                        <asset-clip ref="r2" offset="342/24s" name="Interview_A" start="120s" duration="720/24s" format="r1">
+                            <keyword start="0s" duration="720/24s" value="Interview"/>
+                        </asset-clip>
+                        <asset-clip ref="r3" offset="1062/24s" name="Broll_City" start="30s" duration="36/24s" format="r1"/>
+                        <asset-clip ref="r3" offset="1098/24s" name="Broll_City" start="45s" duration="24/24s" format="r1"/>
+                        <asset-clip ref="r2" offset="1122/24s" name="Interview_A" start="200s" duration="168/24s" format="r1"/>
+                    </spine>
+                    <chapter-marker start="0s" duration="1/24s" value="Intro"/>
+                    <chapter-marker start="120/24s" duration="1/24s" value="Main Story"/>
+                    <chapter-marker start="1062/24s" duration="1/24s" value="Montage"/>
+                    <chapter-marker start="1122/24s" duration="1/24s" value="Conclusion"/>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>
