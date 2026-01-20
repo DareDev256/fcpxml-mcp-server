@@ -53,6 +53,29 @@ class PacingStyle(Enum):
     DYNAMIC = "dynamic"  # Varies throughout
 
 
+class FlashFrameSeverity(Enum):
+    """Severity levels for flash frame detection."""
+    CRITICAL = "critical"  # < 2 frames, almost certainly an error
+    WARNING = "warning"    # < 6 frames, potentially intentional but suspicious
+
+
+class PacingCurve(Enum):
+    """Pacing curves for montage generation."""
+    CONSTANT = "constant"        # Same clip duration throughout
+    ACCELERATING = "accelerating"  # Starts slow, gets faster
+    DECELERATING = "decelerating"  # Starts fast, gets slower
+    PYRAMID = "pyramid"          # Slow → fast → slow
+
+
+class ValidationIssueType(Enum):
+    """Types of timeline validation issues."""
+    FLASH_FRAME = "flash_frame"
+    GAP = "gap"
+    DUPLICATE = "duplicate"
+    ORPHAN_REF = "orphan_ref"
+    INVALID_OFFSET = "invalid_offset"
+
+
 # ============================================================================
 # TIME VALUE - Rational Time Representation
 # ============================================================================
@@ -478,3 +501,171 @@ class RoughCutResult:
     actual_duration: float
     segments: int
     average_clip_duration: float
+
+
+# ============================================================================
+# SPEED CUTTING & VALIDATION MODELS (v0.3.0)
+# ============================================================================
+
+@dataclass
+class FlashFrame:
+    """
+    Represents a detected flash frame (ultra-short clip).
+
+    Flash frames are typically editing errors - clips that are too short
+    to be perceived as intentional cuts.
+    """
+    clip_name: str
+    clip_id: str
+    start: Timecode
+    duration_frames: int
+    duration_seconds: float
+    severity: 'FlashFrameSeverity'
+
+    @property
+    def is_critical(self) -> bool:
+        """Check if this is a critical flash frame."""
+        from . import models  # avoid circular import
+        return self.severity == models.FlashFrameSeverity.CRITICAL
+
+
+@dataclass
+class GapInfo:
+    """
+    Represents a detected gap in the timeline.
+
+    Gaps can be intentional (black frames) or errors from deleted clips.
+    """
+    start: Timecode
+    duration_frames: int
+    duration_seconds: float
+    previous_clip: Optional[str] = None  # Clip name before the gap
+    next_clip: Optional[str] = None      # Clip name after the gap
+
+    @property
+    def timecode(self) -> str:
+        """Get timecode string for the gap start."""
+        return self.start.to_smpte()
+
+
+@dataclass
+class DuplicateGroup:
+    """
+    Represents a group of clips using the same source media.
+
+    Useful for detecting duplicate clips that may be unintentional.
+    """
+    source_ref: str  # The asset/media reference ID
+    source_name: str  # Human-readable source name
+    clips: List[Dict[str, Any]] = field(default_factory=list)  # List of clip info dicts
+
+    @property
+    def count(self) -> int:
+        """Number of clips using this source."""
+        return len(self.clips)
+
+    @property
+    def has_overlapping_ranges(self) -> bool:
+        """Check if any clips use overlapping portions of the source."""
+        # Sort clips by source_start
+        sorted_clips = sorted(self.clips, key=lambda c: c.get('source_start', 0))
+        for i in range(len(sorted_clips) - 1):
+            curr_end = sorted_clips[i].get('source_start', 0) + sorted_clips[i].get('source_duration', 0)
+            next_start = sorted_clips[i + 1].get('source_start', 0)
+            if curr_end > next_start:
+                return True
+        return False
+
+
+@dataclass
+class ValidationIssue:
+    """
+    Represents a single validation issue found in a timeline.
+
+    Used by validate_timeline to report problems.
+    """
+    issue_type: 'ValidationIssueType'
+    severity: str  # "error", "warning", "info"
+    message: str
+    timecode: Optional[str] = None
+    clip_name: Optional[str] = None
+    details: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ValidationResult:
+    """
+    Result of timeline validation.
+
+    Provides a health score and categorized list of issues.
+    """
+    is_valid: bool
+    health_score: int  # 0-100 percentage
+    issues: List[ValidationIssue] = field(default_factory=list)
+    flash_frames: List[FlashFrame] = field(default_factory=list)
+    gaps: List[GapInfo] = field(default_factory=list)
+    duplicates: List[DuplicateGroup] = field(default_factory=list)
+
+    @property
+    def error_count(self) -> int:
+        return len([i for i in self.issues if i.severity == "error"])
+
+    @property
+    def warning_count(self) -> int:
+        return len([i for i in self.issues if i.severity == "warning"])
+
+    def summary(self) -> str:
+        """Generate a summary string."""
+        return (
+            f"Timeline Health: {self.health_score}% | "
+            f"Errors: {self.error_count} | Warnings: {self.warning_count} | "
+            f"Flash frames: {len(self.flash_frames)} | Gaps: {len(self.gaps)}"
+        )
+
+
+@dataclass
+class MontageConfig:
+    """Configuration for montage generation with pacing curves."""
+    target_duration: float  # Target duration in seconds
+    pacing_curve: 'PacingCurve'
+    start_duration: float = 2.0  # Clip duration at start
+    end_duration: float = 0.5    # Clip duration at end
+    min_duration: float = 0.2    # Minimum allowed clip duration
+    max_duration: float = 5.0    # Maximum allowed clip duration
+
+    def get_duration_at_position(self, position: float) -> float:
+        """
+        Calculate clip duration for a given position (0.0 to 1.0).
+
+        Args:
+            position: Position in montage (0.0 = start, 1.0 = end)
+
+        Returns:
+            Target duration in seconds for a clip at this position
+        """
+        from . import models
+
+        if self.pacing_curve == models.PacingCurve.CONSTANT:
+            return (self.start_duration + self.end_duration) / 2
+
+        elif self.pacing_curve == models.PacingCurve.ACCELERATING:
+            # Linear interpolation from start to end duration
+            duration = self.start_duration + (self.end_duration - self.start_duration) * position
+
+        elif self.pacing_curve == models.PacingCurve.DECELERATING:
+            # Reverse: start fast, end slow
+            duration = self.end_duration + (self.start_duration - self.end_duration) * position
+
+        elif self.pacing_curve == models.PacingCurve.PYRAMID:
+            # Slow → fast → slow (parabolic curve)
+            if position < 0.5:
+                # First half: slow to fast
+                duration = self.start_duration + (self.end_duration - self.start_duration) * (position * 2)
+            else:
+                # Second half: fast to slow
+                duration = self.end_duration + (self.start_duration - self.end_duration) * ((position - 0.5) * 2)
+        else:
+            duration = self.start_duration
+
+        # Clamp to min/max
+        return max(self.min_duration, min(self.max_duration, duration))

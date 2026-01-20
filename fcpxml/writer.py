@@ -774,6 +774,303 @@ class FCPXMLModifier:
             del self.clips[clip_id]
 
     # ========================================================================
+    # SPEED CUTTING OPERATIONS (v0.3.0)
+    # ========================================================================
+
+    def fix_flash_frames(
+        self,
+        mode: str = 'auto',
+        threshold_frames: int = 6,
+        critical_threshold_frames: int = 2
+    ) -> List[Dict[str, Any]]:
+        """
+        Automatically fix flash frames (ultra-short clips).
+
+        Args:
+            mode: How to fix flash frames:
+                - 'extend_previous': Extend the previous clip to cover the flash frame
+                - 'extend_next': Extend the next clip backward to cover the flash frame
+                - 'delete': Remove the flash frame entirely (ripple)
+                - 'auto': Use smart logic (extend prev for critical, delete for warning)
+            threshold_frames: Frames below this are considered flash frames
+            critical_threshold_frames: Frames below this are critical (default: 2)
+
+        Returns:
+            List of fixed flash frames with details
+        """
+        spine = self._get_spine()
+        spine_children = list(spine)
+        fixed = []
+
+        # Collect flash frames first (can't modify while iterating)
+        flash_frames = []
+        for i, clip in enumerate(spine_children):
+            if clip.tag not in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                continue
+            duration = self._parse_time(clip.get('duration', '0s'))
+            duration_frames = duration.to_frames(self.fps)
+
+            if duration_frames < threshold_frames:
+                is_critical = duration_frames < critical_threshold_frames
+                flash_frames.append({
+                    'index': i,
+                    'clip': clip,
+                    'clip_id': clip.get('name') or clip.get('id') or f"clip_{i}",
+                    'duration_frames': duration_frames,
+                    'is_critical': is_critical
+                })
+
+        # Process in reverse order to maintain indices
+        for ff in reversed(flash_frames):
+            clip = ff['clip']
+            clip_index = list(spine).index(clip)
+            clip_duration = self._parse_time(clip.get('duration', '0s'))
+            clip_offset = self._parse_time(clip.get('offset', '0s'))
+
+            # Determine actual mode
+            actual_mode = mode
+            if mode == 'auto':
+                # Critical: try to extend previous, otherwise delete
+                # Warning: delete
+                actual_mode = 'extend_previous' if ff['is_critical'] else 'delete'
+
+            result = {
+                'clip_name': ff['clip_id'],
+                'duration_frames': ff['duration_frames'],
+                'was_critical': ff['is_critical'],
+                'action': actual_mode,
+                'timecode': clip_offset.to_timecode(self.fps)
+            }
+
+            spine_list = list(spine)
+
+            if actual_mode == 'extend_previous' and clip_index > 0:
+                # Find previous non-gap clip
+                prev_clip = None
+                for j in range(clip_index - 1, -1, -1):
+                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                        prev_clip = spine_list[j]
+                        break
+
+                if prev_clip is not None:
+                    prev_duration = self._parse_time(prev_clip.get('duration', '0s'))
+                    new_duration = prev_duration + clip_duration
+                    prev_clip.set('duration', new_duration.to_fcpxml())
+                    spine.remove(clip)
+                    self._recalculate_offsets(spine)
+                    result['extended_clip'] = prev_clip.get('name', 'Previous')
+
+            elif actual_mode == 'extend_next' and clip_index < len(spine_list) - 1:
+                # Find next non-gap clip
+                next_clip = None
+                for j in range(clip_index + 1, len(spine_list)):
+                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                        next_clip = spine_list[j]
+                        break
+
+                if next_clip is not None:
+                    next_duration = self._parse_time(next_clip.get('duration', '0s'))
+                    next_start = self._parse_time(next_clip.get('start', '0s'))
+                    new_duration = next_duration + clip_duration
+                    new_start = next_start - clip_duration
+                    if new_start.to_seconds() >= 0:
+                        next_clip.set('duration', new_duration.to_fcpxml())
+                        next_clip.set('start', new_start.to_fcpxml())
+                    else:
+                        next_clip.set('duration', new_duration.to_fcpxml())
+                    spine.remove(clip)
+                    self._recalculate_offsets(spine)
+                    result['extended_clip'] = next_clip.get('name', 'Next')
+
+            else:  # delete
+                spine.remove(clip)
+                self._recalculate_offsets(spine)
+
+            fixed.append(result)
+
+        # Rebuild clip index
+        self._build_clip_index()
+
+        return fixed
+
+    def rapid_trim(
+        self,
+        max_duration: Optional[str] = None,
+        min_duration: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        trim_from: str = 'end'
+    ) -> List[Dict[str, Any]]:
+        """
+        Batch trim clips to enforce duration limits.
+
+        Args:
+            max_duration: Maximum clip duration (e.g., '2s', '00:00:02:00')
+            min_duration: Minimum clip duration (clips shorter are extended/left alone)
+            keywords: Only trim clips with these keywords (None = all clips)
+            trim_from: Where to trim - 'start', 'end', or 'center'
+
+        Returns:
+            List of trimmed clips with before/after durations
+        """
+        spine = self._get_spine()
+        trimmed = []
+
+        max_dur = self._parse_time(max_duration) if max_duration else None
+        min_dur = self._parse_time(min_duration) if min_duration else None
+
+        for clip in list(spine):
+            if clip.tag not in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                continue
+
+            clip_name = clip.get('name') or clip.get('id') or 'Unknown'
+
+            # Check keyword filter
+            if keywords:
+                clip_keywords = set()
+                for kw_elem in clip.findall('keyword'):
+                    clip_keywords.add(kw_elem.get('value', ''))
+                if not clip_keywords.intersection(set(keywords)):
+                    continue
+
+            current_duration = self._parse_time(clip.get('duration', '0s'))
+            current_start = self._parse_time(clip.get('start', '0s'))
+            original_duration = current_duration.to_seconds()
+
+            # Check max duration
+            if max_dur and current_duration > max_dur:
+                excess = current_duration - max_dur
+
+                if trim_from == 'end':
+                    # Keep start, reduce duration
+                    clip.set('duration', max_dur.to_fcpxml())
+
+                elif trim_from == 'start':
+                    # Increase start, reduce duration
+                    new_start = current_start + excess
+                    clip.set('start', new_start.to_fcpxml())
+                    clip.set('duration', max_dur.to_fcpxml())
+
+                elif trim_from == 'center':
+                    # Trim equal amounts from both ends
+                    half_excess = excess * 0.5
+                    new_start = current_start + half_excess
+                    clip.set('start', new_start.to_fcpxml())
+                    clip.set('duration', max_dur.to_fcpxml())
+
+                trimmed.append({
+                    'clip_name': clip_name,
+                    'original_duration': original_duration,
+                    'new_duration': max_dur.to_seconds(),
+                    'trim_from': trim_from,
+                    'action': 'trimmed'
+                })
+
+        # Recalculate offsets
+        self._recalculate_offsets(spine)
+
+        return trimmed
+
+    def fill_gaps(
+        self,
+        mode: str = 'extend_previous',
+        max_gap: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Fill gaps in the timeline.
+
+        Args:
+            mode: How to fill gaps:
+                - 'extend_previous': Extend previous clip to fill gap
+                - 'extend_next': Extend next clip backward to fill gap
+                - 'delete': Remove gap elements and ripple
+            max_gap: Only fill gaps smaller than this (None = all gaps)
+
+        Returns:
+            List of filled gaps with details
+        """
+        spine = self._get_spine()
+        filled = []
+        max_gap_time = self._parse_time(max_gap) if max_gap else None
+
+        # Find all gaps
+        gaps_to_process = []
+        for i, child in enumerate(list(spine)):
+            if child.tag == 'gap':
+                gap_duration = self._parse_time(child.get('duration', '0s'))
+                gap_offset = self._parse_time(child.get('offset', '0s'))
+
+                # Check max_gap filter
+                if max_gap_time and gap_duration > max_gap_time:
+                    continue
+
+                gaps_to_process.append({
+                    'element': child,
+                    'index': i,
+                    'duration': gap_duration,
+                    'offset': gap_offset
+                })
+
+        # Process in reverse to maintain indices
+        for gap_info in reversed(gaps_to_process):
+            gap = gap_info['element']
+            gap_index = list(spine).index(gap)
+            gap_duration = gap_info['duration']
+            gap_offset = gap_info['offset']
+
+            spine_list = list(spine)
+            result = {
+                'timecode': gap_offset.to_timecode(self.fps),
+                'duration_frames': gap_duration.to_frames(self.fps),
+                'duration_seconds': gap_duration.to_seconds(),
+                'action': mode
+            }
+
+            if mode == 'extend_previous' and gap_index > 0:
+                # Find previous clip
+                prev_clip = None
+                for j in range(gap_index - 1, -1, -1):
+                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                        prev_clip = spine_list[j]
+                        break
+
+                if prev_clip is not None:
+                    prev_duration = self._parse_time(prev_clip.get('duration', '0s'))
+                    new_duration = prev_duration + gap_duration
+                    prev_clip.set('duration', new_duration.to_fcpxml())
+                    spine.remove(gap)
+                    result['extended_clip'] = prev_clip.get('name', 'Previous')
+                    filled.append(result)
+
+            elif mode == 'extend_next' and gap_index < len(spine_list) - 1:
+                # Find next clip
+                next_clip = None
+                for j in range(gap_index + 1, len(spine_list)):
+                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                        next_clip = spine_list[j]
+                        break
+
+                if next_clip is not None:
+                    next_duration = self._parse_time(next_clip.get('duration', '0s'))
+                    next_start = self._parse_time(next_clip.get('start', '0s'))
+                    new_duration = next_duration + gap_duration
+                    new_start = next_start - gap_duration
+                    if new_start.to_seconds() >= 0:
+                        next_clip.set('start', new_start.to_fcpxml())
+                    next_clip.set('duration', new_duration.to_fcpxml())
+                    spine.remove(gap)
+                    result['extended_clip'] = next_clip.get('name', 'Next')
+                    filled.append(result)
+
+            else:  # delete
+                spine.remove(gap)
+                filled.append(result)
+
+        # Recalculate offsets
+        self._recalculate_offsets(spine)
+
+        return filled
+
+    # ========================================================================
     # SELECTION OPERATIONS
     # ========================================================================
 

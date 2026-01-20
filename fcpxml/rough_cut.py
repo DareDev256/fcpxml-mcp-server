@@ -14,7 +14,8 @@ import random
 import uuid
 
 from .models import (
-    TimeValue, Timecode, PacingConfig, SegmentSpec, RoughCutResult
+    TimeValue, Timecode, PacingConfig, SegmentSpec, RoughCutResult,
+    PacingCurve, MontageConfig
 )
 
 
@@ -425,6 +426,283 @@ class RoughCutGenerator:
             f.write(final_xml)
 
         return total_duration.to_seconds()
+
+    # ========================================================================
+    # MONTAGE GENERATION (v0.3.0)
+    # ========================================================================
+
+    def generate_montage(
+        self,
+        output_path: str,
+        target_duration: str,
+        pacing_curve: str = "accelerating",
+        start_duration: float = 2.0,
+        end_duration: float = 0.5,
+        keywords: Optional[List[str]] = None,
+        exclude_rejected: bool = True,
+        add_transitions: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Generate a rapid-fire montage with dynamic pacing curves.
+
+        Creates montages where clip duration varies over time:
+        - accelerating: Starts slow (2s), ends fast (0.5s) - builds energy
+        - decelerating: Starts fast, ends slow - winds down
+        - pyramid: Slow → fast → slow - dramatic arc
+        - constant: Same duration throughout
+
+        Args:
+            output_path: Where to save the montage FCPXML
+            target_duration: Total montage length (e.g., "30s", "00:00:30:00")
+            pacing_curve: "accelerating", "decelerating", "pyramid", or "constant"
+            start_duration: Clip duration at start (seconds)
+            end_duration: Clip duration at end (seconds)
+            keywords: Filter clips by keywords
+            exclude_rejected: Skip rejected clips
+            add_transitions: Add quick dissolves between clips
+
+        Returns:
+            Dict with output_path, clips_used, actual_duration, pacing_curve
+        """
+        # Parse pacing curve
+        curve_map = {
+            'accelerating': PacingCurve.ACCELERATING,
+            'decelerating': PacingCurve.DECELERATING,
+            'pyramid': PacingCurve.PYRAMID,
+            'constant': PacingCurve.CONSTANT
+        }
+        curve = curve_map.get(pacing_curve, PacingCurve.ACCELERATING)
+
+        config = MontageConfig(
+            target_duration=self._parse_duration(target_duration).to_seconds(),
+            pacing_curve=curve,
+            start_duration=start_duration,
+            end_duration=end_duration,
+            min_duration=0.2,
+            max_duration=max(start_duration, end_duration) + 1.0
+        )
+
+        # Filter available clips
+        available_clips = self._filter_clips(
+            keywords=keywords,
+            exclude_rejected=exclude_rejected
+        )
+
+        if not available_clips:
+            raise ValueError("No clips match the filter criteria")
+
+        # Select clips with pacing curve
+        selected_clips = self._select_clips_for_montage(available_clips, config)
+
+        # Build output
+        actual_duration = self._build_output(
+            selected_clips, output_path, add_transitions, "00:00:00:06"
+        )
+
+        return {
+            'output_path': output_path,
+            'clips_used': len(selected_clips),
+            'clips_available': len(available_clips),
+            'target_duration': config.target_duration,
+            'actual_duration': actual_duration,
+            'pacing_curve': pacing_curve,
+            'start_clip_duration': selected_clips[0]['use_duration'].to_seconds() if selected_clips else 0,
+            'end_clip_duration': selected_clips[-1]['use_duration'].to_seconds() if selected_clips else 0
+        }
+
+    def _select_clips_for_montage(
+        self,
+        clips: List[Dict[str, Any]],
+        config: MontageConfig
+    ) -> List[Dict[str, Any]]:
+        """Select clips with dynamic pacing based on montage config."""
+        selected = []
+        current_duration = 0.0
+        target = config.target_duration
+        clip_index = 0
+
+        # Shuffle clips for variety
+        available = clips.copy()
+        random.shuffle(available)
+
+        while current_duration < target and clip_index < len(available):
+            # Calculate position in montage (0.0 to 1.0)
+            position = current_duration / target if target > 0 else 0
+
+            # Get target clip duration for this position
+            target_clip_duration = config.get_duration_at_position(position)
+
+            # Find best matching clip
+            clip = available[clip_index]
+            clip_dur = clip['duration'].to_seconds()
+
+            # Determine actual duration to use
+            remaining = target - current_duration
+            use_duration = min(target_clip_duration, clip_dur, remaining)
+            use_duration = max(use_duration, config.min_duration)
+
+            if use_duration <= 0:
+                clip_index += 1
+                continue
+
+            # Create selection
+            selection = {
+                **clip,
+                'use_duration': TimeValue.from_seconds(use_duration, self.fps),
+                'in_point': clip['start'],
+                'out_point': clip['start'] + TimeValue.from_seconds(use_duration, self.fps),
+                'montage_position': position
+            }
+            selected.append(selection)
+            current_duration += use_duration
+            clip_index += 1
+
+        return selected
+
+    # ========================================================================
+    # A/B ROLL GENERATION (v0.3.0)
+    # ========================================================================
+
+    def generate_ab_roll(
+        self,
+        output_path: str,
+        target_duration: str,
+        a_keywords: List[str],
+        b_keywords: List[str],
+        a_duration: str = "5s",
+        b_duration: str = "3s",
+        start_with: str = "a",
+        exclude_rejected: bool = True,
+        add_transitions: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Generate classic documentary-style A/B roll edit.
+
+        Alternates between A-roll (main content, usually interviews) and
+        B-roll (cutaway footage, usually visuals).
+
+        Args:
+            output_path: Where to save the FCPXML
+            target_duration: Total duration (e.g., "3m", "00:03:00:00")
+            a_keywords: Keywords for A-roll clips (e.g., ["interview", "talking"])
+            b_keywords: Keywords for B-roll clips (e.g., ["broll", "cutaway"])
+            a_duration: How long each A-roll segment should be
+            b_duration: How long each B-roll cutaway should be
+            start_with: Start with "a" or "b" roll
+            exclude_rejected: Skip rejected clips
+            add_transitions: Add cross-dissolves between clips
+
+        Returns:
+            Dict with output details including a_segments and b_segments counts
+        """
+        target_time = self._parse_duration(target_duration)
+        a_dur = self._parse_duration(a_duration)
+        b_dur = self._parse_duration(b_duration)
+
+        # Filter A and B clips
+        a_clips = self._filter_clips(keywords=a_keywords, exclude_rejected=exclude_rejected)
+        b_clips = self._filter_clips(keywords=b_keywords, exclude_rejected=exclude_rejected)
+
+        if not a_clips:
+            raise ValueError(f"No A-roll clips found with keywords: {a_keywords}")
+        if not b_clips:
+            raise ValueError(f"No B-roll clips found with keywords: {b_keywords}")
+
+        # Build alternating sequence
+        selected_clips = self._build_ab_sequence(
+            a_clips, b_clips, target_time, a_dur, b_dur, start_with
+        )
+
+        # Build output
+        actual_duration = self._build_output(
+            selected_clips, output_path, add_transitions, "00:00:00:12"
+        )
+
+        a_count = sum(1 for c in selected_clips if c.get('roll_type') == 'A')
+        b_count = sum(1 for c in selected_clips if c.get('roll_type') == 'B')
+
+        return {
+            'output_path': output_path,
+            'clips_used': len(selected_clips),
+            'a_clips_available': len(a_clips),
+            'b_clips_available': len(b_clips),
+            'a_segments': a_count,
+            'b_segments': b_count,
+            'target_duration': target_time.to_seconds(),
+            'actual_duration': actual_duration,
+            'a_duration_setting': a_duration,
+            'b_duration_setting': b_duration
+        }
+
+    def _build_ab_sequence(
+        self,
+        a_clips: List[Dict[str, Any]],
+        b_clips: List[Dict[str, Any]],
+        target_duration: TimeValue,
+        a_dur: TimeValue,
+        b_dur: TimeValue,
+        start_with: str
+    ) -> List[Dict[str, Any]]:
+        """Build alternating A/B sequence."""
+        selected = []
+        current_duration = TimeValue.zero()
+        target_seconds = target_duration.to_seconds()
+
+        # Track which clips we've used
+        a_index = 0
+        b_index = 0
+        current_roll = start_with.lower()
+
+        while current_duration.to_seconds() < target_seconds:
+            remaining = target_seconds - current_duration.to_seconds()
+
+            if current_roll == 'a':
+                if a_index >= len(a_clips):
+                    a_index = 0  # Loop if needed
+
+                clip = a_clips[a_index]
+                target_dur = min(a_dur.to_seconds(), remaining)
+                clip_dur = clip['duration'].to_seconds()
+                use_dur = min(target_dur, clip_dur)
+
+                selection = {
+                    **clip,
+                    'use_duration': TimeValue.from_seconds(use_dur, self.fps),
+                    'in_point': clip['start'],
+                    'out_point': clip['start'] + TimeValue.from_seconds(use_dur, self.fps),
+                    'roll_type': 'A'
+                }
+                selected.append(selection)
+                current_duration = current_duration + TimeValue.from_seconds(use_dur, self.fps)
+                a_index += 1
+                current_roll = 'b'
+
+            else:  # B-roll
+                if b_index >= len(b_clips):
+                    b_index = 0  # Loop if needed
+
+                clip = b_clips[b_index]
+                target_dur = min(b_dur.to_seconds(), remaining)
+                clip_dur = clip['duration'].to_seconds()
+                use_dur = min(target_dur, clip_dur)
+
+                selection = {
+                    **clip,
+                    'use_duration': TimeValue.from_seconds(use_dur, self.fps),
+                    'in_point': clip['start'],
+                    'out_point': clip['start'] + TimeValue.from_seconds(use_dur, self.fps),
+                    'roll_type': 'B'
+                }
+                selected.append(selection)
+                current_duration = current_duration + TimeValue.from_seconds(use_dur, self.fps)
+                b_index += 1
+                current_roll = 'a'
+
+            # Safety check to prevent infinite loop
+            if len(selected) > 1000:
+                break
+
+        return selected
 
 
 # ============================================================================

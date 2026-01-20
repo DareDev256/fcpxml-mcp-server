@@ -19,7 +19,10 @@ from mcp.types import Tool, TextContent
 from fcpxml.parser import FCPXMLParser
 from fcpxml.writer import FCPXMLModifier
 from fcpxml.rough_cut import RoughCutGenerator, generate_rough_cut
-from fcpxml.models import MarkerType, SegmentSpec
+from fcpxml.models import (
+    MarkerType, SegmentSpec, FlashFrameSeverity, FlashFrame,
+    GapInfo, DuplicateGroup, PacingCurve, MontageConfig
+)
 
 server = Server("fcp-mcp-server")
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
@@ -186,6 +189,45 @@ async def list_tools() -> list[Tool]:
             }
         ),
 
+        # ===== SPEED CUTTING ANALYSIS TOOLS (v0.3.0) =====
+        Tool(
+            name="detect_flash_frames",
+            description="Find ultra-short clips (flash frames) that are likely errors, with severity categorization",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "critical_threshold_frames": {"type": "integer", "default": 2, "description": "Frames below this = critical (default: 2)"},
+                    "warning_threshold_frames": {"type": "integer", "default": 6, "description": "Frames below this = warning (default: 6)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="detect_duplicates",
+            description="Find clips using the same source media (potential duplicates)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "mode": {"type": "string", "enum": ["same_source", "overlapping_ranges", "identical"], "default": "same_source", "description": "Detection mode"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="detect_gaps",
+            description="Find unintentional gaps in the timeline",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "min_gap_frames": {"type": "integer", "default": 1, "description": "Minimum gap size to detect (default: 1 frame)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+
         # ===== WRITE TOOLS =====
         Tool(
             name="add_marker",
@@ -340,6 +382,64 @@ async def list_tools() -> list[Tool]:
             }
         ),
 
+        # ===== SPEED CUTTING WRITE TOOLS (v0.3.0) =====
+        Tool(
+            name="fix_flash_frames",
+            description="Automatically fix detected flash frames by extending neighbors or deleting",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "mode": {"type": "string", "enum": ["extend_previous", "extend_next", "delete", "auto"], "default": "auto", "description": "How to fix: extend previous/next clip, delete, or auto"},
+                    "threshold_frames": {"type": "integer", "default": 6, "description": "Frames below this threshold are flash frames"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="rapid_trim",
+            description="Batch trim clips to a maximum duration for fast-paced montages",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "max_duration": {"type": "string", "description": "Maximum clip duration (e.g., '2s', '00:00:02:00')"},
+                    "min_duration": {"type": "string", "description": "Minimum clip duration (optional)"},
+                    "keywords": {"type": "array", "items": {"type": "string"}, "description": "Only trim clips with these keywords"},
+                    "trim_from": {"type": "string", "enum": ["start", "end", "center"], "default": "end", "description": "Where to trim from"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
+                },
+                "required": ["filepath", "max_duration"]
+            }
+        ),
+        Tool(
+            name="fill_gaps",
+            description="Automatically fill gaps in the timeline by extending adjacent clips",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "mode": {"type": "string", "enum": ["extend_previous", "extend_next", "delete"], "default": "extend_previous", "description": "How to fill gaps"},
+                    "max_gap": {"type": "string", "description": "Only fill gaps smaller than this (e.g., '1s')"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="validate_timeline",
+            description="Comprehensive timeline health check for flash frames, gaps, duplicates, and issues",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "checks": {"type": "array", "items": {"type": "string", "enum": ["all", "flash_frames", "gaps", "duplicates", "offsets"]}, "default": ["all"], "description": "Which checks to run"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+
         # ===== AI-POWERED TOOLS =====
         Tool(
             name="auto_rough_cut",
@@ -369,6 +469,74 @@ async def list_tools() -> list[Tool]:
                     "add_transitions": {"type": "boolean", "default": False}
                 },
                 "required": ["filepath", "output_path", "target_duration"]
+            }
+        ),
+        Tool(
+            name="generate_montage",
+            description="Create rapid-fire montages with pacing curves (accelerating, decelerating, pyramid)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Source FCPXML with clips"},
+                    "output_path": {"type": "string", "description": "Where to save montage"},
+                    "target_duration": {"type": "string", "description": "Total montage length (e.g., '30s', '00:00:30:00')"},
+                    "pacing_curve": {"type": "string", "enum": ["accelerating", "decelerating", "pyramid", "constant"], "default": "accelerating", "description": "How clip duration changes over time"},
+                    "start_duration": {"type": "number", "default": 2.0, "description": "Clip duration at start (seconds)"},
+                    "end_duration": {"type": "number", "default": 0.5, "description": "Clip duration at end (seconds)"},
+                    "keywords": {"type": "array", "items": {"type": "string"}, "description": "Filter clips by keywords"},
+                    "add_transitions": {"type": "boolean", "default": False, "description": "Add quick dissolves"}
+                },
+                "required": ["filepath", "output_path", "target_duration"]
+            }
+        ),
+        Tool(
+            name="generate_ab_roll",
+            description="Create documentary-style A/B roll edits alternating between main content and cutaways",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Source FCPXML with clips"},
+                    "output_path": {"type": "string", "description": "Where to save A/B roll edit"},
+                    "target_duration": {"type": "string", "description": "Total duration (e.g., '3m', '00:03:00:00')"},
+                    "a_keywords": {"type": "array", "items": {"type": "string"}, "description": "Keywords for A-roll (main content, interviews)"},
+                    "b_keywords": {"type": "array", "items": {"type": "string"}, "description": "Keywords for B-roll (cutaways, visuals)"},
+                    "a_duration": {"type": "string", "default": "5s", "description": "Duration of each A-roll segment"},
+                    "b_duration": {"type": "string", "default": "3s", "description": "Duration of each B-roll cutaway"},
+                    "start_with": {"type": "string", "enum": ["a", "b"], "default": "a", "description": "Which roll to start with"},
+                    "add_transitions": {"type": "boolean", "default": True, "description": "Add cross-dissolves"}
+                },
+                "required": ["filepath", "output_path", "target_duration", "a_keywords", "b_keywords"]
+            }
+        ),
+
+        # ===== BEAT SYNC TOOLS (v0.3.0) =====
+        Tool(
+            name="import_beat_markers",
+            description="Import beat markers from external audio analysis (JSON format)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "beats_path": {"type": "string", "description": "Path to beats JSON file"},
+                    "marker_type": {"type": "string", "enum": ["standard", "chapter"], "default": "standard"},
+                    "beat_filter": {"type": "string", "enum": ["all", "downbeat", "measure"], "default": "all", "description": "Which beats to import"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _beats suffix)"}
+                },
+                "required": ["filepath", "beats_path"]
+            }
+        ),
+        Tool(
+            name="snap_to_beats",
+            description="Align cuts to nearest beat markers for music-synced edits",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file with beat markers"},
+                    "max_shift_frames": {"type": "integer", "default": 6, "description": "Maximum frames to shift a cut"},
+                    "prefer": {"type": "string", "enum": ["earlier", "later", "nearest"], "default": "nearest", "description": "Which beat to prefer when equidistant"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _synced suffix)"}
+                },
+                "required": ["filepath"]
             }
         ),
     ]
@@ -575,6 +743,185 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
             result += "\n*Use `insert_clip` to add these to your timeline.*"
             return [TextContent(type="text", text=result)]
 
+        # ===== SPEED CUTTING ANALYSIS TOOLS (v0.3.0) =====
+        elif name == "detect_flash_frames":
+            project = FCPXMLParser().parse_file(arguments["filepath"])
+            if not project.timelines:
+                return [TextContent(type="text", text="No timelines found")]
+            tl = project.primary_timeline
+            fps = tl.frame_rate
+
+            critical_threshold = arguments.get("critical_threshold_frames", 2)
+            warning_threshold = arguments.get("warning_threshold_frames", 6)
+
+            flash_frames = []
+            for clip in tl.clips:
+                duration_frames = int(clip.duration_seconds * fps)
+                if duration_frames < warning_threshold:
+                    severity = FlashFrameSeverity.CRITICAL if duration_frames < critical_threshold else FlashFrameSeverity.WARNING
+                    flash_frames.append(FlashFrame(
+                        clip_name=clip.name,
+                        clip_id=clip.name,  # Using name as ID for now
+                        start=clip.start,
+                        duration_frames=duration_frames,
+                        duration_seconds=clip.duration_seconds,
+                        severity=severity
+                    ))
+
+            if not flash_frames:
+                return [TextContent(type="text", text=f"No flash frames detected (threshold: {warning_threshold} frames)")]
+
+            critical = [f for f in flash_frames if f.severity == FlashFrameSeverity.CRITICAL]
+            warnings = [f for f in flash_frames if f.severity == FlashFrameSeverity.WARNING]
+
+            result = f"""# Flash Frame Detection
+
+## Summary
+- **Critical** (< {critical_threshold} frames): {len(critical)} found
+- **Warning** (< {warning_threshold} frames): {len(warnings)} found
+- **Total**: {len(flash_frames)} flash frames
+
+## Critical Flash Frames
+"""
+            if critical:
+                result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
+                for f in critical:
+                    result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
+            else:
+                result += "_None_\n"
+
+            result += "\n## Warning Flash Frames\n"
+            if warnings:
+                result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
+                for f in warnings:
+                    result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
+            else:
+                result += "_None_\n"
+
+            result += "\n*Use `fix_flash_frames` to automatically resolve these issues.*"
+            return [TextContent(type="text", text=result)]
+
+        elif name == "detect_duplicates":
+            parser = FCPXMLParser()
+            project = parser.parse_file(arguments["filepath"])
+            if not project.timelines:
+                return [TextContent(type="text", text="No timelines found")]
+            tl = project.primary_timeline
+            mode = arguments.get("mode", "same_source")
+
+            # Group clips by their source reference
+            # We need to access the raw XML to get ref attributes
+            # For now, we'll use media_path as a proxy for source reference
+            source_groups = {}
+            for clip in tl.clips:
+                # Use media_path as the grouping key (or name if no media_path)
+                source_key = clip.media_path or clip.name
+                if source_key not in source_groups:
+                    source_groups[source_key] = []
+                source_groups[source_key].append({
+                    'name': clip.name,
+                    'start': clip.start.seconds,
+                    'duration': clip.duration_seconds,
+                    'source_start': clip.source_start.seconds if clip.source_start else 0,
+                    'source_duration': clip.duration_seconds,
+                    'timecode': format_timecode(clip.start)
+                })
+
+            # Filter to only groups with duplicates
+            duplicates = []
+            for source_key, clips in source_groups.items():
+                if len(clips) > 1:
+                    group = DuplicateGroup(
+                        source_ref=source_key,
+                        source_name=source_key.split('/')[-1] if '/' in source_key else source_key,
+                        clips=clips
+                    )
+
+                    # Filter by mode
+                    if mode == "same_source":
+                        duplicates.append(group)
+                    elif mode == "overlapping_ranges" and group.has_overlapping_ranges:
+                        duplicates.append(group)
+                    elif mode == "identical":
+                        # Check for clips with identical source ranges
+                        seen_ranges = set()
+                        identical_clips = []
+                        for c in clips:
+                            range_key = (c['source_start'], c['source_duration'])
+                            if range_key in seen_ranges:
+                                identical_clips.append(c)
+                            seen_ranges.add(range_key)
+                        if identical_clips:
+                            group.clips = identical_clips
+                            duplicates.append(group)
+
+            if not duplicates:
+                return [TextContent(type="text", text=f"No duplicate clips found (mode: {mode})")]
+
+            result = f"""# Duplicate Clip Detection
+
+## Summary
+- **Mode**: {mode}
+- **Duplicate Groups**: {len(duplicates)}
+- **Total Duplicate Clips**: {sum(g.count for g in duplicates)}
+
+## Duplicate Groups
+"""
+            for group in duplicates:
+                result += f"\n### {group.source_name} ({group.count} uses)\n"
+                result += "| Clip Name | Timeline Position | Duration |\n|-----------|-------------------|----------|\n"
+                for c in group.clips:
+                    result += f"| {c['name']} | {c['timecode']} | {format_duration(c['duration'])} |\n"
+
+            return [TextContent(type="text", text=result)]
+
+        elif name == "detect_gaps":
+            project = FCPXMLParser().parse_file(arguments["filepath"])
+            if not project.timelines:
+                return [TextContent(type="text", text="No timelines found")]
+            tl = project.primary_timeline
+            fps = tl.frame_rate
+            min_gap_frames = arguments.get("min_gap_frames", 1)
+            min_gap_seconds = min_gap_frames / fps
+
+            gaps = []
+            sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
+
+            for i in range(len(sorted_clips) - 1):
+                current_end = sorted_clips[i].end.seconds
+                next_start = sorted_clips[i + 1].start.seconds
+                gap_duration = next_start - current_end
+
+                if gap_duration >= min_gap_seconds:
+                    from fcpxml.models import Timecode
+                    gaps.append(GapInfo(
+                        start=Timecode(frames=int(current_end * fps), frame_rate=fps),
+                        duration_frames=int(gap_duration * fps),
+                        duration_seconds=gap_duration,
+                        previous_clip=sorted_clips[i].name,
+                        next_clip=sorted_clips[i + 1].name
+                    ))
+
+            if not gaps:
+                return [TextContent(type="text", text=f"No gaps detected (minimum: {min_gap_frames} frame(s))")]
+
+            result = f"""# Gap Detection
+
+## Summary
+- **Gaps Found**: {len(gaps)}
+- **Total Gap Duration**: {format_duration(sum(g.duration_seconds for g in gaps))}
+- **Minimum Detection**: {min_gap_frames} frame(s)
+
+## Gaps
+| Position | Duration | Between |
+|----------|----------|---------|
+"""
+            for gap in gaps:
+                result += f"| {gap.timecode} | {gap.duration_frames}f ({format_duration(gap.duration_seconds)}) | {gap.previous_clip} → {gap.next_clip} |\n"
+
+            result += "\n*Use `fill_gaps` to automatically close these gaps.*"
+            return [TextContent(type="text", text=result)]
+
         # ===== WRITE TOOLS =====
         elif name == "add_marker":
             filepath = arguments["filepath"]
@@ -695,6 +1042,185 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
             pos = arguments["position"]
             return [TextContent(type="text", text=f"✅ Inserted '{clip_name}' at position '{pos}'\n\nSaved to: {output_path}")]
 
+        # ===== SPEED CUTTING WRITE TOOLS (v0.3.0) =====
+        elif name == "fix_flash_frames":
+            filepath = arguments["filepath"]
+            output_path = arguments.get("output_path") or generate_output_path(filepath, "_flash_fixed")
+            modifier = FCPXMLModifier(filepath)
+            fixed = modifier.fix_flash_frames(
+                mode=arguments.get("mode", "auto"),
+                threshold_frames=arguments.get("threshold_frames", 6)
+            )
+            modifier.save(output_path)
+
+            if not fixed:
+                return [TextContent(type="text", text="No flash frames found to fix.")]
+
+            result = f"""# Flash Frames Fixed
+
+## Summary
+- **Fixed**: {len(fixed)} flash frames
+- **Mode**: {arguments.get('mode', 'auto')}
+
+## Details
+| Clip | Frames | Action | Result |
+|------|--------|--------|--------|
+"""
+            for f in fixed:
+                extended = f.get('extended_clip', 'N/A')
+                result += f"| {f['clip_name']} | {f['duration_frames']}f | {f['action']} | Extended: {extended} |\n"
+
+            result += f"\nSaved to: `{output_path}`"
+            return [TextContent(type="text", text=result)]
+
+        elif name == "rapid_trim":
+            filepath = arguments["filepath"]
+            output_path = arguments.get("output_path") or generate_output_path(filepath, "_rapid_trim")
+            modifier = FCPXMLModifier(filepath)
+            trimmed = modifier.rapid_trim(
+                max_duration=arguments["max_duration"],
+                min_duration=arguments.get("min_duration"),
+                keywords=arguments.get("keywords"),
+                trim_from=arguments.get("trim_from", "end")
+            )
+            modifier.save(output_path)
+
+            if not trimmed:
+                return [TextContent(type="text", text=f"No clips exceeded {arguments['max_duration']} - nothing trimmed.")]
+
+            total_before = sum(t['original_duration'] for t in trimmed)
+            total_after = sum(t['new_duration'] for t in trimmed)
+
+            result = f"""# Rapid Trim Complete
+
+## Summary
+- **Clips Trimmed**: {len(trimmed)}
+- **Max Duration**: {arguments['max_duration']}
+- **Trim From**: {arguments.get('trim_from', 'end')}
+- **Time Saved**: {format_duration(total_before - total_after)}
+
+## Trimmed Clips
+| Clip | Before | After |
+|------|--------|-------|
+"""
+            for t in trimmed:
+                result += f"| {t['clip_name']} | {format_duration(t['original_duration'])} | {format_duration(t['new_duration'])} |\n"
+
+            result += f"\nSaved to: `{output_path}`"
+            return [TextContent(type="text", text=result)]
+
+        elif name == "fill_gaps":
+            filepath = arguments["filepath"]
+            output_path = arguments.get("output_path") or generate_output_path(filepath, "_gaps_filled")
+            modifier = FCPXMLModifier(filepath)
+            filled = modifier.fill_gaps(
+                mode=arguments.get("mode", "extend_previous"),
+                max_gap=arguments.get("max_gap")
+            )
+            modifier.save(output_path)
+
+            if not filled:
+                return [TextContent(type="text", text="No gaps found to fill.")]
+
+            result = f"""# Gaps Filled
+
+## Summary
+- **Gaps Filled**: {len(filled)}
+- **Mode**: {arguments.get('mode', 'extend_previous')}
+
+## Details
+| Position | Duration | Action |
+|----------|----------|--------|
+"""
+            for g in filled:
+                result += f"| {g['timecode']} | {g['duration_frames']}f | {g['action']} |\n"
+
+            result += f"\nSaved to: `{output_path}`"
+            return [TextContent(type="text", text=result)]
+
+        elif name == "validate_timeline":
+            project = FCPXMLParser().parse_file(arguments["filepath"])
+            if not project.timelines:
+                return [TextContent(type="text", text="No timelines found")]
+            tl = project.primary_timeline
+            fps = tl.frame_rate
+            checks = arguments.get("checks", ["all"])
+            run_all = "all" in checks
+
+            issues = []
+            flash_count = 0
+            gap_count = 0
+            duplicate_count = 0
+
+            # Flash frame check
+            if run_all or "flash_frames" in checks:
+                for clip in tl.clips:
+                    duration_frames = int(clip.duration_seconds * fps)
+                    if duration_frames < 6:
+                        flash_count += 1
+                        severity = "error" if duration_frames < 2 else "warning"
+                        issues.append(f"- [{severity.upper()}] Flash frame: {clip.name} ({duration_frames}f) at {format_timecode(clip.start)}")
+
+            # Gap check
+            if run_all or "gaps" in checks:
+                sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
+                for i in range(len(sorted_clips) - 1):
+                    current_end = sorted_clips[i].end.seconds
+                    next_start = sorted_clips[i + 1].start.seconds
+                    gap_duration = next_start - current_end
+                    if gap_duration > 0.001:  # More than 1ms
+                        gap_count += 1
+                        gap_frames = int(gap_duration * fps)
+                        from fcpxml.models import Timecode
+                        gap_tc = Timecode(frames=int(current_end * fps), frame_rate=fps)
+                        issues.append(f"- [WARNING] Gap: {gap_frames}f at {gap_tc.to_smpte()}")
+
+            # Duplicate check
+            if run_all or "duplicates" in checks:
+                source_groups = {}
+                for clip in tl.clips:
+                    source_key = clip.media_path or clip.name
+                    if source_key not in source_groups:
+                        source_groups[source_key] = []
+                    source_groups[source_key].append(clip)
+                for source, clips in source_groups.items():
+                    if len(clips) > 1:
+                        duplicate_count += len(clips)
+                        issues.append(f"- [INFO] Duplicate source: {source.split('/')[-1]} ({len(clips)} uses)")
+
+            # Calculate health score
+            error_weight = 10
+            warning_weight = 3
+            info_weight = 1
+            errors = len([i for i in issues if "[ERROR]" in i])
+            warnings = len([i for i in issues if "[WARNING]" in i])
+            infos = len([i for i in issues if "[INFO]" in i])
+            penalty = (errors * error_weight) + (warnings * warning_weight) + (infos * info_weight)
+            health_score = max(0, 100 - penalty)
+
+            result = f"""# Timeline Validation: {tl.name}
+
+## Health Score: {health_score}%
+
+## Summary
+| Check | Count | Status |
+|-------|-------|--------|
+| Flash Frames | {flash_count} | {'✅' if flash_count == 0 else '⚠️'} |
+| Gaps | {gap_count} | {'✅' if gap_count == 0 else '⚠️'} |
+| Duplicate Sources | {duplicate_count} | {'✅' if duplicate_count == 0 else 'ℹ️'} |
+
+## Issues ({len(issues)})
+"""
+            if issues:
+                result += "\n".join(issues[:20])  # Limit to first 20
+                if len(issues) > 20:
+                    result += f"\n... and {len(issues) - 20} more issues"
+            else:
+                result += "_No issues found!_"
+
+            result += "\n\n*Use `fix_flash_frames` and `fill_gaps` to automatically resolve issues.*"
+            return [TextContent(type="text", text=result)]
+
         # ===== AI-POWERED TOOLS =====
         elif name == "auto_rough_cut":
             filepath = arguments["filepath"]
@@ -737,6 +1263,241 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 Saved to: `{result.output_path}`
 
 **Next step**: Import this FCPXML into Final Cut Pro (File → Import → XML)
+""")]
+
+        elif name == "generate_montage":
+            filepath = arguments["filepath"]
+            output_path = arguments["output_path"]
+
+            generator = RoughCutGenerator(filepath)
+            result = generator.generate_montage(
+                output_path=output_path,
+                target_duration=arguments["target_duration"],
+                pacing_curve=arguments.get("pacing_curve", "accelerating"),
+                start_duration=arguments.get("start_duration", 2.0),
+                end_duration=arguments.get("end_duration", 0.5),
+                keywords=arguments.get("keywords"),
+                add_transitions=arguments.get("add_transitions", False)
+            )
+
+            curve_desc = {
+                'accelerating': 'slow → fast (builds energy)',
+                'decelerating': 'fast → slow (winds down)',
+                'pyramid': 'slow → fast → slow (dramatic arc)',
+                'constant': 'same duration throughout'
+            }
+
+            return [TextContent(type="text", text=f"""# Montage Generated! 🎬
+
+## Summary
+- **Clips Used**: {result['clips_used']} of {result['clips_available']} available
+- **Target Duration**: {format_duration(result['target_duration'])}
+- **Actual Duration**: {format_duration(result['actual_duration'])}
+- **Pacing Curve**: {result['pacing_curve']} - {curve_desc.get(result['pacing_curve'], '')}
+
+## Pacing
+- **Start Clip Duration**: {format_duration(result['start_clip_duration'])}
+- **End Clip Duration**: {format_duration(result['end_clip_duration'])}
+
+## Output
+Saved to: `{result['output_path']}`
+""")]
+
+        elif name == "generate_ab_roll":
+            filepath = arguments["filepath"]
+            output_path = arguments["output_path"]
+
+            generator = RoughCutGenerator(filepath)
+            result = generator.generate_ab_roll(
+                output_path=output_path,
+                target_duration=arguments["target_duration"],
+                a_keywords=arguments["a_keywords"],
+                b_keywords=arguments["b_keywords"],
+                a_duration=arguments.get("a_duration", "5s"),
+                b_duration=arguments.get("b_duration", "3s"),
+                start_with=arguments.get("start_with", "a"),
+                add_transitions=arguments.get("add_transitions", True)
+            )
+
+            return [TextContent(type="text", text=f"""# A/B Roll Edit Generated! 🎬
+
+## Summary
+- **A-Roll Segments**: {result['a_segments']} (from {result['a_clips_available']} available)
+- **B-Roll Segments**: {result['b_segments']} (from {result['b_clips_available']} available)
+- **Total Clips**: {result['clips_used']}
+
+## Timing
+- **Target Duration**: {format_duration(result['target_duration'])}
+- **Actual Duration**: {format_duration(result['actual_duration'])}
+- **A-Roll Duration**: {result['a_duration_setting']} per segment
+- **B-Roll Duration**: {result['b_duration_setting']} per cutaway
+
+## Output
+Saved to: `{result['output_path']}`
+
+**Next step**: Import this FCPXML into Final Cut Pro (File → Import → XML)
+""")]
+
+        # ===== BEAT SYNC TOOLS (v0.3.0) =====
+        elif name == "import_beat_markers":
+            import json
+            filepath = arguments["filepath"]
+            beats_path = arguments["beats_path"]
+            output_path = arguments.get("output_path") or generate_output_path(filepath, "_beats")
+
+            # Load beats JSON
+            with open(beats_path, 'r') as f:
+                beats_data = json.load(f)
+
+            # Extract beat times (support various formats)
+            beat_times = []
+            if isinstance(beats_data, list):
+                # Simple list of times
+                beat_times = beats_data
+            elif isinstance(beats_data, dict):
+                # Common formats: {"beats": [...]} or {"times": [...]}
+                beat_times = beats_data.get('beats', beats_data.get('times', beats_data.get('markers', [])))
+
+            # Filter beats if requested
+            beat_filter = arguments.get("beat_filter", "all")
+            if beat_filter == "downbeat" and isinstance(beats_data, dict):
+                # Use downbeats if available
+                beat_times = beats_data.get('downbeats', beat_times[::4])  # Every 4th beat
+            elif beat_filter == "measure" and isinstance(beats_data, dict):
+                beat_times = beats_data.get('measures', beat_times[::4])
+
+            # Convert to marker format
+            markers = []
+            marker_type = arguments.get("marker_type", "standard")
+            for i, beat_time in enumerate(beat_times):
+                if isinstance(beat_time, (int, float)):
+                    markers.append({
+                        'timecode': f"{beat_time}s",
+                        'name': f"Beat {i+1}",
+                        'marker_type': marker_type.upper()
+                    })
+                elif isinstance(beat_time, dict):
+                    markers.append({
+                        'timecode': f"{beat_time.get('time', beat_time.get('position', 0))}s",
+                        'name': beat_time.get('label', f"Beat {i+1}"),
+                        'marker_type': marker_type.upper()
+                    })
+
+            # Add markers to timeline
+            modifier = FCPXMLModifier(filepath)
+            added = modifier.batch_add_markers(markers=markers)
+            modifier.save(output_path)
+
+            return [TextContent(type="text", text=f"""# Beat Markers Imported
+
+## Summary
+- **Beats Found**: {len(beat_times)}
+- **Markers Added**: {len(added)}
+- **Filter**: {beat_filter}
+- **Marker Type**: {marker_type}
+
+## Output
+Saved to: `{output_path}`
+
+*Use `snap_to_beats` to align your cuts to these markers.*
+""")]
+
+        elif name == "snap_to_beats":
+            filepath = arguments["filepath"]
+            output_path = arguments.get("output_path") or generate_output_path(filepath, "_synced")
+            max_shift = arguments.get("max_shift_frames", 6)
+            prefer = arguments.get("prefer", "nearest")
+
+            # Parse timeline to get markers and clips
+            parser = FCPXMLParser()
+            project = parser.parse_file(filepath)
+            if not project.timelines:
+                return [TextContent(type="text", text="No timelines found")]
+
+            tl = project.primary_timeline
+            fps = tl.frame_rate
+
+            # Collect all markers (timeline + clip markers)
+            markers = list(tl.markers)
+            for clip in tl.clips:
+                # Add clip's markers with adjusted timecodes
+                for m in clip.markers:
+                    markers.append(m)
+
+            if not markers:
+                return [TextContent(type="text", text="No markers found. Use `import_beat_markers` first.")]
+
+            marker_times = sorted([m.start.seconds for m in markers])
+
+            # Load modifier for editing
+            modifier = FCPXMLModifier(filepath)
+            spine = modifier._get_spine()
+            adjusted_count = 0
+            total_shift = 0
+
+            # Get cuts (clip start offsets after the first clip)
+            clips_list = [c for c in spine if c.tag in ('clip', 'asset-clip', 'video', 'ref-clip')]
+
+            for i, clip in enumerate(clips_list[1:], 1):  # Skip first clip
+                cut_offset = modifier._parse_time(clip.get('offset', '0s'))
+                cut_seconds = cut_offset.to_seconds()
+
+                # Find nearest marker
+                best_marker = None
+                best_distance = float('inf')
+
+                for marker_time in marker_times:
+                    distance = abs(marker_time - cut_seconds)
+                    distance_frames = distance * fps
+
+                    if distance_frames <= max_shift:
+                        if prefer == "earlier" and marker_time <= cut_seconds:
+                            if distance < best_distance:
+                                best_distance = distance
+                                best_marker = marker_time
+                        elif prefer == "later" and marker_time >= cut_seconds:
+                            if distance < best_distance:
+                                best_distance = distance
+                                best_marker = marker_time
+                        elif prefer == "nearest":
+                            if distance < best_distance:
+                                best_distance = distance
+                                best_marker = marker_time
+
+                if best_marker is not None and best_distance > 0.001:
+                    # Adjust this clip and ripple
+                    shift = best_marker - cut_seconds
+                    shift_frames = int(shift * fps)
+
+                    # Adjust previous clip duration
+                    prev_clip = clips_list[i - 1]
+                    prev_dur = modifier._parse_time(prev_clip.get('duration', '0s'))
+                    new_prev_dur = prev_dur + modifier._parse_time(f"{shift}s")
+                    prev_clip.set('duration', new_prev_dur.to_fcpxml())
+
+                    # Adjust current clip offset
+                    new_offset = modifier._parse_time(f"{best_marker}s")
+                    clip.set('offset', new_offset.to_fcpxml())
+
+                    adjusted_count += 1
+                    total_shift += abs(shift_frames)
+
+            modifier.save(output_path)
+
+            avg_shift = total_shift / adjusted_count if adjusted_count > 0 else 0
+
+            return [TextContent(type="text", text=f"""# Cuts Snapped to Beats
+
+## Summary
+- **Cuts Adjusted**: {adjusted_count}
+- **Max Shift Allowed**: {max_shift} frames
+- **Preference**: {prefer}
+- **Average Shift**: {avg_shift:.1f} frames
+
+## Output
+Saved to: `{output_path}`
+
+Your edits are now synced to the beat!
 """)]
 
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
