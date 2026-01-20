@@ -1,0 +1,506 @@
+"""
+Auto Rough Cut - AI-powered timeline assembly from source clips.
+
+The flagship feature: select clips by keywords, set a target duration
+and pacing style, and get a complete rough cut assembled automatically.
+"""
+
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+from datetime import datetime
+from typing import Optional, List, Dict, Any, Tuple
+from pathlib import Path
+import random
+import uuid
+
+from .models import (
+    TimeValue, Timecode, PacingConfig, SegmentSpec, RoughCutResult
+)
+
+
+class RoughCutGenerator:
+    """
+    Generates rough cuts from source FCPXML files.
+
+    Usage:
+        generator = RoughCutGenerator("source.fcpxml")
+        result = generator.generate(
+            output_path="rough_cut.fcpxml",
+            target_duration="00:03:00:00",
+            pacing="medium",
+            segments=[
+                SegmentSpec(name="Intro", keywords=["intro"], duration_seconds=30),
+                SegmentSpec(name="Interview", keywords=["interview", "talking"]),
+                SegmentSpec(name="Outro", keywords=["outro"], duration_seconds=15),
+            ]
+        )
+    """
+
+    def __init__(self, source_fcpxml: str):
+        """Load source FCPXML for clip selection."""
+        self.source_path = Path(source_fcpxml)
+        self.tree = ET.parse(source_fcpxml)
+        self.root = self.tree.getroot()
+        self.fps = self._detect_fps()
+        self._index_clips()
+        self._index_resources()
+
+    def _detect_fps(self) -> float:
+        """Extract frame rate from format resource."""
+        for fmt in self.root.findall('.//format'):
+            frame_dur = fmt.get('frameDuration', '1/30s')
+            if '/' in frame_dur:
+                num, denom = frame_dur.replace('s', '').split('/')
+                return int(denom) / int(num)
+        return 30.0
+
+    def _index_clips(self) -> None:
+        """Index all clips with their metadata."""
+        self.clips: List[Dict[str, Any]] = []
+
+        for clip in self.root.findall('.//asset-clip'):
+            clip_data = self._extract_clip_data(clip, 'asset-clip')
+            if clip_data:
+                self.clips.append(clip_data)
+
+        for clip in self.root.findall('.//clip'):
+            clip_data = self._extract_clip_data(clip, 'clip')
+            if clip_data:
+                self.clips.append(clip_data)
+
+        for video in self.root.findall('.//video'):
+            clip_data = self._extract_clip_data(video, 'video')
+            if clip_data:
+                self.clips.append(clip_data)
+
+    def _extract_clip_data(self, elem: ET.Element, clip_type: str) -> Optional[Dict[str, Any]]:
+        """Extract clip metadata into a dictionary."""
+        name = elem.get('name', 'Untitled')
+        duration_str = elem.get('duration', '0s')
+        start_str = elem.get('start', '0s')
+        ref = elem.get('ref', '')
+
+        duration = TimeValue.from_timecode(duration_str, self.fps)
+
+        # Skip very short clips
+        if duration.to_seconds() < 0.1:
+            return None
+
+        # Extract keywords
+        keywords = []
+        for kw in elem.findall('keyword'):
+            keywords.append(kw.get('value', ''))
+
+        # Check if favorited
+        is_favorite = elem.get('rating', '') == '1' or elem.get('isFavorite', '') == '1'
+        is_rejected = elem.get('rating', '') == '-1' or elem.get('isRejected', '') == '1'
+
+        return {
+            'element': elem,
+            'name': name,
+            'type': clip_type,
+            'ref': ref,
+            'duration': duration,
+            'start': TimeValue.from_timecode(start_str, self.fps),
+            'keywords': keywords,
+            'is_favorite': is_favorite,
+            'is_rejected': is_rejected,
+            'used': False,  # Track if already used in rough cut
+        }
+
+    def _index_resources(self) -> None:
+        """Index all resources (assets, formats)."""
+        self.resources = {}
+        self.formats = {}
+
+        for asset in self.root.findall('.//asset'):
+            self.resources[asset.get('id', '')] = asset
+
+        for fmt in self.root.findall('.//format'):
+            self.formats[fmt.get('id', '')] = fmt
+
+    def generate(
+        self,
+        output_path: str,
+        target_duration: str = "00:03:00:00",
+        pacing: str = "medium",
+        segments: Optional[List[SegmentSpec]] = None,
+        keywords: Optional[List[str]] = None,
+        priority: str = "best",
+        exclude_rejected: bool = True,
+        favorites_only: bool = False,
+        add_transitions: bool = False,
+        transition_duration: str = "00:00:00:15"
+    ) -> RoughCutResult:
+        """
+        Generate a rough cut.
+
+        Args:
+            output_path: Where to save the rough cut FCPXML
+            target_duration: Target timeline length (timecode or "3m30s")
+            pacing: "slow", "medium", "fast", or "dynamic"
+            segments: Optional segment breakdown with keywords per section
+            keywords: Simple mode - just filter by these keywords
+            priority: How to select clips - "best", "favorites", "longest", "shortest", "random"
+            exclude_rejected: Skip rejected clips
+            favorites_only: Only use favorited clips
+            add_transitions: Add cross-dissolves between clips
+            transition_duration: Length of transitions
+
+        Returns:
+            RoughCutResult with output details
+        """
+        target_time = self._parse_duration(target_duration)
+        pacing_config = PacingConfig(pacing=pacing)
+
+        # Filter available clips
+        available_clips = self._filter_clips(
+            keywords=keywords,
+            exclude_rejected=exclude_rejected,
+            favorites_only=favorites_only
+        )
+
+        if not available_clips:
+            raise ValueError("No clips match the filter criteria")
+
+        # Build the sequence
+        if segments:
+            selected_clips = self._select_clips_by_segments(
+                available_clips, segments, target_time, pacing_config
+            )
+        else:
+            selected_clips = self._select_clips_simple(
+                available_clips, target_time, pacing_config, priority
+            )
+
+        # Generate output FCPXML
+        actual_duration = self._build_output(
+            selected_clips, output_path, add_transitions, transition_duration
+        )
+
+        return RoughCutResult(
+            output_path=output_path,
+            clips_used=len(selected_clips),
+            clips_available=len(available_clips),
+            target_duration=target_time.to_seconds(),
+            actual_duration=actual_duration,
+            segments=len(segments) if segments else 1,
+            average_clip_duration=actual_duration / len(selected_clips) if selected_clips else 0
+        )
+
+    def _parse_duration(self, duration: str) -> TimeValue:
+        """Parse various duration formats."""
+        # Handle shorthand like "3m30s" or "2m"
+        if 'm' in duration and ':' not in duration:
+            parts = duration.lower().replace('s', '').split('m')
+            minutes = int(parts[0]) if parts[0] else 0
+            seconds = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+            total_seconds = minutes * 60 + seconds
+            return TimeValue.from_seconds(total_seconds, self.fps)
+
+        return TimeValue.from_timecode(duration, self.fps)
+
+    def _filter_clips(
+        self,
+        keywords: Optional[List[str]] = None,
+        exclude_rejected: bool = True,
+        favorites_only: bool = False
+    ) -> List[Dict[str, Any]]:
+        """Filter clips by criteria."""
+        result = []
+
+        for clip in self.clips:
+            # Skip rejected
+            if exclude_rejected and clip['is_rejected']:
+                continue
+
+            # Filter to favorites only
+            if favorites_only and not clip['is_favorite']:
+                continue
+
+            # Filter by keywords
+            if keywords:
+                clip_kws = set(k.lower() for k in clip['keywords'])
+                filter_kws = set(k.lower() for k in keywords)
+                if not clip_kws & filter_kws:
+                    continue
+
+            result.append(clip)
+
+        return result
+
+    def _select_clips_simple(
+        self,
+        clips: List[Dict[str, Any]],
+        target_duration: TimeValue,
+        pacing: PacingConfig,
+        priority: str
+    ) -> List[Dict[str, Any]]:
+        """Select clips to fill target duration."""
+        selected = []
+        current_duration = TimeValue.zero()
+        target_seconds = target_duration.to_seconds()
+        min_clip, max_clip = pacing.get_duration_range()
+
+        # Sort clips by priority
+        if priority == 'favorites':
+            clips = sorted(clips, key=lambda c: (not c['is_favorite'], -c['duration'].to_seconds()))
+        elif priority == 'longest':
+            clips = sorted(clips, key=lambda c: -c['duration'].to_seconds())
+        elif priority == 'shortest':
+            clips = sorted(clips, key=lambda c: c['duration'].to_seconds())
+        elif priority == 'random':
+            random.shuffle(clips)
+        else:  # 'best' - mix of favorites first, then by duration
+            clips = sorted(clips, key=lambda c: (not c['is_favorite'], -c['duration'].to_seconds()))
+
+        for clip in clips:
+            if current_duration.to_seconds() >= target_seconds:
+                break
+
+            remaining = target_seconds - current_duration.to_seconds()
+            clip_dur = clip['duration'].to_seconds()
+
+            # Calculate usable duration for this clip
+            if clip_dur > max_clip:
+                use_duration = min(max_clip, remaining)
+            elif clip_dur < min_clip:
+                use_duration = clip_dur  # Use short clips as-is
+            else:
+                use_duration = min(clip_dur, remaining)
+
+            if use_duration <= 0:
+                continue
+
+            # Create selection with in/out points
+            selection = {
+                **clip,
+                'use_duration': TimeValue.from_seconds(use_duration, self.fps),
+                'in_point': clip['start'],
+                'out_point': clip['start'] + TimeValue.from_seconds(use_duration, self.fps),
+            }
+            selected.append(selection)
+            current_duration = current_duration + TimeValue.from_seconds(use_duration, self.fps)
+
+        return selected
+
+    def _select_clips_by_segments(
+        self,
+        clips: List[Dict[str, Any]],
+        segments: List[SegmentSpec],
+        target_duration: TimeValue,
+        pacing: PacingConfig
+    ) -> List[Dict[str, Any]]:
+        """Select clips organized by segment structure."""
+        selected = []
+
+        # Calculate duration per segment
+        total_specified = sum(s.duration_seconds for s in segments if s.duration_seconds > 0)
+        unspecified_count = sum(1 for s in segments if s.duration_seconds <= 0)
+
+        if unspecified_count > 0:
+            remaining_duration = target_duration.to_seconds() - total_specified
+            per_segment = remaining_duration / unspecified_count
+        else:
+            per_segment = 0
+
+        for segment in segments:
+            seg_duration = segment.duration_seconds if segment.duration_seconds > 0 else per_segment
+
+            # Filter clips for this segment
+            if segment.keywords:
+                seg_clips = [c for c in clips if
+                    set(k.lower() for k in c['keywords']) &
+                    set(k.lower() for k in segment.keywords)]
+            else:
+                seg_clips = clips.copy()
+
+            # Remove already used clips
+            seg_clips = [c for c in seg_clips if not c.get('used_in_rough', False)]
+
+            # Select clips for segment
+            seg_target = TimeValue.from_seconds(seg_duration, self.fps)
+            seg_selected = self._select_clips_simple(
+                seg_clips, seg_target, pacing, segment.priority
+            )
+
+            # Mark as used
+            for sel in seg_selected:
+                sel['segment'] = segment.name
+                sel['used_in_rough'] = True
+
+            selected.extend(seg_selected)
+
+        return selected
+
+    def _build_output(
+        self,
+        clips: List[Dict[str, Any]],
+        output_path: str,
+        add_transitions: bool,
+        transition_duration: str
+    ) -> float:
+        """Build the output FCPXML."""
+        # Create new FCPXML structure
+        root = ET.Element('fcpxml', version='1.11')
+        resources = ET.SubElement(root, 'resources')
+
+        # Copy relevant resources
+        format_id = None
+        for fmt_id, fmt in self.formats.items():
+            resources.append(fmt)
+            format_id = fmt_id
+            break
+
+        # Copy needed assets
+        used_refs = set(c.get('ref') for c in clips if c.get('ref'))
+        for ref in used_refs:
+            if ref in self.resources:
+                resources.append(self.resources[ref])
+
+        # Create library structure
+        library = ET.SubElement(root, 'library',
+            location=f"file:///Users/editor/Movies/RoughCut.fcpbundle/")
+        event = ET.SubElement(library, 'event',
+            name="Rough Cut", uid=str(uuid.uuid4()).upper())
+        project = ET.SubElement(event, 'project',
+            name="Rough Cut", uid=str(uuid.uuid4()).upper(),
+            modDate=datetime.now().strftime("%Y-%m-%d %H:%M:%S -0500"))
+
+        # Calculate total duration
+        total_duration = TimeValue.zero()
+        for clip in clips:
+            total_duration = total_duration + clip['use_duration']
+
+        # Create sequence
+        sequence = ET.SubElement(project, 'sequence',
+            format=format_id or "r1",
+            duration=total_duration.to_fcpxml(),
+            tcStart="0s", tcFormat="NDF",
+            audioLayout="stereo", audioRate="48k")
+
+        spine = ET.SubElement(sequence, 'spine')
+
+        # Add clips to spine
+        current_offset = TimeValue.zero()
+        trans_dur = TimeValue.from_timecode(transition_duration, self.fps) if add_transitions else None
+
+        for i, clip in enumerate(clips):
+            clip_elem = ET.SubElement(spine, 'asset-clip',
+                ref=clip.get('ref', 'r1'),
+                offset=current_offset.to_fcpxml(),
+                name=clip['name'],
+                start=clip['in_point'].to_fcpxml(),
+                duration=clip['use_duration'].to_fcpxml(),
+                format=format_id or "r1",
+                tcFormat="NDF")
+
+            # Add transition before clip (except first)
+            if add_transitions and i > 0 and trans_dur:
+                half_trans = trans_dur * 0.5
+                trans_offset = current_offset - half_trans
+
+                transition = ET.Element('transition',
+                    name="Cross Dissolve",
+                    offset=trans_offset.to_fcpxml(),
+                    duration=trans_dur.to_fcpxml())
+                filter_video = ET.SubElement(transition, 'filter-video',
+                    name="Cross Dissolve")
+                spine.insert(-1, transition)
+
+            current_offset = current_offset + clip['use_duration']
+
+        # Write output
+        xml_str = ET.tostring(root, encoding='unicode')
+        dom = minidom.parseString(xml_str)
+        pretty_xml = dom.toprettyxml(indent="    ")
+        lines = [line for line in pretty_xml.split('\n') if line.strip()]
+        final_xml = '\n'.join(lines)
+        final_xml = final_xml.replace(
+            '<?xml version="1.0" ?>',
+            '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>'
+        )
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(final_xml)
+
+        return total_duration.to_seconds()
+
+
+# ============================================================================
+# CONVENIENCE FUNCTIONS
+# ============================================================================
+
+def generate_rough_cut(
+    source_fcpxml: str,
+    output_path: str,
+    target_duration: str = "3m",
+    pacing: str = "medium",
+    keywords: Optional[List[str]] = None,
+    priority: str = "best"
+) -> RoughCutResult:
+    """
+    One-liner rough cut generation.
+
+    Example:
+        result = generate_rough_cut(
+            "source_clips.fcpxml",
+            "rough_cut.fcpxml",
+            target_duration="3m",
+            pacing="fast",
+            keywords=["broll", "action"]
+        )
+    """
+    generator = RoughCutGenerator(source_fcpxml)
+    return generator.generate(
+        output_path=output_path,
+        target_duration=target_duration,
+        pacing=pacing,
+        keywords=keywords,
+        priority=priority
+    )
+
+
+def generate_segmented_rough_cut(
+    source_fcpxml: str,
+    output_path: str,
+    segments: List[Dict[str, Any]],
+    pacing: str = "medium",
+    add_transitions: bool = True
+) -> RoughCutResult:
+    """
+    Generate rough cut with defined segments.
+
+    Example:
+        result = generate_segmented_rough_cut(
+            "interview.fcpxml",
+            "rough_cut.fcpxml",
+            segments=[
+                {"name": "Intro", "keywords": ["intro"], "duration": 30},
+                {"name": "Main", "keywords": ["interview"], "duration": 180},
+                {"name": "Outro", "keywords": ["outro"], "duration": 20},
+            ],
+            pacing="medium",
+            add_transitions=True
+        )
+    """
+    segment_specs = []
+    for seg in segments:
+        segment_specs.append(SegmentSpec(
+            name=seg.get('name', 'Segment'),
+            keywords=seg.get('keywords', []),
+            duration_seconds=seg.get('duration', 0),
+            priority=seg.get('priority', 'best')
+        ))
+
+    # Calculate total duration
+    total = sum(seg.get('duration', 0) for seg in segments)
+
+    generator = RoughCutGenerator(source_fcpxml)
+    return generator.generate(
+        output_path=output_path,
+        target_duration=f"{total}s",
+        pacing=pacing,
+        segments=segment_specs,
+        add_transitions=add_transitions
+    )

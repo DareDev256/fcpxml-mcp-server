@@ -1,51 +1,68 @@
 # Final Cut Pro MCP Server
 
-> 🎬 The first AI-powered MCP server for Final Cut Pro. Control your edits with natural language.
+> **The first AI-powered MCP server for Final Cut Pro.** Analyze timelines, add markers, trim clips, and generate rough cuts — all through natural language conversation with Claude.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
+[![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
+[![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
+
+---
 
 ## What This Does
 
-This MCP server lets AI assistants (Claude, GPT, etc.) interact with Final Cut Pro projects through FCPXML:
+Connect Claude to your Final Cut Pro projects. Ask questions, make edits, generate rough cuts.
 
-- **Analyze timelines** — Get stats on cuts, clip durations, pacing
-- **Extract markers** — Pull chapter markers, to-do markers, keywords
-- **Generate edit lists** — Create EDLs, shot lists, CSV exports
-- **Modify projects** — Add markers, reorder clips, apply bulk changes
-- **AI-powered suggestions** — Get cutting recommendations based on pacing analysis
+```
+You: "Analyze my timeline and tell me where the pacing drags"
 
-## Why This Exists
+Claude: Looking at your timeline... The average cut in Q1 is 4.2s but jumps to 8.1s in Q3.
+        I found 3 clips over 30 seconds that might need trimming. Want me to add markers?
 
-As someone who directed 350+ music videos, I know the pain of repetitive editing tasks. This server bridges the gap between AI assistants and professional video editing workflows.
+You: "Yes, add TODO markers at each long clip. Then generate a 2-minute rough cut
+      using only the clips tagged 'interview', fast pacing."
 
-No more manually:
-- Counting cuts or calculating average shot lengths
-- Extracting chapter markers for YouTube descriptions
-- Finding flash frames or pacing issues
-- Generating EDLs for color/audio handoffs
+Claude: Done! Added 3 markers. Generated rough cut saved to rough_cut.fcpxml.
+        Used 12 of 47 available clips. Import it into FCP: File → Import → XML
+```
 
-Just ask Claude.
+## Features
 
-## Installation
+### Read Operations
+- **Analyze timelines** — Duration, resolution, clip count, pacing metrics
+- **List clips** — With timecodes, durations, and keyword metadata
+- **Extract markers** — Chapter markers, TODOs, standard markers (YouTube chapter format too)
+- **Find issues** — Flash frames (< 0.5s), overly long clips (> 30s)
+- **Export** — EDL, CSV for handoffs to color/audio
+
+### Write Operations
+- **Add markers** — Single or batch, auto-generate at cuts or intervals
+- **Trim clips** — Adjust in/out points with ripple
+- **Reorder clips** — Move clips to new positions
+- **Add transitions** — Cross-dissolve, fade to black, etc.
+- **Change speed** — Slow motion or speed up
+- **Split & delete** — Non-destructive timeline editing
+
+### AI-Powered
+- **Auto rough cut** — Generate a complete timeline from keywords, duration, and pacing preferences
+
+---
+
+## Quick Start
+
+### 1. Clone & Install
 
 ```bash
-# Clone the repo
 git clone https://github.com/DareDev256/fcp-mcp-server.git
 cd fcp-mcp-server
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Configuration
+### 2. Configure Claude Desktop
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -61,104 +78,174 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 }
 ```
 
-## Usage Examples
+### 3. Export from Final Cut Pro
 
-Once connected, you can ask Claude:
+`File → Export XML...` (saves as `.fcpxml`)
 
-```
-"Analyze my latest FCP project and tell me the average cut length"
+### 4. Start Editing with AI
 
-"Extract all chapter markers from timeline.fcpxml as YouTube timestamps"
+Open Claude Desktop and start talking to your timeline.
 
-"Find all clips shorter than 1 second — might be flash frames"
+---
 
-"Add a 'Review' marker at every jump cut"
+## All 19 Tools
 
-"Generate a shot list CSV from this project"
-
-"What's the pacing like in the first vs last quarter of my edit?"
-```
-
-## Available Tools
-
+### Analysis (Read)
 | Tool | Description |
 |------|-------------|
-| `analyze_timeline` | Get comprehensive stats on a timeline |
-| `list_clips` | List all clips with in/out points and durations |
-| `list_markers` | Extract markers with timestamps |
-| `list_keywords` | Get all keywords/tags applied to clips |
-| `find_short_cuts` | Find cuts below a threshold (flash frame detection) |
-| `find_long_clips` | Find clips above a threshold |
-| `export_edl` | Generate an EDL file |
+| `list_projects` | Find all FCPXML files in a directory |
+| `analyze_timeline` | Get comprehensive stats on duration, resolution, pacing |
+| `list_clips` | List all clips with timecodes, durations, keywords |
+| `list_markers` | Extract markers with timestamps (YouTube chapter format) |
+| `find_short_cuts` | Find potential flash frames (< threshold) |
+| `find_long_clips` | Find clips that might need trimming |
+| `list_keywords` | Extract all keywords/tags from project |
+| `export_edl` | Generate EDL for color/audio handoffs |
 | `export_csv` | Export timeline data to CSV |
-| `analyze_pacing` | AI analysis of pacing with cut suggestions |
+| `analyze_pacing` | AI analysis with suggestions |
+
+### Editing (Write)
+| Tool | Description |
+|------|-------------|
+| `add_marker` | Add a single marker at a timecode |
+| `batch_add_markers` | Add multiple markers, or auto-generate at cuts/intervals |
+| `trim_clip` | Adjust in/out points with optional ripple |
+| `reorder_clips` | Move clips to new timeline positions |
+| `add_transition` | Add cross-dissolve, fade, wipe between clips |
+| `change_speed` | Slow motion or speed up clips |
+| `delete_clips` | Remove clips with optional ripple |
+| `split_clip` | Split a clip at specified timecodes |
+
+### AI-Powered
+| Tool | Description |
+|------|-------------|
+| `auto_rough_cut` | Generate timeline from keywords, duration, pacing |
+
+---
+
+## Usage Examples
+
+### Analyze Your Edit
+
+```
+"Analyze my latest FCP project"
+"What's the pacing like in the first half vs the second half?"
+"Find all clips shorter than 1 second"
+"Extract chapter markers for my YouTube description"
+```
+
+### Make Edits
+
+```
+"Add a chapter marker at 00:01:30:00 called 'Intro'"
+"Trim 2 seconds off the end of clip 'Interview_02'"
+"Move the outro to the beginning"
+"Add a cross-dissolve to every clip"
+```
+
+### Generate Rough Cuts
+
+```
+"Create a 3-minute rough cut using clips tagged 'broll', fast pacing"
+"Generate a rough cut with these segments:
+  - Intro (30s, 'intro' keyword)
+  - Main content (2min, 'interview' keyword)
+  - Outro (15s, 'outro' keyword)"
+```
+
+---
 
 ## How It Works
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Claude/GPT    │────▶│  MCP Server     │────▶│  FCPXML Files   │
-│   (AI Client)   │◀────│  (This Project) │◀────│  (FCP Projects) │
+│   Claude        │────▶│   MCP Server    │────▶│   FCPXML Files  │
+│   Desktop       │◀────│   (Python)      │◀────│   (Your Edits)  │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
-                              │
-                              ▼
-                        Parse & Modify
-                        FCPXML via Python
+        │                       │
+        │                       ▼
+        │               Parse & Modify
+        │               FCPXML via Python
+        │                       │
+        └───────────────────────┘
+              Natural Language
 ```
 
-1. **Export from FCP**: File → Export XML
-2. **AI analyzes**: Claude reads the FCPXML through this server
-3. **AI suggests/modifies**: Server generates new FCPXML
-4. **Import to FCP**: File → Import → XML
+1. **Export from FCP**: `File → Export XML`
+2. **Talk to Claude**: Analyze, suggest, modify
+3. **Import back**: `File → Import → XML`
+
+---
 
 ## Project Structure
 
 ```
 fcp-mcp-server/
-├── server.py              # MCP server entry point
+├── server.py              # MCP server (19 tools)
 ├── fcpxml/
 │   ├── __init__.py
-│   ├── parser.py          # FCPXML parsing logic
-│   ├── writer.py          # FCPXML generation/modification
-│   └── models.py          # Data models (Timeline, Clip, Marker, etc.)
-├── tools/
-│   └── __init__.py
+│   ├── parser.py          # Read FCPXML → Python
+│   ├── writer.py          # Python → FCPXML, in-place modification
+│   ├── rough_cut.py       # AI-powered rough cut generation
+│   └── models.py          # Timeline, Clip, Marker, TimeValue
+├── docs/
+│   └── specs/             # Design specs and schemas
 ├── tests/
-│   └── test_parser.py
-├── examples/
-│   └── sample.fcpxml      # Sample project for testing
 ├── requirements.txt
 ├── pyproject.toml
 └── README.md
 ```
 
+---
+
 ## Requirements
 
-- Python 3.10+
-- Final Cut Pro 10.4+ (for FCPXML 1.8+)
-- MCP-compatible AI client (Claude Desktop, etc.)
+- **Python 3.10+**
+- **Final Cut Pro 10.4+** (for FCPXML 1.8+)
+- **Claude Desktop** (or any MCP-compatible client)
+- **mcp** package (`pip install mcp`)
+
+---
+
+## Why This Exists
+
+After directing 350+ music videos, I know the pain of repetitive editing tasks:
+- Counting cuts for every video
+- Extracting chapter markers manually
+- Finding flash frames by scrubbing
+- Building rough cuts clip by clip
+
+Now I just ask Claude.
+
+---
 
 ## Roadmap
 
 - [x] Core FCPXML parsing
 - [x] Timeline analysis tools
-- [x] Marker extraction
+- [x] Marker extraction & insertion
+- [x] Clip trimming & reordering
+- [x] Transition insertion
+- [x] Speed changes
+- [x] Auto rough cut generation
 - [x] EDL/CSV export
-- [x] Pacing analysis
-- [ ] Marker insertion/modification
-- [ ] Batch operations
-- [ ] Color grading analysis
 - [ ] Audio sync detection
 - [ ] Multi-timeline comparison
 - [ ] Premiere Pro XML support
 
+---
+
 ## Contributing
 
-PRs welcome! This is an open project. If you're a video editor who codes (or vice versa), let's build this together.
+PRs welcome. If you're a video editor who codes (or a coder who edits), let's build this together.
+
+---
 
 ## Credits
 
 Built by [@DareDev256](https://github.com/DareDev256) — Former music video director (350+ videos for Chief Keef, Migos, Masicka), now building AI tools for creators.
+
+---
 
 ## License
 

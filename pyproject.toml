@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fcp-mcp-server"
-version = "0.1.0"
-description = "The first AI-powered MCP server for Final Cut Pro"
+version = "0.2.0"
+description = "The first AI-powered MCP server for Final Cut Pro. Analyze timelines, add markers, trim clips, and generate rough cuts through natural language."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
