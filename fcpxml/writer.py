@@ -41,6 +41,7 @@ class FCPXMLModifier:
         self.tree = ET.parse(fcpxml_path)
         self.root = self.tree.getroot()
         self.fps = self._detect_fps()
+        self._build_resource_index()
         self._build_clip_index()
 
     def _detect_fps(self) -> float:
@@ -51,6 +52,30 @@ class FCPXMLModifier:
                 num, denom = frame_dur.replace('s', '').split('/')
                 return int(denom) / int(num)
         return 30.0
+
+    def _build_resource_index(self) -> None:
+        """Build index of all resources (assets, formats)."""
+        self.resources: Dict[str, Dict[str, Any]] = {}
+        self.formats: Dict[str, Dict[str, Any]] = {}
+
+        for asset in self.root.findall('.//asset'):
+            asset_id = asset.get('id', '')
+            self.resources[asset_id] = {
+                'id': asset_id,
+                'name': asset.get('name', ''),
+                'src': asset.get('src', ''),
+                'start': asset.get('start', '0s'),
+                'duration': asset.get('duration', '0s'),
+                'element': asset
+            }
+
+        for fmt in self.root.findall('.//format'):
+            fmt_id = fmt.get('id', '')
+            self.formats[fmt_id] = {
+                'id': fmt_id,
+                'name': fmt.get('name', ''),
+                'element': fmt
+            }
 
     def _build_clip_index(self) -> None:
         """Build index of all clips for fast lookup."""
@@ -793,6 +818,134 @@ class FCPXMLModifier:
                 matches.append(clip_id)
 
         return matches
+
+    # ========================================================================
+    # INSERT CLIP OPERATIONS
+    # ========================================================================
+
+    def insert_clip(
+        self,
+        position: str,
+        asset_id: Optional[str] = None,
+        asset_name: Optional[str] = None,
+        duration: Optional[str] = None,
+        in_point: Optional[str] = None,
+        out_point: Optional[str] = None,
+        ripple: bool = True
+    ) -> ET.Element:
+        """
+        Insert a library clip onto the timeline.
+
+        Args:
+            position: Where to insert - 'start', 'end', timecode, or 'after:clip_id'
+            asset_id: Asset reference ID (e.g., 'r3')
+            asset_name: Asset name (alternative to asset_id)
+            duration: Duration of clip (if not using in/out points)
+            in_point: Source in-point for subclip
+            out_point: Source out-point for subclip
+            ripple: Whether to shift subsequent clips
+
+        Returns:
+            The created clip element
+        """
+        # Find asset by ID or name
+        asset = None
+        if asset_id and asset_id in self.resources:
+            asset = self.resources[asset_id]
+        elif asset_name:
+            for res_id, res_data in self.resources.items():
+                if res_data.get('name') == asset_name:
+                    asset = res_data
+                    asset_id = res_id
+                    break
+
+        if asset is None:
+            raise ValueError(f"Asset not found: {asset_id or asset_name}")
+
+        # Determine clip duration and start
+        if in_point and out_point:
+            in_time = self._parse_time(in_point)
+            out_time = self._parse_time(out_point)
+            clip_duration = out_time - in_time
+            source_start = in_time
+        elif duration:
+            clip_duration = self._parse_time(duration)
+            source_start = TimeValue.zero()
+        else:
+            # Use full asset duration
+            clip_duration = self._parse_time(asset.get('duration', '0s'))
+            source_start = TimeValue.zero()
+
+        # Get spine and calculate insert position
+        spine = self._get_spine()
+        spine_children = list(spine)
+
+        if position == 'start':
+            target_offset = TimeValue.zero()
+            insert_index = 0
+        elif position == 'end':
+            if spine_children:
+                last = spine_children[-1]
+                last_offset = self._parse_time(last.get('offset', '0s'))
+                last_dur = self._parse_time(last.get('duration', '0s'))
+                target_offset = last_offset + last_dur
+            else:
+                target_offset = TimeValue.zero()
+            insert_index = len(spine_children)
+        elif position.startswith('after:'):
+            ref_id = position.split(':', 1)[1]
+            ref_clip = self.clips.get(ref_id)
+            if ref_clip is not None and ref_clip in spine_children:
+                idx = spine_children.index(ref_clip)
+                ref_offset = self._parse_time(ref_clip.get('offset', '0s'))
+                ref_dur = self._parse_time(ref_clip.get('duration', '0s'))
+                target_offset = ref_offset + ref_dur
+                insert_index = idx + 1
+            else:
+                raise ValueError(f"Reference clip not found: {ref_id}")
+        else:
+            # Assume timecode
+            target_offset = self._parse_time(position)
+            insert_index = 0
+            for i, child in enumerate(spine_children):
+                child_offset = self._parse_time(child.get('offset', '0s'))
+                if child_offset.to_seconds() >= target_offset.to_seconds():
+                    insert_index = i
+                    break
+                insert_index = i + 1
+
+        # Create new asset-clip element
+        new_clip = ET.Element('asset-clip')
+        new_clip.set('ref', asset_id)
+        new_clip.set('offset', target_offset.to_fcpxml())
+        new_clip.set('name', asset.get('name', 'Untitled'))
+        new_clip.set('start', source_start.to_fcpxml())
+        new_clip.set('duration', clip_duration.to_fcpxml())
+
+        # Get format from existing clips or resources
+        format_id = None
+        for fmt_id in self.formats:
+            format_id = fmt_id
+            break
+        if format_id:
+            new_clip.set('format', format_id)
+
+        # Insert into spine
+        spine.insert(insert_index, new_clip)
+
+        # Ripple subsequent clips if needed
+        if ripple and insert_index < len(spine_children):
+            for child in list(spine)[insert_index + 1:]:
+                if child.tag in ('clip', 'asset-clip', 'video', 'audio', 'gap', 'ref-clip', 'transition'):
+                    current_offset = self._parse_time(child.get('offset', '0s'))
+                    new_offset = current_offset + clip_duration
+                    child.set('offset', new_offset.to_fcpxml())
+
+        # Add to clip index
+        clip_id = f"inserted_{len(self.clips)}"
+        self.clips[clip_id] = new_clip
+
+        return new_clip
 
 
 # ============================================================================

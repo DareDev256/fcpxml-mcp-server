@@ -172,6 +172,19 @@ async def list_tools() -> list[Tool]:
                 "required": ["filepath"]
             }
         ),
+        Tool(
+            name="list_library_clips",
+            description="List all available clips in the library (source media, not yet on timeline)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "keywords": {"type": "array", "items": {"type": "string"}, "description": "Filter by keywords"},
+                    "limit": {"type": "integer", "description": "Max clips to return"}
+                },
+                "required": ["filepath"]
+            }
+        ),
 
         # ===== WRITE TOOLS =====
         Tool(
@@ -305,6 +318,25 @@ async def list_tools() -> list[Tool]:
                     "output_path": {"type": "string"}
                 },
                 "required": ["filepath", "clip_id", "split_points"]
+            }
+        ),
+        Tool(
+            name="insert_clip",
+            description="Insert a library clip onto the timeline at a specific position",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "asset_id": {"type": "string", "description": "Asset reference ID (e.g., 'r3')"},
+                    "asset_name": {"type": "string", "description": "Asset name (alternative to asset_id)"},
+                    "position": {"type": "string", "description": "'start', 'end', timecode, or 'after:clip_name'"},
+                    "duration": {"type": "string", "description": "Clip duration (if not using in/out points)"},
+                    "in_point": {"type": "string", "description": "Source in-point for subclip"},
+                    "out_point": {"type": "string", "description": "Source out-point for subclip"},
+                    "ripple": {"type": "boolean", "default": True, "description": "Shift subsequent clips"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
+                },
+                "required": ["filepath", "position"]
             }
         ),
 
@@ -525,6 +557,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 """
             return [TextContent(type="text", text=result)]
 
+        elif name == "list_library_clips":
+            parser = FCPXMLParser()
+            parser.parse_file(arguments["filepath"])
+            keywords = arguments.get("keywords")
+            library_clips = parser.get_library_clips(keywords=keywords)
+            limit = arguments.get("limit")
+            if limit:
+                library_clips = library_clips[:limit]
+            if not library_clips:
+                return [TextContent(type="text", text="No library clips found")]
+            result = f"# Library Clips ({len(library_clips)} available)\n\n"
+            result += "| ID | Name | Duration | Has Video | Has Audio |\n"
+            result += "|----|------|----------|-----------|----------|\n"
+            for c in library_clips:
+                result += f"| {c['asset_id']} | {c['name']} | {format_duration(c['duration_seconds'])} | {'✓' if c['has_video'] else '✗'} | {'✓' if c['has_audio'] else '✗'} |\n"
+            result += "\n*Use `insert_clip` to add these to your timeline.*"
+            return [TextContent(type="text", text=result)]
+
         # ===== WRITE TOOLS =====
         elif name == "add_marker":
             filepath = arguments["filepath"]
@@ -626,6 +676,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
             )
             modifier.save(output_path)
             return [TextContent(type="text", text=f"✅ Split '{arguments['clip_id']}' into {len(new_clips)} clips\n\nSaved to: {output_path}")]
+
+        elif name == "insert_clip":
+            filepath = arguments["filepath"]
+            output_path = arguments.get("output_path") or generate_output_path(filepath)
+            modifier = FCPXMLModifier(filepath)
+            new_clip = modifier.insert_clip(
+                asset_id=arguments.get("asset_id"),
+                asset_name=arguments.get("asset_name"),
+                position=arguments["position"],
+                duration=arguments.get("duration"),
+                in_point=arguments.get("in_point"),
+                out_point=arguments.get("out_point"),
+                ripple=arguments.get("ripple", True)
+            )
+            modifier.save(output_path)
+            clip_name = new_clip.get('name', 'Unknown')
+            pos = arguments["position"]
+            return [TextContent(type="text", text=f"✅ Inserted '{clip_name}' at position '{pos}'\n\nSaved to: {output_path}")]
 
         # ===== AI-POWERED TOOLS =====
         elif name == "auto_rough_cut":

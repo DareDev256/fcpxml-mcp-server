@@ -200,6 +200,49 @@ class FCPXMLParser:
             start=Timecode(frames=offset, frame_rate=self.frame_rate)
         )
 
+    def get_library_clips(self, keywords: Optional[list] = None) -> list:
+        """
+        Get all available clips from the library (assets in resources section).
+
+        Args:
+            keywords: Optional list of keywords to filter by
+
+        Returns:
+            List of dicts with asset metadata: name, asset_id, duration_seconds, src
+        """
+        result = []
+        for asset_id, asset_data in self.resources.items():
+            # Parse duration to seconds
+            duration_str = asset_data.get('duration', '0s')
+            duration_seconds = self._parse_duration_to_seconds(duration_str)
+
+            clip_info = {
+                'asset_id': asset_id,
+                'name': asset_data.get('name', ''),
+                'duration_seconds': duration_seconds,
+                'src': asset_data.get('src', ''),
+                'has_video': asset_data.get('hasVideo', True),
+                'has_audio': asset_data.get('hasAudio', True),
+            }
+            result.append(clip_info)
+
+        # Filter by keywords if provided
+        if keywords:
+            # For now, assets don't have keywords directly - return empty if filtering
+            # In real FCPXML, keywords are typically on clips in events, not assets
+            return []
+
+        return result
+
+    def _parse_duration_to_seconds(self, duration_str: str) -> float:
+        """Convert FCPXML duration string to seconds."""
+        if duration_str.endswith('s'):
+            duration_str = duration_str[:-1]
+        if '/' in duration_str:
+            num, denom = duration_str.split('/')
+            return float(num) / float(denom)
+        return float(duration_str)
+
 
 def parse_fcpxml(filepath: str) -> Project:
     """Convenience function to parse an FCPXML file."""
