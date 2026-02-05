@@ -51,7 +51,7 @@ from .rough_cut import (
     generate_segmented_rough_cut,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
 __author__ = "DareDev256"
 
 __all__ = [

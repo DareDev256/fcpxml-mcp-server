@@ -1,27 +1,36 @@
 #!/usr/bin/env python3
 """
-Final Cut Pro MCP Server - AI-powered editing through natural language.
+FCPXML MCP Server — Batch operations and analysis for Final Cut Pro XML files.
 
-The first MCP server for Final Cut Pro. Analyze timelines, add markers,
-trim clips, reorder edits, and generate rough cuts - all via conversation.
+Provides 32 tools, MCP resources for file discovery, and pre-built prompt
+workflows for common editing tasks.
 
 Author: DareDev256 (https://github.com/DareDev256)
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Sequence
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import (
+    Tool,
+    TextContent,
+    Resource,
+    Prompt,
+    PromptArgument,
+    PromptMessage,
+    GetPromptResult,
+)
 
 from fcpxml.parser import FCPXMLParser
 from fcpxml.writer import FCPXMLModifier
-from fcpxml.rough_cut import RoughCutGenerator, generate_rough_cut
+from fcpxml.rough_cut import RoughCutGenerator
 from fcpxml.models import (
     MarkerType, SegmentSpec, FlashFrameSeverity, FlashFrame,
-    GapInfo, DuplicateGroup, PacingCurve, MontageConfig
+    GapInfo, DuplicateGroup, Timecode,
 )
 
 server = Server("fcp-mcp-server")
@@ -37,7 +46,7 @@ def find_fcpxml_files(directory: str) -> list[str]:
     path = Path(directory)
     files = list(str(f) for f in path.rglob("*.fcpxml"))
     files.extend(str(f) for f in path.rglob("*.fcpxmld"))
-    return files
+    return sorted(files)
 
 
 def format_timecode(tc) -> str:
@@ -58,6 +67,219 @@ def generate_output_path(input_path: str, suffix: str = "_modified") -> str:
     """Generate output path from input path."""
     p = Path(input_path)
     return str(p.parent / f"{p.stem}{suffix}{p.suffix}")
+
+
+def _parse_project(filepath: str):
+    """Parse an FCPXML file and return the project with its primary timeline."""
+    project = FCPXMLParser().parse_file(filepath)
+    if not project.timelines:
+        return None, None
+    return project, project.primary_timeline
+
+
+def _no_timeline():
+    """Standard response when no timelines are found."""
+    return [TextContent(type="text", text="No timelines found")]
+
+
+# ============================================================================
+# MCP RESOURCES — File discovery
+# ============================================================================
+
+@server.list_resources()
+async def list_resources() -> list[Resource]:
+    """Expose discovered FCPXML files as MCP resources."""
+    files = find_fcpxml_files(PROJECTS_DIR)
+    resources = []
+    for f in files:
+        p = Path(f)
+        resources.append(Resource(
+            uri=f"file://{f}",
+            name=p.stem,
+            description=f"FCPXML project: {p.name} ({format_duration(0)})",
+            mimeType="application/xml",
+        ))
+    return resources
+
+
+@server.read_resource()
+async def read_resource(uri: str) -> str:
+    """Read an FCPXML file and return a summary."""
+    filepath = str(uri).replace("file://", "")
+    if not Path(filepath).exists():
+        return f"File not found: {filepath}"
+
+    project, tl = _parse_project(filepath)
+    if not tl:
+        return f"No timelines found in {filepath}"
+
+    return f"""FCPXML Project: {tl.name}
+Duration: {format_duration(tl.duration.seconds)}
+Resolution: {tl.width}x{tl.height} @ {tl.frame_rate}fps
+Clips: {tl.total_clips}
+Markers: {len(tl.markers)}
+Cuts/min: {tl.cuts_per_minute:.1f}
+Path: {filepath}"""
+
+
+# ============================================================================
+# MCP PROMPTS — Pre-built workflows
+# ============================================================================
+
+@server.list_prompts()
+async def list_prompts() -> list[Prompt]:
+    return [
+        Prompt(
+            name="qc-check",
+            description="Run a full quality control check on your timeline — flash frames, gaps, duplicates, and health score",
+            arguments=[
+                PromptArgument(name="filepath", description="Path to FCPXML file", required=True),
+            ],
+        ),
+        Prompt(
+            name="youtube-chapters",
+            description="Extract chapter markers formatted for YouTube descriptions",
+            arguments=[
+                PromptArgument(name="filepath", description="Path to FCPXML file", required=True),
+            ],
+        ),
+        Prompt(
+            name="rough-cut",
+            description="Guided rough cut generation — choose keywords, pacing, and duration",
+            arguments=[
+                PromptArgument(name="filepath", description="Path to source FCPXML with clips", required=True),
+                PromptArgument(name="duration", description="Target duration (e.g., '3m', '90s')", required=True),
+            ],
+        ),
+        Prompt(
+            name="timeline-summary",
+            description="Quick overview of a timeline — stats, pacing, and potential issues",
+            arguments=[
+                PromptArgument(name="filepath", description="Path to FCPXML file", required=True),
+            ],
+        ),
+        Prompt(
+            name="cleanup",
+            description="Find and fix common timeline issues — flash frames, gaps, and duplicates",
+            arguments=[
+                PromptArgument(name="filepath", description="Path to FCPXML file", required=True),
+            ],
+        ),
+    ]
+
+
+@server.get_prompt()
+async def get_prompt(name: str, arguments: dict[str, str] | None = None) -> GetPromptResult:
+    args = arguments or {}
+    filepath = args.get("filepath", "<path to your .fcpxml file>")
+
+    if name == "qc-check":
+        return GetPromptResult(
+            description="Full QC check on timeline",
+            messages=[PromptMessage(
+                role="user",
+                content=TextContent(
+                    type="text",
+                    text=f"""Run a complete quality control check on my timeline.
+
+File: {filepath}
+
+Please:
+1. Use `validate_timeline` to get the health score
+2. Use `detect_flash_frames` to find any ultra-short clips
+3. Use `detect_gaps` to find unintentional gaps
+4. Use `detect_duplicates` to find repeated source clips
+5. Summarize all issues and recommend fixes
+
+If there are critical issues, offer to fix them automatically with `fix_flash_frames` and `fill_gaps`."""
+                ),
+            )],
+        )
+
+    elif name == "youtube-chapters":
+        return GetPromptResult(
+            description="Export YouTube chapter markers",
+            messages=[PromptMessage(
+                role="user",
+                content=TextContent(
+                    type="text",
+                    text=f"""Extract chapter markers from my timeline and format them for YouTube.
+
+File: {filepath}
+
+Please:
+1. Use `list_markers` with format "youtube" to get chapter timestamps
+2. Format the output so I can copy-paste directly into a YouTube description
+3. If there are no chapter markers, suggest good chapter points based on the timeline structure using `analyze_pacing`"""
+                ),
+            )],
+        )
+
+    elif name == "rough-cut":
+        duration = args.get("duration", "3m")
+        return GetPromptResult(
+            description="Guided rough cut generation",
+            messages=[PromptMessage(
+                role="user",
+                content=TextContent(
+                    type="text",
+                    text=f"""Help me create a rough cut from my source clips.
+
+File: {filepath}
+Target duration: {duration}
+
+Please:
+1. Use `list_library_clips` to show me what clips are available
+2. Use `list_keywords` to show me the tags I can filter by
+3. Suggest a structure (segments, pacing) based on what's available
+4. Generate the rough cut with `auto_rough_cut` using my preferences
+5. Show me a summary of what was created"""
+                ),
+            )],
+        )
+
+    elif name == "timeline-summary":
+        return GetPromptResult(
+            description="Quick timeline overview",
+            messages=[PromptMessage(
+                role="user",
+                content=TextContent(
+                    type="text",
+                    text=f"""Give me a quick overview of my timeline.
+
+File: {filepath}
+
+Please:
+1. Use `analyze_timeline` for stats (duration, resolution, clip count)
+2. Use `analyze_pacing` for pacing metrics and suggestions
+3. Use `list_keywords` to show what tags are in use
+4. Use `list_markers` to show any markers
+5. Give me a brief assessment of the edit"""
+                ),
+            )],
+        )
+
+    elif name == "cleanup":
+        return GetPromptResult(
+            description="Find and fix timeline issues",
+            messages=[PromptMessage(
+                role="user",
+                content=TextContent(
+                    type="text",
+                    text=f"""Help me clean up my timeline by finding and fixing common issues.
+
+File: {filepath}
+
+Please:
+1. Use `validate_timeline` to get the health score
+2. If there are flash frames, use `fix_flash_frames` to remove them
+3. If there are gaps, use `fill_gaps` to close them
+4. Report what was fixed and the new health score"""
+                ),
+            )],
+        )
+
+    raise ValueError(f"Unknown prompt: {name}")
 
 
 # ============================================================================
@@ -189,7 +411,7 @@ async def list_tools() -> list[Tool]:
             }
         ),
 
-        # ===== SPEED CUTTING ANALYSIS TOOLS (v0.3.0) =====
+        # ===== QC / VALIDATION TOOLS =====
         Tool(
             name="detect_flash_frames",
             description="Find ultra-short clips (flash frames) that are likely errors, with severity categorization",
@@ -382,7 +604,7 @@ async def list_tools() -> list[Tool]:
             }
         ),
 
-        # ===== SPEED CUTTING WRITE TOOLS (v0.3.0) =====
+        # ===== BATCH FIX TOOLS =====
         Tool(
             name="fix_flash_frames",
             description="Automatically fix detected flash frames by extending neighbors or deleting",
@@ -440,7 +662,7 @@ async def list_tools() -> list[Tool]:
             }
         ),
 
-        # ===== AI-POWERED TOOLS =====
+        # ===== GENERATION TOOLS =====
         Tool(
             name="auto_rough_cut",
             description="Generate a rough cut from source clips based on keywords, duration, and pacing",
@@ -509,7 +731,7 @@ async def list_tools() -> list[Tool]:
             }
         ),
 
-        # ===== BEAT SYNC TOOLS (v0.3.0) =====
+        # ===== BEAT SYNC TOOLS =====
         Tool(
             name="import_beat_markers",
             description="Import beat markers from external audio analysis (JSON format)",
@@ -543,29 +765,27 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
-# TOOL HANDLERS
+# TOOL HANDLERS — Each tool gets its own function
 # ============================================================================
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextContent]:
-    try:
-        # ===== READ TOOLS =====
-        if name == "list_projects":
-            directory = arguments.get("directory", PROJECTS_DIR)
-            files = find_fcpxml_files(directory)
-            if not files:
-                return [TextContent(type="text", text=f"No FCPXML files found in {directory}")]
-            return [TextContent(type="text", text=f"Found {len(files)} FCPXML file(s):\n" + "\n".join(f"  • {f}" for f in files))]
+# ----- READ HANDLERS -----
 
-        elif name == "analyze_timeline":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            durs = [c.duration_seconds for c in tl.clips]
-            avg, med, mn, mx = (0, 0, 0, 0) if not durs else (
-                sum(durs)/len(durs), sorted(durs)[len(durs)//2], min(durs), max(durs))
-            result = f"""# Timeline Analysis: {tl.name}
+async def handle_list_projects(arguments: dict) -> Sequence[TextContent]:
+    directory = arguments.get("directory", PROJECTS_DIR)
+    files = find_fcpxml_files(directory)
+    if not files:
+        return [TextContent(type="text", text=f"No FCPXML files found in {directory}")]
+    return [TextContent(type="text", text=f"Found {len(files)} FCPXML file(s):\n" + "\n".join(f"  - {f}" for f in files))]
+
+
+async def handle_analyze_timeline(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    durs = [c.duration_seconds for c in tl.clips]
+    avg, med, mn, mx = (0, 0, 0, 0) if not durs else (
+        sum(durs)/len(durs), sorted(durs)[len(durs)//2], min(durs), max(durs))
+    return [TextContent(type="text", text=f"""# Timeline Analysis: {tl.name}
 
 ## Overview
 - **Duration**: {format_duration(tl.duration.seconds)}
@@ -586,130 +806,132 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 ## Markers
 - **Total**: {len(tl.markers)}
 - **Chapters**: {len([m for m in tl.markers if m.marker_type == MarkerType.CHAPTER])}
-"""
-            return [TextContent(type="text", text=result)]
+""")]
 
-        elif name == "list_clips":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            limit = arguments.get("limit")
-            clips = tl.clips[:limit] if limit else tl.clips
-            result = f"# Clips in {tl.name}\n\n| # | Name | Start | Duration | Keywords |\n|---|------|-------|----------|----------|\n"
-            for i, c in enumerate(clips, 1):
-                kws = ", ".join(k.value for k in c.keywords) if c.keywords else "-"
-                result += f"| {i} | {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} | {kws} |\n"
-            return [TextContent(type="text", text=result)]
 
-        elif name == "list_markers":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            markers = list(tl.markers)
-            for clip in tl.clips:
-                markers.extend(clip.markers)
-            marker_type = arguments.get("marker_type", "all")
-            if marker_type != "all":
-                type_map = {"chapter": MarkerType.CHAPTER, "todo": MarkerType.TODO, "standard": MarkerType.STANDARD}
-                markers = [m for m in markers if m.marker_type == type_map.get(marker_type)]
-            markers.sort(key=lambda m: m.start.frames)
-            fmt = arguments.get("format", "detailed")
-            if fmt == "youtube":
-                result = "# YouTube Chapters\n\n" + "\n".join(f"{m.to_youtube_timestamp()} {m.name}" for m in markers)
-            elif fmt == "simple":
-                result = "\n".join(f"{format_timecode(m.start)} - {m.name}" for m in markers)
-            else:
-                result = f"# Markers ({len(markers)})\n\n| TC | Name | Type |\n|---|------|------|\n"
-                result += "\n".join(f"| {format_timecode(m.start)} | {m.name} | {m.marker_type.value} |" for m in markers)
-            return [TextContent(type="text", text=result)]
+async def handle_list_clips(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    limit = arguments.get("limit")
+    clips = tl.clips[:limit] if limit else tl.clips
+    result = f"# Clips in {tl.name}\n\n| # | Name | Start | Duration | Keywords |\n|---|------|-------|----------|----------|\n"
+    for i, c in enumerate(clips, 1):
+        kws = ", ".join(k.value for k in c.keywords) if c.keywords else "-"
+        result += f"| {i} | {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} | {kws} |\n"
+    return [TextContent(type="text", text=result)]
 
-        elif name == "find_short_cuts":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            threshold = arguments.get("threshold_seconds", 0.5)
-            short = project.primary_timeline.get_clips_shorter_than(threshold)
-            if not short:
-                return [TextContent(type="text", text=f"No clips shorter than {threshold}s")]
-            result = f"# Short Clips (< {threshold}s) - {len(short)} found\n\n| Name | TC | Duration |\n|------|----|---------|\n"
-            result += "\n".join(f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |" for c in short)
-            return [TextContent(type="text", text=result)]
 
-        elif name == "find_long_clips":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            threshold = arguments.get("threshold_seconds", 10.0)
-            long = project.primary_timeline.get_clips_longer_than(threshold)
-            if not long:
-                return [TextContent(type="text", text=f"No clips longer than {threshold}s")]
-            result = f"# Long Clips (> {threshold}s) - {len(long)} found\n\n| Name | TC | Duration |\n|------|----|---------|\n"
-            result += "\n".join(f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |" for c in long)
-            return [TextContent(type="text", text=result)]
+async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    markers = list(tl.markers)
+    for clip in tl.clips:
+        markers.extend(clip.markers)
+    marker_type = arguments.get("marker_type", "all")
+    if marker_type != "all":
+        type_map = {"chapter": MarkerType.CHAPTER, "todo": MarkerType.TODO, "standard": MarkerType.STANDARD}
+        markers = [m for m in markers if m.marker_type == type_map.get(marker_type)]
+    markers.sort(key=lambda m: m.start.frames)
+    fmt = arguments.get("format", "detailed")
+    if fmt == "youtube":
+        result = "# YouTube Chapters\n\n" + "\n".join(f"{m.to_youtube_timestamp()} {m.name}" for m in markers)
+    elif fmt == "simple":
+        result = "\n".join(f"{format_timecode(m.start)} - {m.name}" for m in markers)
+    else:
+        result = f"# Markers ({len(markers)})\n\n| TC | Name | Type |\n|---|------|------|\n"
+        result += "\n".join(f"| {format_timecode(m.start)} | {m.name} | {m.marker_type.value} |" for m in markers)
+    return [TextContent(type="text", text=result)]
 
-        elif name == "list_keywords":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            keywords = {}
-            for clip in project.primary_timeline.clips:
-                for kw in clip.keywords:
-                    keywords.setdefault(kw.value, []).append(clip.name)
-            if not keywords:
-                return [TextContent(type="text", text="No keywords found")]
-            result = f"# Keywords ({len(keywords)})\n\n"
-            for kw, clips in sorted(keywords.items()):
-                result += f"**{kw}** ({len(clips)} clips)\n"
-            return [TextContent(type="text", text=result)]
 
-        elif name == "export_edl":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            edl = f"TITLE: {tl.name}\nFCM: NON-DROP FRAME\n\n"
-            for i, c in enumerate(tl.clips, 1):
-                edl += f"{i:03d}  AX       V     C        {format_timecode(c.source_start)} {format_timecode(c.end)} {format_timecode(c.start)} {format_timecode(c.end)}\n"
-                edl += f"* FROM CLIP NAME: {c.name}\n\n"
-            return [TextContent(type="text", text=f"```edl\n{edl}```")]
+async def handle_find_short_cuts(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    threshold = arguments.get("threshold_seconds", 0.5)
+    short = tl.get_clips_shorter_than(threshold)
+    if not short:
+        return [TextContent(type="text", text=f"No clips shorter than {threshold}s")]
+    result = f"# Short Clips (< {threshold}s) - {len(short)} found\n\n| Name | TC | Duration |\n|------|----|---------|\n"
+    result += "\n".join(f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |" for c in short)
+    return [TextContent(type="text", text=result)]
 
-        elif name == "export_csv":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            csv = "Name,Start,End,Duration,Keywords\n"
-            for c in tl.clips:
-                kws = "|".join(k.value for k in c.keywords)
-                csv += f'"{c.name}",{format_timecode(c.start)},{format_timecode(c.end)},{c.duration_seconds:.3f},"{kws}"\n'
-            return [TextContent(type="text", text=f"```csv\n{csv}```")]
 
-        elif name == "analyze_pacing":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            if not tl.clips:
-                return [TextContent(type="text", text="No clips to analyze")]
-            durs = [c.duration_seconds for c in tl.clips]
-            avg = sum(durs) / len(durs)
-            q_len = len(durs) // 4 or 1
-            segments = [durs[i:i+q_len] for i in range(0, len(durs), q_len)][:4]
-            seg_avgs = [sum(s)/len(s) if s else 0 for s in segments]
-            suggestions = []
-            flash = [c for c in tl.clips if c.duration_seconds < 0.2]
-            if flash:
-                suggestions.append(f"⚠️ {len(flash)} potential flash frames (< 0.2s)")
-            long = [c for c in tl.clips if c.duration_seconds > 30]
-            if long:
-                suggestions.append(f"📹 {len(long)} long takes (> 30s) - consider trimming")
-            if len(seg_avgs) >= 4 and seg_avgs[3] < seg_avgs[0] * 0.7:
-                suggestions.append("🎬 Pacing accelerates toward end - good for building energy")
-            elif len(seg_avgs) >= 4 and seg_avgs[3] > seg_avgs[0] * 1.3:
-                suggestions.append("⏱️ Pacing slows toward end - consider tightening")
-            result = f"""# Pacing Analysis: {tl.name}
+async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    threshold = arguments.get("threshold_seconds", 10.0)
+    long = tl.get_clips_longer_than(threshold)
+    if not long:
+        return [TextContent(type="text", text=f"No clips longer than {threshold}s")]
+    result = f"# Long Clips (> {threshold}s) - {len(long)} found\n\n| Name | TC | Duration |\n|------|----|---------|\n"
+    result += "\n".join(f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |" for c in long)
+    return [TextContent(type="text", text=result)]
+
+
+async def handle_list_keywords(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    keywords = {}
+    for clip in tl.clips:
+        for kw in clip.keywords:
+            keywords.setdefault(kw.value, []).append(clip.name)
+    if not keywords:
+        return [TextContent(type="text", text="No keywords found")]
+    result = f"# Keywords ({len(keywords)})\n\n"
+    for kw, clips in sorted(keywords.items()):
+        result += f"**{kw}** ({len(clips)} clips)\n"
+    return [TextContent(type="text", text=result)]
+
+
+async def handle_export_edl(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    edl = f"TITLE: {tl.name}\nFCM: NON-DROP FRAME\n\n"
+    for i, c in enumerate(tl.clips, 1):
+        edl += f"{i:03d}  AX       V     C        {format_timecode(c.source_start)} {format_timecode(c.end)} {format_timecode(c.start)} {format_timecode(c.end)}\n"
+        edl += f"* FROM CLIP NAME: {c.name}\n\n"
+    return [TextContent(type="text", text=f"```edl\n{edl}```")]
+
+
+async def handle_export_csv(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    csv = "Name,Start,End,Duration,Keywords\n"
+    for c in tl.clips:
+        kws = "|".join(k.value for k in c.keywords)
+        csv += f'"{c.name}",{format_timecode(c.start)},{format_timecode(c.end)},{c.duration_seconds:.3f},"{kws}"\n'
+    return [TextContent(type="text", text=f"```csv\n{csv}```")]
+
+
+async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    if not tl.clips:
+        return [TextContent(type="text", text="No clips to analyze")]
+    durs = [c.duration_seconds for c in tl.clips]
+    avg = sum(durs) / len(durs)
+    q_len = len(durs) // 4 or 1
+    segments = [durs[i:i+q_len] for i in range(0, len(durs), q_len)][:4]
+    seg_avgs = [sum(s)/len(s) if s else 0 for s in segments]
+    suggestions = []
+    flash = [c for c in tl.clips if c.duration_seconds < 0.2]
+    if flash:
+        suggestions.append(f"  {len(flash)} potential flash frames (< 0.2s)")
+    long = [c for c in tl.clips if c.duration_seconds > 30]
+    if long:
+        suggestions.append(f"  {len(long)} long takes (> 30s) - consider trimming")
+    if len(seg_avgs) >= 4 and seg_avgs[3] < seg_avgs[0] * 0.7:
+        suggestions.append("  Pacing accelerates toward end - good for building energy")
+    elif len(seg_avgs) >= 4 and seg_avgs[3] > seg_avgs[0] * 1.3:
+        suggestions.append("  Pacing slows toward end - consider tightening")
+    return [TextContent(type="text", text=f"""# Pacing Analysis: {tl.name}
 
 ## Overall
 - **Avg Cut**: {format_duration(avg)}
@@ -721,60 +943,57 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 | {format_duration(seg_avgs[0]) if len(seg_avgs) > 0 else 'N/A'} | {format_duration(seg_avgs[1]) if len(seg_avgs) > 1 else 'N/A'} | {format_duration(seg_avgs[2]) if len(seg_avgs) > 2 else 'N/A'} | {format_duration(seg_avgs[3]) if len(seg_avgs) > 3 else 'N/A'} |
 
 ## Suggestions
-{"".join(f"- {s}\n" for s in suggestions) if suggestions else "- ✅ Pacing looks good!"}
-"""
-            return [TextContent(type="text", text=result)]
+{"".join(f"- {s}\n" for s in suggestions) if suggestions else "- Pacing looks good!"}
+""")]
 
-        elif name == "list_library_clips":
-            parser = FCPXMLParser()
-            parser.parse_file(arguments["filepath"])
-            keywords = arguments.get("keywords")
-            library_clips = parser.get_library_clips(keywords=keywords)
-            limit = arguments.get("limit")
-            if limit:
-                library_clips = library_clips[:limit]
-            if not library_clips:
-                return [TextContent(type="text", text="No library clips found")]
-            result = f"# Library Clips ({len(library_clips)} available)\n\n"
-            result += "| ID | Name | Duration | Has Video | Has Audio |\n"
-            result += "|----|------|----------|-----------|----------|\n"
-            for c in library_clips:
-                result += f"| {c['asset_id']} | {c['name']} | {format_duration(c['duration_seconds'])} | {'✓' if c['has_video'] else '✗'} | {'✓' if c['has_audio'] else '✗'} |\n"
-            result += "\n*Use `insert_clip` to add these to your timeline.*"
-            return [TextContent(type="text", text=result)]
 
-        # ===== SPEED CUTTING ANALYSIS TOOLS (v0.3.0) =====
-        elif name == "detect_flash_frames":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            fps = tl.frame_rate
+async def handle_list_library_clips(arguments: dict) -> Sequence[TextContent]:
+    parser = FCPXMLParser()
+    parser.parse_file(arguments["filepath"])
+    keywords = arguments.get("keywords")
+    library_clips = parser.get_library_clips(keywords=keywords)
+    limit = arguments.get("limit")
+    if limit:
+        library_clips = library_clips[:limit]
+    if not library_clips:
+        return [TextContent(type="text", text="No library clips found")]
+    result = f"# Library Clips ({len(library_clips)} available)\n\n"
+    result += "| ID | Name | Duration | Has Video | Has Audio |\n"
+    result += "|----|------|----------|-----------|----------|\n"
+    for c in library_clips:
+        result += f"| {c['asset_id']} | {c['name']} | {format_duration(c['duration_seconds'])} | {'Y' if c['has_video'] else 'N'} | {'Y' if c['has_audio'] else 'N'} |\n"
+    result += "\n*Use `insert_clip` to add these to your timeline.*"
+    return [TextContent(type="text", text=result)]
 
-            critical_threshold = arguments.get("critical_threshold_frames", 2)
-            warning_threshold = arguments.get("warning_threshold_frames", 6)
 
-            flash_frames = []
-            for clip in tl.clips:
-                duration_frames = int(clip.duration_seconds * fps)
-                if duration_frames < warning_threshold:
-                    severity = FlashFrameSeverity.CRITICAL if duration_frames < critical_threshold else FlashFrameSeverity.WARNING
-                    flash_frames.append(FlashFrame(
-                        clip_name=clip.name,
-                        clip_id=clip.name,  # Using name as ID for now
-                        start=clip.start,
-                        duration_frames=duration_frames,
-                        duration_seconds=clip.duration_seconds,
-                        severity=severity
-                    ))
+# ----- QC / VALIDATION HANDLERS -----
 
-            if not flash_frames:
-                return [TextContent(type="text", text=f"No flash frames detected (threshold: {warning_threshold} frames)")]
+async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    fps = tl.frame_rate
+    critical_threshold = arguments.get("critical_threshold_frames", 2)
+    warning_threshold = arguments.get("warning_threshold_frames", 6)
 
-            critical = [f for f in flash_frames if f.severity == FlashFrameSeverity.CRITICAL]
-            warnings = [f for f in flash_frames if f.severity == FlashFrameSeverity.WARNING]
+    flash_frames = []
+    for clip in tl.clips:
+        duration_frames = int(clip.duration_seconds * fps)
+        if duration_frames < warning_threshold:
+            severity = FlashFrameSeverity.CRITICAL if duration_frames < critical_threshold else FlashFrameSeverity.WARNING
+            flash_frames.append(FlashFrame(
+                clip_name=clip.name, clip_id=clip.name,
+                start=clip.start, duration_frames=duration_frames,
+                duration_seconds=clip.duration_seconds, severity=severity,
+            ))
 
-            result = f"""# Flash Frame Detection
+    if not flash_frames:
+        return [TextContent(type="text", text=f"No flash frames detected (threshold: {warning_threshold} frames)")]
+
+    critical = [f for f in flash_frames if f.severity == FlashFrameSeverity.CRITICAL]
+    warnings = [f for f in flash_frames if f.severity == FlashFrameSeverity.WARNING]
+
+    result = f"""# Flash Frame Detection
 
 ## Summary
 - **Critical** (< {critical_threshold} frames): {len(critical)} found
@@ -783,82 +1002,74 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 
 ## Critical Flash Frames
 """
-            if critical:
-                result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
-                for f in critical:
-                    result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
-            else:
-                result += "_None_\n"
+    if critical:
+        result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
+        for f in critical:
+            result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
+    else:
+        result += "_None_\n"
 
-            result += "\n## Warning Flash Frames\n"
-            if warnings:
-                result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
-                for f in warnings:
-                    result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
-            else:
-                result += "_None_\n"
+    result += "\n## Warning Flash Frames\n"
+    if warnings:
+        result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
+        for f in warnings:
+            result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
+    else:
+        result += "_None_\n"
 
-            result += "\n*Use `fix_flash_frames` to automatically resolve these issues.*"
-            return [TextContent(type="text", text=result)]
+    result += "\n*Use `fix_flash_frames` to automatically resolve these issues.*"
+    return [TextContent(type="text", text=result)]
 
-        elif name == "detect_duplicates":
-            parser = FCPXMLParser()
-            project = parser.parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            mode = arguments.get("mode", "same_source")
 
-            # Group clips by their source reference
-            # We need to access the raw XML to get ref attributes
-            # For now, we'll use media_path as a proxy for source reference
-            source_groups = {}
-            for clip in tl.clips:
-                # Use media_path as the grouping key (or name if no media_path)
-                source_key = clip.media_path or clip.name
-                if source_key not in source_groups:
-                    source_groups[source_key] = []
-                source_groups[source_key].append({
-                    'name': clip.name,
-                    'start': clip.start.seconds,
-                    'duration': clip.duration_seconds,
-                    'source_start': clip.source_start.seconds if clip.source_start else 0,
-                    'source_duration': clip.duration_seconds,
-                    'timecode': format_timecode(clip.start)
-                })
+async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
+    parser = FCPXMLParser()
+    project = parser.parse_file(arguments["filepath"])
+    if not project.timelines:
+        return _no_timeline()
+    tl = project.primary_timeline
+    mode = arguments.get("mode", "same_source")
 
-            # Filter to only groups with duplicates
-            duplicates = []
-            for source_key, clips in source_groups.items():
-                if len(clips) > 1:
-                    group = DuplicateGroup(
-                        source_ref=source_key,
-                        source_name=source_key.split('/')[-1] if '/' in source_key else source_key,
-                        clips=clips
-                    )
+    source_groups = {}
+    for clip in tl.clips:
+        source_key = clip.media_path or clip.name
+        if source_key not in source_groups:
+            source_groups[source_key] = []
+        source_groups[source_key].append({
+            'name': clip.name, 'start': clip.start.seconds,
+            'duration': clip.duration_seconds,
+            'source_start': clip.source_start.seconds if clip.source_start else 0,
+            'source_duration': clip.duration_seconds,
+            'timecode': format_timecode(clip.start),
+        })
 
-                    # Filter by mode
-                    if mode == "same_source":
-                        duplicates.append(group)
-                    elif mode == "overlapping_ranges" and group.has_overlapping_ranges:
-                        duplicates.append(group)
-                    elif mode == "identical":
-                        # Check for clips with identical source ranges
-                        seen_ranges = set()
-                        identical_clips = []
-                        for c in clips:
-                            range_key = (c['source_start'], c['source_duration'])
-                            if range_key in seen_ranges:
-                                identical_clips.append(c)
-                            seen_ranges.add(range_key)
-                        if identical_clips:
-                            group.clips = identical_clips
-                            duplicates.append(group)
+    duplicates = []
+    for source_key, clips in source_groups.items():
+        if len(clips) > 1:
+            group = DuplicateGroup(
+                source_ref=source_key,
+                source_name=source_key.split('/')[-1] if '/' in source_key else source_key,
+                clips=clips,
+            )
+            if mode == "same_source":
+                duplicates.append(group)
+            elif mode == "overlapping_ranges" and group.has_overlapping_ranges:
+                duplicates.append(group)
+            elif mode == "identical":
+                seen_ranges = set()
+                identical_clips = []
+                for c in clips:
+                    range_key = (c['source_start'], c['source_duration'])
+                    if range_key in seen_ranges:
+                        identical_clips.append(c)
+                    seen_ranges.add(range_key)
+                if identical_clips:
+                    group.clips = identical_clips
+                    duplicates.append(group)
 
-            if not duplicates:
-                return [TextContent(type="text", text=f"No duplicate clips found (mode: {mode})")]
+    if not duplicates:
+        return [TextContent(type="text", text=f"No duplicate clips found (mode: {mode})")]
 
-            result = f"""# Duplicate Clip Detection
+    result = f"""# Duplicate Clip Detection
 
 ## Summary
 - **Mode**: {mode}
@@ -867,45 +1078,42 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 
 ## Duplicate Groups
 """
-            for group in duplicates:
-                result += f"\n### {group.source_name} ({group.count} uses)\n"
-                result += "| Clip Name | Timeline Position | Duration |\n|-----------|-------------------|----------|\n"
-                for c in group.clips:
-                    result += f"| {c['name']} | {c['timecode']} | {format_duration(c['duration'])} |\n"
+    for group in duplicates:
+        result += f"\n### {group.source_name} ({group.count} uses)\n"
+        result += "| Clip Name | Timeline Position | Duration |\n|-----------|-------------------|----------|\n"
+        for c in group.clips:
+            result += f"| {c['name']} | {c['timecode']} | {format_duration(c['duration'])} |\n"
 
-            return [TextContent(type="text", text=result)]
+    return [TextContent(type="text", text=result)]
 
-        elif name == "detect_gaps":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            fps = tl.frame_rate
-            min_gap_frames = arguments.get("min_gap_frames", 1)
-            min_gap_seconds = min_gap_frames / fps
 
-            gaps = []
-            sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
+async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    fps = tl.frame_rate
+    min_gap_frames = arguments.get("min_gap_frames", 1)
+    min_gap_seconds = min_gap_frames / fps
 
-            for i in range(len(sorted_clips) - 1):
-                current_end = sorted_clips[i].end.seconds
-                next_start = sorted_clips[i + 1].start.seconds
-                gap_duration = next_start - current_end
+    gaps = []
+    sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
+    for i in range(len(sorted_clips) - 1):
+        current_end = sorted_clips[i].end.seconds
+        next_start = sorted_clips[i + 1].start.seconds
+        gap_duration = next_start - current_end
+        if gap_duration >= min_gap_seconds:
+            gaps.append(GapInfo(
+                start=Timecode(frames=int(current_end * fps), frame_rate=fps),
+                duration_frames=int(gap_duration * fps),
+                duration_seconds=gap_duration,
+                previous_clip=sorted_clips[i].name,
+                next_clip=sorted_clips[i + 1].name,
+            ))
 
-                if gap_duration >= min_gap_seconds:
-                    from fcpxml.models import Timecode
-                    gaps.append(GapInfo(
-                        start=Timecode(frames=int(current_end * fps), frame_rate=fps),
-                        duration_frames=int(gap_duration * fps),
-                        duration_seconds=gap_duration,
-                        previous_clip=sorted_clips[i].name,
-                        next_clip=sorted_clips[i + 1].name
-                    ))
+    if not gaps:
+        return [TextContent(type="text", text=f"No gaps detected (minimum: {min_gap_frames} frame(s))")]
 
-            if not gaps:
-                return [TextContent(type="text", text=f"No gaps detected (minimum: {min_gap_frames} frame(s))")]
-
-            result = f"""# Gap Detection
+    result = f"""# Gap Detection
 
 ## Summary
 - **Gaps Found**: {len(gaps)}
@@ -916,147 +1124,157 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 | Position | Duration | Between |
 |----------|----------|---------|
 """
-            for gap in gaps:
-                result += f"| {gap.timecode} | {gap.duration_frames}f ({format_duration(gap.duration_seconds)}) | {gap.previous_clip} → {gap.next_clip} |\n"
+    for gap in gaps:
+        result += f"| {gap.timecode} | {gap.duration_frames}f ({format_duration(gap.duration_seconds)}) | {gap.previous_clip} -> {gap.next_clip} |\n"
 
-            result += "\n*Use `fill_gaps` to automatically close these gaps.*"
-            return [TextContent(type="text", text=result)]
+    result += "\n*Use `fill_gaps` to automatically close these gaps.*"
+    return [TextContent(type="text", text=result)]
 
-        # ===== WRITE TOOLS =====
-        elif name == "add_marker":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            marker_type = MarkerType[arguments.get("marker_type", "standard").upper()]
-            modifier.add_marker_at_timeline(
-                timecode=arguments["timecode"],
-                name=arguments["name"],
-                marker_type=marker_type,
-                note=arguments.get("note")
-            )
-            modifier.save(output_path)
-            return [TextContent(type="text", text=f"✅ Added marker '{arguments['name']}' at {arguments['timecode']}\n\nSaved to: {output_path}")]
 
-        elif name == "batch_add_markers":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            markers_added = modifier.batch_add_markers(
-                markers=arguments.get("markers", []),
-                auto_at_cuts=arguments.get("auto_at_cuts", False),
-                auto_at_intervals=arguments.get("auto_at_intervals")
-            )
-            modifier.save(output_path)
-            return [TextContent(type="text", text=f"✅ Added {len(markers_added)} markers\n\nSaved to: {output_path}")]
+# ----- WRITE HANDLERS -----
 
-        elif name == "trim_clip":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            modifier.trim_clip(
-                clip_id=arguments["clip_id"],
-                trim_start=arguments.get("trim_start"),
-                trim_end=arguments.get("trim_end"),
-                ripple=arguments.get("ripple", True)
-            )
-            modifier.save(output_path)
-            return [TextContent(type="text", text=f"✅ Trimmed clip '{arguments['clip_id']}'\n\nSaved to: {output_path}")]
+async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    marker_type = MarkerType[arguments.get("marker_type", "standard").upper()]
+    modifier.add_marker_at_timeline(
+        timecode=arguments["timecode"], name=arguments["name"],
+        marker_type=marker_type, note=arguments.get("note"),
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"Added marker '{arguments['name']}' at {arguments['timecode']}\n\nSaved to: {output_path}")]
 
-        elif name == "reorder_clips":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            modifier.reorder_clips(
-                clip_ids=arguments["clip_ids"],
-                target_position=arguments["target_position"],
-                ripple=arguments.get("ripple", True)
-            )
-            modifier.save(output_path)
-            clips_moved = ", ".join(arguments["clip_ids"])
-            return [TextContent(type="text", text=f"✅ Moved clips [{clips_moved}] to {arguments['target_position']}\n\nSaved to: {output_path}")]
 
-        elif name == "add_transition":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            modifier.add_transition(
-                clip_id=arguments["clip_id"],
-                position=arguments.get("position", "end"),
-                transition_type=arguments.get("transition_type", "cross-dissolve"),
-                duration=arguments.get("duration", "00:00:00:15")
-            )
-            modifier.save(output_path)
-            return [TextContent(type="text", text=f"✅ Added {arguments.get('transition_type', 'cross-dissolve')} to '{arguments['clip_id']}'\n\nSaved to: {output_path}")]
+async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    markers_added = modifier.batch_add_markers(
+        markers=arguments.get("markers", []),
+        auto_at_cuts=arguments.get("auto_at_cuts", False),
+        auto_at_intervals=arguments.get("auto_at_intervals"),
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"Added {len(markers_added)} markers\n\nSaved to: {output_path}")]
 
-        elif name == "change_speed":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            modifier.change_speed(
-                clip_id=arguments["clip_id"],
-                speed=arguments["speed"],
-                preserve_pitch=arguments.get("preserve_pitch", True)
-            )
-            modifier.save(output_path)
-            speed = arguments["speed"]
-            speed_desc = f"{speed}x" if speed >= 1 else f"{int(1/speed)}x slow motion"
-            return [TextContent(type="text", text=f"✅ Changed speed of '{arguments['clip_id']}' to {speed_desc}\n\nSaved to: {output_path}")]
 
-        elif name == "delete_clips":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            modifier.delete_clip(
-                clip_ids=arguments["clip_ids"],
-                ripple=arguments.get("ripple", True)
-            )
-            modifier.save(output_path)
-            return [TextContent(type="text", text=f"✅ Deleted {len(arguments['clip_ids'])} clip(s)\n\nSaved to: {output_path}")]
+async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    modifier.trim_clip(
+        clip_id=arguments["clip_id"],
+        trim_start=arguments.get("trim_start"),
+        trim_end=arguments.get("trim_end"),
+        ripple=arguments.get("ripple", True),
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"Trimmed clip '{arguments['clip_id']}'\n\nSaved to: {output_path}")]
 
-        elif name == "split_clip":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            new_clips = modifier.split_clip(
-                clip_id=arguments["clip_id"],
-                split_points=arguments["split_points"]
-            )
-            modifier.save(output_path)
-            return [TextContent(type="text", text=f"✅ Split '{arguments['clip_id']}' into {len(new_clips)} clips\n\nSaved to: {output_path}")]
 
-        elif name == "insert_clip":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath)
-            modifier = FCPXMLModifier(filepath)
-            new_clip = modifier.insert_clip(
-                asset_id=arguments.get("asset_id"),
-                asset_name=arguments.get("asset_name"),
-                position=arguments["position"],
-                duration=arguments.get("duration"),
-                in_point=arguments.get("in_point"),
-                out_point=arguments.get("out_point"),
-                ripple=arguments.get("ripple", True)
-            )
-            modifier.save(output_path)
-            clip_name = new_clip.get('name', 'Unknown')
-            pos = arguments["position"]
-            return [TextContent(type="text", text=f"✅ Inserted '{clip_name}' at position '{pos}'\n\nSaved to: {output_path}")]
+async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    modifier.reorder_clips(
+        clip_ids=arguments["clip_ids"],
+        target_position=arguments["target_position"],
+        ripple=arguments.get("ripple", True),
+    )
+    modifier.save(output_path)
+    clips_moved = ", ".join(arguments["clip_ids"])
+    return [TextContent(type="text", text=f"Moved clips [{clips_moved}] to {arguments['target_position']}\n\nSaved to: {output_path}")]
 
-        # ===== SPEED CUTTING WRITE TOOLS (v0.3.0) =====
-        elif name == "fix_flash_frames":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath, "_flash_fixed")
-            modifier = FCPXMLModifier(filepath)
-            fixed = modifier.fix_flash_frames(
-                mode=arguments.get("mode", "auto"),
-                threshold_frames=arguments.get("threshold_frames", 6)
-            )
-            modifier.save(output_path)
 
-            if not fixed:
-                return [TextContent(type="text", text="No flash frames found to fix.")]
+async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    modifier.add_transition(
+        clip_id=arguments["clip_id"],
+        position=arguments.get("position", "end"),
+        transition_type=arguments.get("transition_type", "cross-dissolve"),
+        duration=arguments.get("duration", "00:00:00:15"),
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"Added {arguments.get('transition_type', 'cross-dissolve')} to '{arguments['clip_id']}'\n\nSaved to: {output_path}")]
 
-            result = f"""# Flash Frames Fixed
+
+async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    modifier.change_speed(
+        clip_id=arguments["clip_id"],
+        speed=arguments["speed"],
+        preserve_pitch=arguments.get("preserve_pitch", True),
+    )
+    modifier.save(output_path)
+    speed = arguments["speed"]
+    speed_desc = f"{speed}x" if speed >= 1 else f"{int(1/speed)}x slow motion"
+    return [TextContent(type="text", text=f"Changed speed of '{arguments['clip_id']}' to {speed_desc}\n\nSaved to: {output_path}")]
+
+
+async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    modifier.delete_clip(
+        clip_ids=arguments["clip_ids"],
+        ripple=arguments.get("ripple", True),
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"Deleted {len(arguments['clip_ids'])} clip(s)\n\nSaved to: {output_path}")]
+
+
+async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    new_clips = modifier.split_clip(
+        clip_id=arguments["clip_id"],
+        split_points=arguments["split_points"],
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"Split '{arguments['clip_id']}' into {len(new_clips)} clips\n\nSaved to: {output_path}")]
+
+
+async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    modifier = FCPXMLModifier(filepath)
+    new_clip = modifier.insert_clip(
+        asset_id=arguments.get("asset_id"),
+        asset_name=arguments.get("asset_name"),
+        position=arguments["position"],
+        duration=arguments.get("duration"),
+        in_point=arguments.get("in_point"),
+        out_point=arguments.get("out_point"),
+        ripple=arguments.get("ripple", True),
+    )
+    modifier.save(output_path)
+    clip_name = new_clip.get('name', 'Unknown')
+    pos = arguments["position"]
+    return [TextContent(type="text", text=f"Inserted '{clip_name}' at position '{pos}'\n\nSaved to: {output_path}")]
+
+
+# ----- BATCH FIX HANDLERS -----
+
+async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_flash_fixed")
+    modifier = FCPXMLModifier(filepath)
+    fixed = modifier.fix_flash_frames(
+        mode=arguments.get("mode", "auto"),
+        threshold_frames=arguments.get("threshold_frames", 6),
+    )
+    modifier.save(output_path)
+
+    if not fixed:
+        return [TextContent(type="text", text="No flash frames found to fix.")]
+
+    result = f"""# Flash Frames Fixed
 
 ## Summary
 - **Fixed**: {len(fixed)} flash frames
@@ -1066,32 +1284,33 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 | Clip | Frames | Action | Result |
 |------|--------|--------|--------|
 """
-            for f in fixed:
-                extended = f.get('extended_clip', 'N/A')
-                result += f"| {f['clip_name']} | {f['duration_frames']}f | {f['action']} | Extended: {extended} |\n"
+    for f in fixed:
+        extended = f.get('extended_clip', 'N/A')
+        result += f"| {f['clip_name']} | {f['duration_frames']}f | {f['action']} | Extended: {extended} |\n"
 
-            result += f"\nSaved to: `{output_path}`"
-            return [TextContent(type="text", text=result)]
+    result += f"\nSaved to: `{output_path}`"
+    return [TextContent(type="text", text=result)]
 
-        elif name == "rapid_trim":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath, "_rapid_trim")
-            modifier = FCPXMLModifier(filepath)
-            trimmed = modifier.rapid_trim(
-                max_duration=arguments["max_duration"],
-                min_duration=arguments.get("min_duration"),
-                keywords=arguments.get("keywords"),
-                trim_from=arguments.get("trim_from", "end")
-            )
-            modifier.save(output_path)
 
-            if not trimmed:
-                return [TextContent(type="text", text=f"No clips exceeded {arguments['max_duration']} - nothing trimmed.")]
+async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_rapid_trim")
+    modifier = FCPXMLModifier(filepath)
+    trimmed = modifier.rapid_trim(
+        max_duration=arguments["max_duration"],
+        min_duration=arguments.get("min_duration"),
+        keywords=arguments.get("keywords"),
+        trim_from=arguments.get("trim_from", "end"),
+    )
+    modifier.save(output_path)
 
-            total_before = sum(t['original_duration'] for t in trimmed)
-            total_after = sum(t['new_duration'] for t in trimmed)
+    if not trimmed:
+        return [TextContent(type="text", text=f"No clips exceeded {arguments['max_duration']} - nothing trimmed.")]
 
-            result = f"""# Rapid Trim Complete
+    total_before = sum(t['original_duration'] for t in trimmed)
+    total_after = sum(t['new_duration'] for t in trimmed)
+
+    result = f"""# Rapid Trim Complete
 
 ## Summary
 - **Clips Trimmed**: {len(trimmed)}
@@ -1103,26 +1322,27 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 | Clip | Before | After |
 |------|--------|-------|
 """
-            for t in trimmed:
-                result += f"| {t['clip_name']} | {format_duration(t['original_duration'])} | {format_duration(t['new_duration'])} |\n"
+    for t in trimmed:
+        result += f"| {t['clip_name']} | {format_duration(t['original_duration'])} | {format_duration(t['new_duration'])} |\n"
 
-            result += f"\nSaved to: `{output_path}`"
-            return [TextContent(type="text", text=result)]
+    result += f"\nSaved to: `{output_path}`"
+    return [TextContent(type="text", text=result)]
 
-        elif name == "fill_gaps":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath, "_gaps_filled")
-            modifier = FCPXMLModifier(filepath)
-            filled = modifier.fill_gaps(
-                mode=arguments.get("mode", "extend_previous"),
-                max_gap=arguments.get("max_gap")
-            )
-            modifier.save(output_path)
 
-            if not filled:
-                return [TextContent(type="text", text="No gaps found to fill.")]
+async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_gaps_filled")
+    modifier = FCPXMLModifier(filepath)
+    filled = modifier.fill_gaps(
+        mode=arguments.get("mode", "extend_previous"),
+        max_gap=arguments.get("max_gap"),
+    )
+    modifier.save(output_path)
 
-            result = f"""# Gaps Filled
+    if not filled:
+        return [TextContent(type="text", text="No gaps found to fill.")]
+
+    result = f"""# Gaps Filled
 
 ## Summary
 - **Gaps Filled**: {len(filled)}
@@ -1132,126 +1352,120 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 | Position | Duration | Action |
 |----------|----------|--------|
 """
-            for g in filled:
-                result += f"| {g['timecode']} | {g['duration_frames']}f | {g['action']} |\n"
+    for g in filled:
+        result += f"| {g['timecode']} | {g['duration_frames']}f | {g['action']} |\n"
 
-            result += f"\nSaved to: `{output_path}`"
-            return [TextContent(type="text", text=result)]
+    result += f"\nSaved to: `{output_path}`"
+    return [TextContent(type="text", text=result)]
 
-        elif name == "validate_timeline":
-            project = FCPXMLParser().parse_file(arguments["filepath"])
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
-            tl = project.primary_timeline
-            fps = tl.frame_rate
-            checks = arguments.get("checks", ["all"])
-            run_all = "all" in checks
 
-            issues = []
-            flash_count = 0
-            gap_count = 0
-            duplicate_count = 0
+async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+    fps = tl.frame_rate
+    checks = arguments.get("checks", ["all"])
+    run_all = "all" in checks
 
-            # Flash frame check
-            if run_all or "flash_frames" in checks:
-                for clip in tl.clips:
-                    duration_frames = int(clip.duration_seconds * fps)
-                    if duration_frames < 6:
-                        flash_count += 1
-                        severity = "error" if duration_frames < 2 else "warning"
-                        issues.append(f"- [{severity.upper()}] Flash frame: {clip.name} ({duration_frames}f) at {format_timecode(clip.start)}")
+    issues = []
+    flash_count = 0
+    gap_count = 0
+    duplicate_count = 0
 
-            # Gap check
-            if run_all or "gaps" in checks:
-                sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
-                for i in range(len(sorted_clips) - 1):
-                    current_end = sorted_clips[i].end.seconds
-                    next_start = sorted_clips[i + 1].start.seconds
-                    gap_duration = next_start - current_end
-                    if gap_duration > 0.001:  # More than 1ms
-                        gap_count += 1
-                        gap_frames = int(gap_duration * fps)
-                        from fcpxml.models import Timecode
-                        gap_tc = Timecode(frames=int(current_end * fps), frame_rate=fps)
-                        issues.append(f"- [WARNING] Gap: {gap_frames}f at {gap_tc.to_smpte()}")
+    if run_all or "flash_frames" in checks:
+        for clip in tl.clips:
+            duration_frames = int(clip.duration_seconds * fps)
+            if duration_frames < 6:
+                flash_count += 1
+                severity = "error" if duration_frames < 2 else "warning"
+                issues.append(f"- [{severity.upper()}] Flash frame: {clip.name} ({duration_frames}f) at {format_timecode(clip.start)}")
 
-            # Duplicate check
-            if run_all or "duplicates" in checks:
-                source_groups = {}
-                for clip in tl.clips:
-                    source_key = clip.media_path or clip.name
-                    if source_key not in source_groups:
-                        source_groups[source_key] = []
-                    source_groups[source_key].append(clip)
-                for source, clips in source_groups.items():
-                    if len(clips) > 1:
-                        duplicate_count += len(clips)
-                        issues.append(f"- [INFO] Duplicate source: {source.split('/')[-1]} ({len(clips)} uses)")
+    if run_all or "gaps" in checks:
+        sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
+        for i in range(len(sorted_clips) - 1):
+            current_end = sorted_clips[i].end.seconds
+            next_start = sorted_clips[i + 1].start.seconds
+            gap_duration = next_start - current_end
+            if gap_duration > 0.001:
+                gap_count += 1
+                gap_frames = int(gap_duration * fps)
+                gap_tc = Timecode(frames=int(current_end * fps), frame_rate=fps)
+                issues.append(f"- [WARNING] Gap: {gap_frames}f at {gap_tc.to_smpte()}")
 
-            # Calculate health score
-            error_weight = 10
-            warning_weight = 3
-            info_weight = 1
-            errors = len([i for i in issues if "[ERROR]" in i])
-            warnings = len([i for i in issues if "[WARNING]" in i])
-            infos = len([i for i in issues if "[INFO]" in i])
-            penalty = (errors * error_weight) + (warnings * warning_weight) + (infos * info_weight)
-            health_score = max(0, 100 - penalty)
+    if run_all or "duplicates" in checks:
+        source_groups = {}
+        for clip in tl.clips:
+            source_key = clip.media_path or clip.name
+            source_groups.setdefault(source_key, []).append(clip)
+        for source, clips in source_groups.items():
+            if len(clips) > 1:
+                duplicate_count += len(clips)
+                issues.append(f"- [INFO] Duplicate source: {source.split('/')[-1]} ({len(clips)} uses)")
 
-            result = f"""# Timeline Validation: {tl.name}
+    error_weight = 10
+    warning_weight = 3
+    info_weight = 1
+    errors = len([i for i in issues if "[ERROR]" in i])
+    warnings = len([i for i in issues if "[WARNING]" in i])
+    infos = len([i for i in issues if "[INFO]" in i])
+    penalty = (errors * error_weight) + (warnings * warning_weight) + (infos * info_weight)
+    health_score = max(0, 100 - penalty)
+
+    result = f"""# Timeline Validation: {tl.name}
 
 ## Health Score: {health_score}%
 
 ## Summary
 | Check | Count | Status |
 |-------|-------|--------|
-| Flash Frames | {flash_count} | {'✅' if flash_count == 0 else '⚠️'} |
-| Gaps | {gap_count} | {'✅' if gap_count == 0 else '⚠️'} |
-| Duplicate Sources | {duplicate_count} | {'✅' if duplicate_count == 0 else 'ℹ️'} |
+| Flash Frames | {flash_count} | {'PASS' if flash_count == 0 else 'FAIL'} |
+| Gaps | {gap_count} | {'PASS' if gap_count == 0 else 'WARN'} |
+| Duplicate Sources | {duplicate_count} | {'PASS' if duplicate_count == 0 else 'INFO'} |
 
 ## Issues ({len(issues)})
 """
-            if issues:
-                result += "\n".join(issues[:20])  # Limit to first 20
-                if len(issues) > 20:
-                    result += f"\n... and {len(issues) - 20} more issues"
-            else:
-                result += "_No issues found!_"
+    if issues:
+        result += "\n".join(issues[:20])
+        if len(issues) > 20:
+            result += f"\n... and {len(issues) - 20} more issues"
+    else:
+        result += "_No issues found!_"
 
-            result += "\n\n*Use `fix_flash_frames` and `fill_gaps` to automatically resolve issues.*"
-            return [TextContent(type="text", text=result)]
+    result += "\n\n*Use `fix_flash_frames` and `fill_gaps` to automatically resolve issues.*"
+    return [TextContent(type="text", text=result)]
 
-        # ===== AI-POWERED TOOLS =====
-        elif name == "auto_rough_cut":
-            filepath = arguments["filepath"]
-            output_path = arguments["output_path"]
 
-            # Handle segments if provided
-            segments = None
-            if arguments.get("segments"):
-                segments = [
-                    SegmentSpec(
-                        name=s.get("name", "Segment"),
-                        keywords=s.get("keywords", []),
-                        duration_seconds=s.get("duration", 0),
-                        priority=s.get("priority", "best")
-                    )
-                    for s in arguments["segments"]
-                ]
+# ----- GENERATION HANDLERS -----
 
-            generator = RoughCutGenerator(filepath)
-            result = generator.generate(
-                output_path=output_path,
-                target_duration=arguments["target_duration"],
-                pacing=arguments.get("pacing", "medium"),
-                keywords=arguments.get("keywords"),
-                segments=segments,
-                priority=arguments.get("priority", "best"),
-                favorites_only=arguments.get("favorites_only", False),
-                add_transitions=arguments.get("add_transitions", False)
+async def handle_auto_rough_cut(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments["output_path"]
+
+    segments = None
+    if arguments.get("segments"):
+        segments = [
+            SegmentSpec(
+                name=s.get("name", "Segment"),
+                keywords=s.get("keywords", []),
+                duration_seconds=s.get("duration", 0),
+                priority=s.get("priority", "best"),
             )
+            for s in arguments["segments"]
+        ]
 
-            return [TextContent(type="text", text=f"""# Rough Cut Generated! 🎬
+    generator = RoughCutGenerator(filepath)
+    result = generator.generate(
+        output_path=output_path,
+        target_duration=arguments["target_duration"],
+        pacing=arguments.get("pacing", "medium"),
+        keywords=arguments.get("keywords"),
+        segments=segments,
+        priority=arguments.get("priority", "best"),
+        favorites_only=arguments.get("favorites_only", False),
+        add_transitions=arguments.get("add_transitions", False),
+    )
+
+    return [TextContent(type="text", text=f"""# Rough Cut Generated
 
 ## Summary
 - **Clips Used**: {result.clips_used} of {result.clips_available} available
@@ -1262,32 +1476,33 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 ## Output
 Saved to: `{result.output_path}`
 
-**Next step**: Import this FCPXML into Final Cut Pro (File → Import → XML)
+**Next step**: Import this FCPXML into Final Cut Pro (File > Import > XML)
 """)]
 
-        elif name == "generate_montage":
-            filepath = arguments["filepath"]
-            output_path = arguments["output_path"]
 
-            generator = RoughCutGenerator(filepath)
-            result = generator.generate_montage(
-                output_path=output_path,
-                target_duration=arguments["target_duration"],
-                pacing_curve=arguments.get("pacing_curve", "accelerating"),
-                start_duration=arguments.get("start_duration", 2.0),
-                end_duration=arguments.get("end_duration", 0.5),
-                keywords=arguments.get("keywords"),
-                add_transitions=arguments.get("add_transitions", False)
-            )
+async def handle_generate_montage(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments["output_path"]
 
-            curve_desc = {
-                'accelerating': 'slow → fast (builds energy)',
-                'decelerating': 'fast → slow (winds down)',
-                'pyramid': 'slow → fast → slow (dramatic arc)',
-                'constant': 'same duration throughout'
-            }
+    generator = RoughCutGenerator(filepath)
+    result = generator.generate_montage(
+        output_path=output_path,
+        target_duration=arguments["target_duration"],
+        pacing_curve=arguments.get("pacing_curve", "accelerating"),
+        start_duration=arguments.get("start_duration", 2.0),
+        end_duration=arguments.get("end_duration", 0.5),
+        keywords=arguments.get("keywords"),
+        add_transitions=arguments.get("add_transitions", False),
+    )
 
-            return [TextContent(type="text", text=f"""# Montage Generated! 🎬
+    curve_desc = {
+        'accelerating': 'slow to fast (builds energy)',
+        'decelerating': 'fast to slow (winds down)',
+        'pyramid': 'slow to fast to slow (dramatic arc)',
+        'constant': 'same duration throughout',
+    }
+
+    return [TextContent(type="text", text=f"""# Montage Generated
 
 ## Summary
 - **Clips Used**: {result['clips_used']} of {result['clips_available']} available
@@ -1303,23 +1518,24 @@ Saved to: `{result.output_path}`
 Saved to: `{result['output_path']}`
 """)]
 
-        elif name == "generate_ab_roll":
-            filepath = arguments["filepath"]
-            output_path = arguments["output_path"]
 
-            generator = RoughCutGenerator(filepath)
-            result = generator.generate_ab_roll(
-                output_path=output_path,
-                target_duration=arguments["target_duration"],
-                a_keywords=arguments["a_keywords"],
-                b_keywords=arguments["b_keywords"],
-                a_duration=arguments.get("a_duration", "5s"),
-                b_duration=arguments.get("b_duration", "3s"),
-                start_with=arguments.get("start_with", "a"),
-                add_transitions=arguments.get("add_transitions", True)
-            )
+async def handle_generate_ab_roll(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments["output_path"]
 
-            return [TextContent(type="text", text=f"""# A/B Roll Edit Generated! 🎬
+    generator = RoughCutGenerator(filepath)
+    result = generator.generate_ab_roll(
+        output_path=output_path,
+        target_duration=arguments["target_duration"],
+        a_keywords=arguments["a_keywords"],
+        b_keywords=arguments["b_keywords"],
+        a_duration=arguments.get("a_duration", "5s"),
+        b_duration=arguments.get("b_duration", "3s"),
+        start_with=arguments.get("start_with", "a"),
+        add_transitions=arguments.get("add_transitions", True),
+    )
+
+    return [TextContent(type="text", text=f"""# A/B Roll Edit Generated
 
 ## Summary
 - **A-Roll Segments**: {result['a_segments']} (from {result['a_clips_available']} available)
@@ -1335,60 +1551,53 @@ Saved to: `{result['output_path']}`
 ## Output
 Saved to: `{result['output_path']}`
 
-**Next step**: Import this FCPXML into Final Cut Pro (File → Import → XML)
+**Next step**: Import this FCPXML into Final Cut Pro (File > Import > XML)
 """)]
 
-        # ===== BEAT SYNC TOOLS (v0.3.0) =====
-        elif name == "import_beat_markers":
-            import json
-            filepath = arguments["filepath"]
-            beats_path = arguments["beats_path"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath, "_beats")
 
-            # Load beats JSON
-            with open(beats_path, 'r') as f:
-                beats_data = json.load(f)
+# ----- BEAT SYNC HANDLERS -----
 
-            # Extract beat times (support various formats)
-            beat_times = []
-            if isinstance(beats_data, list):
-                # Simple list of times
-                beat_times = beats_data
-            elif isinstance(beats_data, dict):
-                # Common formats: {"beats": [...]} or {"times": [...]}
-                beat_times = beats_data.get('beats', beats_data.get('times', beats_data.get('markers', [])))
+async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    beats_path = arguments["beats_path"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_beats")
 
-            # Filter beats if requested
-            beat_filter = arguments.get("beat_filter", "all")
-            if beat_filter == "downbeat" and isinstance(beats_data, dict):
-                # Use downbeats if available
-                beat_times = beats_data.get('downbeats', beat_times[::4])  # Every 4th beat
-            elif beat_filter == "measure" and isinstance(beats_data, dict):
-                beat_times = beats_data.get('measures', beat_times[::4])
+    with open(beats_path, 'r') as f:
+        beats_data = json.load(f)
 
-            # Convert to marker format
-            markers = []
-            marker_type = arguments.get("marker_type", "standard")
-            for i, beat_time in enumerate(beat_times):
-                if isinstance(beat_time, (int, float)):
-                    markers.append({
-                        'timecode': f"{beat_time}s",
-                        'name': f"Beat {i+1}",
-                        'marker_type': marker_type.upper()
-                    })
-                elif isinstance(beat_time, dict):
-                    markers.append({
-                        'timecode': f"{beat_time.get('time', beat_time.get('position', 0))}s",
-                        'name': beat_time.get('label', f"Beat {i+1}"),
-                        'marker_type': marker_type.upper()
-                    })
+    beat_times = []
+    if isinstance(beats_data, list):
+        beat_times = beats_data
+    elif isinstance(beats_data, dict):
+        beat_times = beats_data.get('beats', beats_data.get('times', beats_data.get('markers', [])))
 
-            # Add markers to timeline
-            modifier = FCPXMLModifier(filepath)
-            added = modifier.batch_add_markers(markers=markers)
-            modifier.save(output_path)
+    beat_filter = arguments.get("beat_filter", "all")
+    if beat_filter == "downbeat" and isinstance(beats_data, dict):
+        beat_times = beats_data.get('downbeats', beat_times[::4])
+    elif beat_filter == "measure" and isinstance(beats_data, dict):
+        beat_times = beats_data.get('measures', beat_times[::4])
 
-            return [TextContent(type="text", text=f"""# Beat Markers Imported
+    markers = []
+    marker_type = arguments.get("marker_type", "standard")
+    for i, beat_time in enumerate(beat_times):
+        if isinstance(beat_time, (int, float)):
+            markers.append({
+                'timecode': f"{beat_time}s",
+                'name': f"Beat {i+1}",
+                'marker_type': marker_type.upper(),
+            })
+        elif isinstance(beat_time, dict):
+            markers.append({
+                'timecode': f"{beat_time.get('time', beat_time.get('position', 0))}s",
+                'name': beat_time.get('label', f"Beat {i+1}"),
+                'marker_type': marker_type.upper(),
+            })
+
+    modifier = FCPXMLModifier(filepath)
+    added = modifier.batch_add_markers(markers=markers)
+    modifier.save(output_path)
+
+    return [TextContent(type="text", text=f"""# Beat Markers Imported
 
 ## Summary
 - **Beats Found**: {len(beat_times)}
@@ -1402,91 +1611,81 @@ Saved to: `{output_path}`
 *Use `snap_to_beats` to align your cuts to these markers.*
 """)]
 
-        elif name == "snap_to_beats":
-            filepath = arguments["filepath"]
-            output_path = arguments.get("output_path") or generate_output_path(filepath, "_synced")
-            max_shift = arguments.get("max_shift_frames", 6)
-            prefer = arguments.get("prefer", "nearest")
 
-            # Parse timeline to get markers and clips
-            parser = FCPXMLParser()
-            project = parser.parse_file(filepath)
-            if not project.timelines:
-                return [TextContent(type="text", text="No timelines found")]
+async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_synced")
+    max_shift = arguments.get("max_shift_frames", 6)
+    prefer = arguments.get("prefer", "nearest")
 
-            tl = project.primary_timeline
-            fps = tl.frame_rate
+    parser = FCPXMLParser()
+    project = parser.parse_file(filepath)
+    if not project.timelines:
+        return _no_timeline()
 
-            # Collect all markers (timeline + clip markers)
-            markers = list(tl.markers)
-            for clip in tl.clips:
-                # Add clip's markers with adjusted timecodes
-                for m in clip.markers:
-                    markers.append(m)
+    tl = project.primary_timeline
+    fps = tl.frame_rate
 
-            if not markers:
-                return [TextContent(type="text", text="No markers found. Use `import_beat_markers` first.")]
+    markers = list(tl.markers)
+    for clip in tl.clips:
+        markers.extend(clip.markers)
 
-            marker_times = sorted([m.start.seconds for m in markers])
+    if not markers:
+        return [TextContent(type="text", text="No markers found. Use `import_beat_markers` first.")]
 
-            # Load modifier for editing
-            modifier = FCPXMLModifier(filepath)
-            spine = modifier._get_spine()
-            adjusted_count = 0
-            total_shift = 0
+    marker_times = sorted([m.start.seconds for m in markers])
 
-            # Get cuts (clip start offsets after the first clip)
-            clips_list = [c for c in spine if c.tag in ('clip', 'asset-clip', 'video', 'ref-clip')]
+    modifier = FCPXMLModifier(filepath)
+    spine = modifier._get_spine()
+    adjusted_count = 0
+    total_shift = 0
 
-            for i, clip in enumerate(clips_list[1:], 1):  # Skip first clip
-                cut_offset = modifier._parse_time(clip.get('offset', '0s'))
-                cut_seconds = cut_offset.to_seconds()
+    clips_list = [c for c in spine if c.tag in ('clip', 'asset-clip', 'video', 'ref-clip')]
 
-                # Find nearest marker
-                best_marker = None
-                best_distance = float('inf')
+    for i, clip in enumerate(clips_list[1:], 1):
+        cut_offset = modifier._parse_time(clip.get('offset', '0s'))
+        cut_seconds = cut_offset.to_seconds()
 
-                for marker_time in marker_times:
-                    distance = abs(marker_time - cut_seconds)
-                    distance_frames = distance * fps
+        best_marker = None
+        best_distance = float('inf')
 
-                    if distance_frames <= max_shift:
-                        if prefer == "earlier" and marker_time <= cut_seconds:
-                            if distance < best_distance:
-                                best_distance = distance
-                                best_marker = marker_time
-                        elif prefer == "later" and marker_time >= cut_seconds:
-                            if distance < best_distance:
-                                best_distance = distance
-                                best_marker = marker_time
-                        elif prefer == "nearest":
-                            if distance < best_distance:
-                                best_distance = distance
-                                best_marker = marker_time
+        for marker_time in marker_times:
+            distance = abs(marker_time - cut_seconds)
+            distance_frames = distance * fps
 
-                if best_marker is not None and best_distance > 0.001:
-                    # Adjust this clip and ripple
-                    shift = best_marker - cut_seconds
-                    shift_frames = int(shift * fps)
+            if distance_frames <= max_shift:
+                if prefer == "earlier" and marker_time <= cut_seconds:
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_marker = marker_time
+                elif prefer == "later" and marker_time >= cut_seconds:
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_marker = marker_time
+                elif prefer == "nearest":
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_marker = marker_time
 
-                    # Adjust previous clip duration
-                    prev_clip = clips_list[i - 1]
-                    prev_dur = modifier._parse_time(prev_clip.get('duration', '0s'))
-                    new_prev_dur = prev_dur + modifier._parse_time(f"{shift}s")
-                    prev_clip.set('duration', new_prev_dur.to_fcpxml())
+        if best_marker is not None and best_distance > 0.001:
+            shift = best_marker - cut_seconds
+            shift_frames = int(shift * fps)
 
-                    # Adjust current clip offset
-                    new_offset = modifier._parse_time(f"{best_marker}s")
-                    clip.set('offset', new_offset.to_fcpxml())
+            prev_clip = clips_list[i - 1]
+            prev_dur = modifier._parse_time(prev_clip.get('duration', '0s'))
+            new_prev_dur = prev_dur + modifier._parse_time(f"{shift}s")
+            prev_clip.set('duration', new_prev_dur.to_fcpxml())
 
-                    adjusted_count += 1
-                    total_shift += abs(shift_frames)
+            new_offset = modifier._parse_time(f"{best_marker}s")
+            clip.set('offset', new_offset.to_fcpxml())
 
-            modifier.save(output_path)
+            adjusted_count += 1
+            total_shift += abs(shift_frames)
 
-            avg_shift = total_shift / adjusted_count if adjusted_count > 0 else 0
+    modifier.save(output_path)
+    avg_shift = total_shift / adjusted_count if adjusted_count > 0 else 0
 
-            return [TextContent(type="text", text=f"""# Cuts Snapped to Beats
+    return [TextContent(type="text", text=f"""# Cuts Snapped to Beats
 
 ## Summary
 - **Cuts Adjusted**: {adjusted_count}
@@ -1500,7 +1699,62 @@ Saved to: `{output_path}`
 Your edits are now synced to the beat!
 """)]
 
+
+# ============================================================================
+# TOOL DISPATCH
+# ============================================================================
+
+TOOL_HANDLERS = {
+    # Read
+    "list_projects": handle_list_projects,
+    "analyze_timeline": handle_analyze_timeline,
+    "list_clips": handle_list_clips,
+    "list_markers": handle_list_markers,
+    "find_short_cuts": handle_find_short_cuts,
+    "find_long_clips": handle_find_long_clips,
+    "list_keywords": handle_list_keywords,
+    "export_edl": handle_export_edl,
+    "export_csv": handle_export_csv,
+    "analyze_pacing": handle_analyze_pacing,
+    "list_library_clips": handle_list_library_clips,
+    # QC
+    "detect_flash_frames": handle_detect_flash_frames,
+    "detect_duplicates": handle_detect_duplicates,
+    "detect_gaps": handle_detect_gaps,
+    # Write
+    "add_marker": handle_add_marker,
+    "batch_add_markers": handle_batch_add_markers,
+    "trim_clip": handle_trim_clip,
+    "reorder_clips": handle_reorder_clips,
+    "add_transition": handle_add_transition,
+    "change_speed": handle_change_speed,
+    "delete_clips": handle_delete_clips,
+    "split_clip": handle_split_clip,
+    "insert_clip": handle_insert_clip,
+    # Batch Fix
+    "fix_flash_frames": handle_fix_flash_frames,
+    "rapid_trim": handle_rapid_trim,
+    "fill_gaps": handle_fill_gaps,
+    "validate_timeline": handle_validate_timeline,
+    # Generation
+    "auto_rough_cut": handle_auto_rough_cut,
+    "generate_montage": handle_generate_montage,
+    "generate_ab_roll": handle_generate_ab_roll,
+    # Beat Sync
+    "import_beat_markers": handle_import_beat_markers,
+    "snap_to_beats": handle_snap_to_beats,
+}
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextContent]:
+    handler = TOOL_HANDLERS.get(name)
+    if not handler:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
+    try:
+        return await handler(arguments)
+    except FileNotFoundError as e:
+        return [TextContent(type="text", text=f"File not found: {e}")]
     except Exception as e:
         return [TextContent(type="text", text=f"Error: {str(e)}")]
 
@@ -1514,6 +1768,11 @@ async def main():
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-if __name__ == "__main__":
+def main_sync():
+    """Synchronous entry point for use as a console script."""
     import asyncio
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    main_sync()

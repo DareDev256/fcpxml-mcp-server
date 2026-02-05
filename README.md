@@ -23,7 +23,7 @@ A Model Context Protocol (MCP) server that reads and writes FCPXML files. Claude
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Final Cut Pro  │────▶│   Claude +      │────▶│  Final Cut Pro  │
+│  Final Cut Pro  │────>│   Claude +      │────>│  Final Cut Pro  │
 │  Export XML     │     │   MCP Server    │     │  Import XML     │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
@@ -67,19 +67,33 @@ This is a roundtrip workflow. Each edit cycle requires an export and import.
 ```bash
 git clone https://github.com/DareDev256/fcp-mcp-server.git
 cd fcp-mcp-server
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### 2. Configure Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
+**Using uv (recommended):**
 ```json
 {
   "mcpServers": {
-    "fcp": {
+    "fcpxml": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/fcp-mcp-server", "run", "server.py"],
+      "env": {
+        "FCP_PROJECTS_DIR": "/Users/you/Movies"
+      }
+    }
+  }
+}
+```
+
+**Using pip:**
+```json
+{
+  "mcpServers": {
+    "fcpxml": {
       "command": "python",
       "args": ["/path/to/fcp-mcp-server/server.py"],
       "env": {
@@ -97,6 +111,26 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ### 4. Use the Tools
 
 Open Claude Desktop and start working with your timeline.
+
+---
+
+## Pre-Built Workflows (Prompts)
+
+These are ready-to-use workflows that chain multiple tools together. Select them from Claude's prompt menu.
+
+| Prompt | What It Does |
+|--------|-------------|
+| **qc-check** | Full quality control — flash frames, gaps, duplicates, health score |
+| **youtube-chapters** | Extract chapter markers formatted for YouTube descriptions |
+| **rough-cut** | Guided rough cut — shows available clips, suggests structure, generates |
+| **timeline-summary** | Quick overview — stats, pacing, keywords, markers, assessment |
+| **cleanup** | Find and auto-fix flash frames and gaps |
+
+---
+
+## Auto-Discovery (Resources)
+
+The server automatically discovers `.fcpxml` files in your projects directory (`FCP_PROJECTS_DIR`). Claude can see them without you specifying paths manually.
 
 ---
 
@@ -209,7 +243,7 @@ Open Claude Desktop and start working with your timeline.
 
 ```
 fcp-mcp-server/
-├── server.py              # MCP server (32 tools)
+├── server.py              # MCP server (32 tools, 5 prompts, resources)
 ├── fcpxml/
 │   ├── __init__.py
 │   ├── parser.py          # Read FCPXML → Python + library clip listing
@@ -254,7 +288,17 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 
 ## Releases
 
-### v0.3.0 — Batch Operations & Generation (Latest)
+### v0.4.0 — Prompts, Resources & Refactor (Latest)
+
+- **MCP Prompts:** 5 pre-built workflows (qc-check, youtube-chapters, rough-cut, timeline-summary, cleanup)
+- **MCP Resources:** Auto-discovery of FCPXML files in projects directory
+- **Refactored server:** Dispatch dict pattern replaces 1000-line if/elif chain
+- **Cleaned dependencies:** Removed unused packages (pydantic, timecode, click, opentimelineio)
+- **Better error handling:** FileNotFoundError caught separately with clear messages
+- **uv support:** Modern install instructions for Claude Desktop
+- **Entry point:** `fcp-mcp-server` console script via pyproject.toml
+
+### v0.3.0 — Batch Operations & Generation
 
 - **QC Tools:** `detect_flash_frames`, `detect_duplicates`, `detect_gaps`, `validate_timeline`
 - **Batch Fixes:** `fix_flash_frames`, `rapid_trim`, `fill_gaps`
@@ -303,6 +347,8 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 - [x] Montage generation with pacing curves
 - [x] A/B roll documentary-style editing
 - [x] Beat marker import & snap-to-beat
+- [x] MCP Prompts (pre-built workflows)
+- [x] MCP Resources (file auto-discovery)
 - [ ] Audio sync detection
 - [ ] Multi-timeline comparison
 - [ ] Premiere Pro XML support

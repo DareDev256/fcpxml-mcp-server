@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fcp-mcp-server"
-version = "0.2.0"
-description = "The first AI-powered MCP server for Final Cut Pro. Analyze timelines, add markers, trim clips, and generate rough cuts through natural language."
+version = "0.4.0"
+description = "MCP server for Final Cut Pro XML. Analyze timelines, add markers, trim clips, and generate rough cuts via Claude."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -27,10 +27,6 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0",
     "lxml>=4.9.0",
-    "opentimelineio>=0.15.0",
-    "pydantic>=2.0.0",
-    "timecode>=1.4.0",
-    "click>=8.0.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +41,9 @@ dev = [
 Homepage = "https://github.com/DareDev256/fcp-mcp-server"
 Repository = "https://github.com/DareDev256/fcp-mcp-server.git"
 Issues = "https://github.com/DareDev256/fcp-mcp-server/issues"
+
+[project.scripts]
+fcp-mcp-server = "server:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["."]
