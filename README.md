@@ -134,7 +134,7 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 
 ---
 
-## All 32 Tools
+## All 34 Tools
 
 ### Analysis (Read) — 11 tools
 | Tool | Description |
@@ -191,6 +191,12 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 |------|-------------|
 | `import_beat_markers` | Import beat markers from JSON audio analysis |
 | `snap_to_beats` | Align cuts to nearest beat markers |
+
+### Import — 2 tools
+| Tool | Description |
+|------|-------------|
+| `import_srt_markers` | Parse SRT/VTT subtitles into timeline markers |
+| `import_transcript_markers` | Parse timestamped text (YouTube chapters format) into markers |
 
 ---
 
@@ -297,6 +303,9 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 - **Better error handling:** FileNotFoundError caught separately with clear messages
 - **uv support:** Modern install instructions for Claude Desktop
 - **Entry point:** `fcp-mcp-server` console script via pyproject.toml
+- **SRT/VTT import:** `import_srt_markers` — parse subtitles into timeline markers
+- **Transcript import:** `import_transcript_markers` — YouTube chapter format to markers
+- 34 tools total
 
 ### v0.3.0 — Batch Operations & Generation
 
@@ -349,6 +358,8 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 - [x] Beat marker import & snap-to-beat
 - [x] MCP Prompts (pre-built workflows)
 - [x] MCP Resources (file auto-discovery)
+- [x] SRT/VTT subtitle import as markers
+- [x] Timestamped transcript import as markers
 - [ ] Audio sync detection
 - [ ] Multi-timeline comparison
 - [ ] Premiere Pro XML support

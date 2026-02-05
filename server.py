@@ -2,7 +2,7 @@
 """
 FCPXML MCP Server — Batch operations and analysis for Final Cut Pro XML files.
 
-Provides 32 tools, MCP resources for file discovery, and pre-built prompt
+Provides 34 tools, MCP resources for file discovery, and pre-built prompt
 workflows for common editing tasks.
 
 Author: DareDev256 (https://github.com/DareDev256)
@@ -10,6 +10,7 @@ Author: DareDev256 (https://github.com/DareDev256)
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -80,6 +81,122 @@ def _parse_project(filepath: str):
 def _no_timeline():
     """Standard response when no timelines are found."""
     return [TextContent(type="text", text="No timelines found")]
+
+
+def parse_srt(text: str) -> list[dict]:
+    """Parse SRT subtitle format into timestamp/text pairs."""
+    markers = []
+    blocks = re.split(r'\n\s*\n', text.strip())
+    for block in blocks:
+        lines = block.strip().split('\n')
+        if len(lines) < 2:
+            continue
+        # Find the timestamp line (contains -->)
+        ts_line = None
+        text_lines = []
+        for line in lines:
+            if '-->' in line:
+                ts_line = line
+            elif ts_line is not None:
+                text_lines.append(line)
+        if not ts_line:
+            continue
+        # Parse start time: "00:01:30,500 --> 00:01:35,000"
+        start_str = ts_line.split('-->')[0].strip()
+        start_str = start_str.replace(',', '.')  # SRT uses comma for ms
+        parts = start_str.split(':')
+        if len(parts) == 3:
+            h, m = int(parts[0]), int(parts[1])
+            s = float(parts[2])
+            total_seconds = h * 3600 + m * 60 + s
+            markers.append({
+                'seconds': total_seconds,
+                'text': ' '.join(text_lines).strip(),
+            })
+    return markers
+
+
+def parse_vtt(text: str) -> list[dict]:
+    """Parse WebVTT subtitle format into timestamp/text pairs."""
+    markers = []
+    # Strip WEBVTT header
+    text = re.sub(r'^WEBVTT.*?\n', '', text, flags=re.MULTILINE)
+    # Remove NOTE blocks
+    text = re.sub(r'NOTE\n.*?\n\n', '', text, flags=re.DOTALL)
+    blocks = re.split(r'\n\s*\n', text.strip())
+    for block in blocks:
+        lines = block.strip().split('\n')
+        ts_line = None
+        text_lines = []
+        for line in lines:
+            if '-->' in line:
+                ts_line = line
+            elif ts_line is not None:
+                # Strip VTT formatting tags
+                clean = re.sub(r'<[^>]+>', '', line)
+                if clean.strip():
+                    text_lines.append(clean.strip())
+        if not ts_line or not text_lines:
+            continue
+        start_str = ts_line.split('-->')[0].strip()
+        start_str = start_str.replace(',', '.')
+        parts = start_str.split(':')
+        if len(parts) == 3:
+            h, m = int(parts[0]), int(parts[1])
+            s = float(parts[2])
+            total_seconds = h * 3600 + m * 60 + s
+        elif len(parts) == 2:
+            m = int(parts[0])
+            s = float(parts[1])
+            total_seconds = m * 60 + s
+        else:
+            continue
+        markers.append({
+            'seconds': total_seconds,
+            'text': ' '.join(text_lines).strip(),
+        })
+    return markers
+
+
+def parse_transcript_timestamps(text: str) -> list[dict]:
+    """Parse timestamped text (YouTube description format) into markers.
+
+    Supports formats like:
+      0:00 Introduction
+      00:01:30 Main Topic
+      1:05:30 Conclusion
+      00:00:00:00 SMPTE timecode
+    """
+    markers = []
+    for line in text.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # Match timestamp at start of line
+        match = re.match(
+            r'^(\d{1,2}:\d{2}(?::\d{2}){0,2})\s+(.+)$', line
+        )
+        if match:
+            ts_str = match.group(1)
+            label = match.group(2).strip()
+            parts = ts_str.split(':')
+            if len(parts) == 2:
+                m, s = int(parts[0]), int(parts[1])
+                total_seconds = m * 60 + s
+            elif len(parts) == 3:
+                h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
+                total_seconds = h * 3600 + m * 60 + s
+            elif len(parts) == 4:
+                # SMPTE: HH:MM:SS:FF — ignore frames for marker placement
+                h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
+                total_seconds = h * 3600 + m * 60 + s
+            else:
+                continue
+            markers.append({
+                'seconds': total_seconds,
+                'text': label,
+            })
+    return markers
 
 
 # ============================================================================
@@ -757,6 +874,39 @@ async def list_tools() -> list[Tool]:
                     "max_shift_frames": {"type": "integer", "default": 6, "description": "Maximum frames to shift a cut"},
                     "prefer": {"type": "string", "enum": ["earlier", "later", "nearest"], "default": "nearest", "description": "Which beat to prefer when equidistant"},
                     "output_path": {"type": "string", "description": "Output path (default: adds _synced suffix)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        # ===== SUBTITLE / TRANSCRIPT TOOLS =====
+        Tool(
+            name="import_srt_markers",
+            description="Import SRT or VTT subtitles as chapter markers on the timeline",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "srt_path": {"type": "string", "description": "Path to SRT or VTT subtitle file"},
+                    "mode": {"type": "string", "enum": ["all", "first_per_minute", "scene_changes"], "default": "first_per_minute", "description": "How to create markers: every subtitle, first per minute, or on text changes"},
+                    "marker_type": {"type": "string", "enum": ["standard", "chapter"], "default": "chapter"},
+                    "max_label_length": {"type": "integer", "default": 50, "description": "Truncate marker labels to this length"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _subtitled suffix)"}
+                },
+                "required": ["filepath", "srt_path"]
+            }
+        ),
+        Tool(
+            name="import_transcript_markers",
+            description="Import timestamped transcript (YouTube chapter format) as markers. Supports '0:00 Title' and 'HH:MM:SS Title' formats",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "transcript": {"type": "string", "description": "Timestamped text (one per line: '0:00 Introduction')"},
+                    "transcript_path": {"type": "string", "description": "Path to text file with timestamps (alternative to inline transcript)"},
+                    "marker_type": {"type": "string", "enum": ["standard", "chapter"], "default": "chapter"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _chapters suffix)"}
                 },
                 "required": ["filepath"]
             }
@@ -1700,6 +1850,134 @@ Your edits are now synced to the beat!
 """)]
 
 
+# ----- SUBTITLE / TRANSCRIPT HANDLERS -----
+
+async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    srt_path = arguments["srt_path"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_subtitled")
+    mode = arguments.get("mode", "first_per_minute")
+    marker_type = arguments.get("marker_type", "chapter")
+    max_label = arguments.get("max_label_length", 50)
+
+    srt_file = Path(srt_path)
+    if not srt_file.exists():
+        return [TextContent(type="text", text=f"File not found: {srt_path}")]
+
+    text = srt_file.read_text(encoding='utf-8')
+
+    # Detect format and parse
+    if srt_path.endswith('.vtt') or text.strip().startswith('WEBVTT'):
+        raw_markers = parse_vtt(text)
+        fmt_name = "WebVTT"
+    else:
+        raw_markers = parse_srt(text)
+        fmt_name = "SRT"
+
+    if not raw_markers:
+        return [TextContent(type="text", text=f"No subtitles found in {srt_path}")]
+
+    # Apply mode filtering
+    filtered = []
+    if mode == "all":
+        filtered = raw_markers
+    elif mode == "first_per_minute":
+        seen_minutes = set()
+        for m in raw_markers:
+            minute = int(m['seconds'] // 60)
+            if minute not in seen_minutes:
+                seen_minutes.add(minute)
+                filtered.append(m)
+    elif mode == "scene_changes":
+        # Group by similar text, take first occurrence of each unique line
+        seen_texts = set()
+        for m in raw_markers:
+            # Normalize: lowercase, strip punctuation
+            normalized = re.sub(r'[^\w\s]', '', m['text'].lower()).strip()
+            words = normalized.split()[:3]  # First 3 words as key
+            key = ' '.join(words)
+            if key and key not in seen_texts:
+                seen_texts.add(key)
+                filtered.append(m)
+
+    # Convert to marker format
+    markers = []
+    for m in filtered:
+        label = m['text'][:max_label] if len(m['text']) > max_label else m['text']
+        markers.append({
+            'timecode': f"{m['seconds']}s",
+            'name': label,
+            'marker_type': marker_type.upper(),
+        })
+
+    modifier = FCPXMLModifier(filepath)
+    added = modifier.batch_add_markers(markers=markers)
+    modifier.save(output_path)
+
+    return [TextContent(type="text", text=f"""# Subtitle Markers Imported
+
+## Summary
+- **Format**: {fmt_name}
+- **Subtitles Parsed**: {len(raw_markers)}
+- **Mode**: {mode}
+- **Markers Added**: {len(added)}
+- **Marker Type**: {marker_type}
+
+## Output
+Saved to: `{output_path}`
+""")]
+
+
+async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextContent]:
+    filepath = arguments["filepath"]
+    output_path = arguments.get("output_path") or generate_output_path(filepath, "_chapters")
+    marker_type = arguments.get("marker_type", "chapter")
+
+    # Get transcript text from inline or file
+    transcript = arguments.get("transcript")
+    transcript_path = arguments.get("transcript_path")
+
+    if not transcript and not transcript_path:
+        return [TextContent(type="text", text="Provide either 'transcript' (inline text) or 'transcript_path' (path to file)")]
+
+    if transcript_path:
+        tp = Path(transcript_path)
+        if not tp.exists():
+            return [TextContent(type="text", text=f"File not found: {transcript_path}")]
+        transcript = tp.read_text(encoding='utf-8')
+
+    raw_markers = parse_transcript_timestamps(transcript or "")
+
+    if not raw_markers:
+        return [TextContent(type="text", text="No timestamps found. Expected format: '0:00 Title' or 'HH:MM:SS Title', one per line.")]
+
+    markers = []
+    for m in raw_markers:
+        markers.append({
+            'timecode': f"{m['seconds']}s",
+            'name': m['text'],
+            'marker_type': marker_type.upper(),
+        })
+
+    modifier = FCPXMLModifier(filepath)
+    added = modifier.batch_add_markers(markers=markers)
+    modifier.save(output_path)
+
+    return [TextContent(type="text", text=f"""# Transcript Markers Imported
+
+## Summary
+- **Timestamps Found**: {len(raw_markers)}
+- **Markers Added**: {len(added)}
+- **Marker Type**: {marker_type}
+
+## Markers
+""" + "\n".join(f"- `{m['timecode']}` {m['name']}" for m in markers) + f"""
+
+## Output
+Saved to: `{output_path}`
+""")]
+
+
 # ============================================================================
 # TOOL DISPATCH
 # ============================================================================
@@ -1743,6 +2021,9 @@ TOOL_HANDLERS = {
     # Beat Sync
     "import_beat_markers": handle_import_beat_markers,
     "snap_to_beats": handle_snap_to_beats,
+    # SRT / Transcript
+    "import_srt_markers": handle_import_srt_markers,
+    "import_transcript_markers": handle_import_transcript_markers,
 }
 
 
