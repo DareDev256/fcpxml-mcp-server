@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.DareDev256/fcpxml-mcp-server",
+  "description": "Batch operations and analysis for Final Cut Pro XML files. 34 tools for timeline analysis, QC, editing, generation, and subtitle import.",
+  "version": "0.4.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "fcp-mcp-server",
+      "version": "0.4.0",
+      "runtimeHint": "uvx",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "FCP_PROJECTS_DIR",
+          "description": "Directory containing your FCPXML project files for auto-discovery",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

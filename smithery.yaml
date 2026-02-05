@@ -1,0 +1,14 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      fcpProjectsDir:
+        type: string
+        description: "Directory containing FCPXML project files for auto-discovery"
+  commandFunction: |-
+    (config) => ({
+      command: "uvx",
+      args: ["fcp-mcp-server"],
+      env: config.fcpProjectsDir ? { FCP_PROJECTS_DIR: config.fcpProjectsDir } : {}
+    })
