@@ -1,12 +1,13 @@
 """Tests for FCPXML writer/modifier."""
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
+import tempfile
+from pathlib import Path
 
-from fcpxml.writer import FCPXMLModifier
+import pytest
+
 from fcpxml.parser import FCPXMLParser
+from fcpxml.writer import FCPXMLModifier
 
 SAMPLE = Path(__file__).parent.parent / "examples" / "sample.fcpxml"
 
@@ -50,7 +51,7 @@ def test_insert_clip_at_start(temp_fcpxml):
     modifier = FCPXMLModifier(temp_fcpxml)
 
     # Insert clip at start
-    result = modifier.insert_clip(
+    modifier.insert_clip(
         asset_id='r4',  # Broll_Studio
         position='start',
         duration='1s'

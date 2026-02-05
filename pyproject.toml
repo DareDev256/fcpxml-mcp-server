@@ -55,7 +55,11 @@ target-version = ['py310']
 
 [tool.ruff]
 line-length = 100
+exclude = ["docs/"]
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

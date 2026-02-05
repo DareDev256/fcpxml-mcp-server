@@ -5,17 +5,21 @@ The flagship feature: select clips by keywords, set a target duration
 and pacing style, and get a complete rough cut assembled automatically.
 """
 
-import xml.etree.ElementTree as ET
-from xml.dom import minidom
-from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple
-from pathlib import Path
 import random
 import uuid
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from xml.dom import minidom
 
 from .models import (
-    TimeValue, Timecode, PacingConfig, SegmentSpec, RoughCutResult,
-    PacingCurve, MontageConfig
+    MontageConfig,
+    PacingConfig,
+    PacingCurve,
+    RoughCutResult,
+    SegmentSpec,
+    TimeValue,
 )
 
 
@@ -361,7 +365,7 @@ class RoughCutGenerator:
 
         # Create library structure
         library = ET.SubElement(root, 'library',
-            location=f"file:///Users/editor/Movies/RoughCut.fcpbundle/")
+            location="file:///Users/editor/Movies/RoughCut.fcpbundle/")
         event = ET.SubElement(library, 'event',
             name="Rough Cut", uid=str(uuid.uuid4()).upper())
         project = ET.SubElement(event, 'project',
@@ -387,7 +391,7 @@ class RoughCutGenerator:
         trans_dur = TimeValue.from_timecode(transition_duration, self.fps) if add_transitions else None
 
         for i, clip in enumerate(clips):
-            clip_elem = ET.SubElement(spine, 'asset-clip',
+            ET.SubElement(spine, 'asset-clip',
                 ref=clip.get('ref', 'r1'),
                 offset=current_offset.to_fcpxml(),
                 name=clip['name'],
@@ -405,7 +409,7 @@ class RoughCutGenerator:
                     name="Cross Dissolve",
                     offset=trans_offset.to_fcpxml(),
                     duration=trans_dur.to_fcpxml())
-                filter_video = ET.SubElement(transition, 'filter-video',
+                ET.SubElement(transition, 'filter-video',
                     name="Cross Dissolve")
                 spine.insert(-1, transition)
 

@@ -6,10 +6,9 @@ timelines, clips, markers, and other elements.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, Tuple
 from enum import Enum
 from math import gcd
-
+from typing import Any, Dict, List, Optional, Tuple
 
 # ============================================================================
 # ENUMS

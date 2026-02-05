@@ -17,22 +17,27 @@ from typing import Any, Sequence
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import (
-    Tool,
-    TextContent,
-    Resource,
+    GetPromptResult,
     Prompt,
     PromptArgument,
     PromptMessage,
-    GetPromptResult,
+    Resource,
+    TextContent,
+    Tool,
 )
 
-from fcpxml.parser import FCPXMLParser
-from fcpxml.writer import FCPXMLModifier
-from fcpxml.rough_cut import RoughCutGenerator
 from fcpxml.models import (
-    MarkerType, SegmentSpec, FlashFrameSeverity, FlashFrame,
-    GapInfo, DuplicateGroup, Timecode,
+    DuplicateGroup,
+    FlashFrame,
+    FlashFrameSeverity,
+    GapInfo,
+    MarkerType,
+    SegmentSpec,
+    Timecode,
 )
+from fcpxml.parser import FCPXMLParser
+from fcpxml.rough_cut import RoughCutGenerator
+from fcpxml.writer import FCPXMLModifier
 
 server = Server("fcp-mcp-server")
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
@@ -62,6 +67,14 @@ def format_duration(seconds: float) -> str:
     elif seconds < 60:
         return f"{seconds:.2f}s"
     return f"{int(seconds // 60)}m {seconds % 60:.1f}s"
+
+
+def _fmt_suggestions(suggestions: list[str]) -> str:
+    """Format pacing suggestions as markdown list (Python 3.10 compatible)."""
+    if not suggestions:
+        return "- Pacing looks good!"
+    nl = "\n"
+    return nl.join(f"- {s}" for s in suggestions)
 
 
 def generate_output_path(input_path: str, suffix: str = "_modified") -> str:
@@ -1093,7 +1106,7 @@ async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
 | {format_duration(seg_avgs[0]) if len(seg_avgs) > 0 else 'N/A'} | {format_duration(seg_avgs[1]) if len(seg_avgs) > 1 else 'N/A'} | {format_duration(seg_avgs[2]) if len(seg_avgs) > 2 else 'N/A'} | {format_duration(seg_avgs[3]) if len(seg_avgs) > 3 else 'N/A'} |
 
 ## Suggestions
-{"".join(f"- {s}\n" for s in suggestions) if suggestions else "- Pacing looks good!"}
+{_fmt_suggestions(suggestions)}
 """)]
 
 

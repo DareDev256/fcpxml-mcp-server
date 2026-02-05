@@ -5,20 +5,21 @@ Provides both generation (from Python objects) and modification
 (load, edit, save) workflows for FCPXML documents.
 """
 
-import xml.etree.ElementTree as ET
-from xml.dom import minidom
-from datetime import datetime
-from typing import Optional, List, Dict, Any, Union
-from pathlib import Path
-from enum import Enum
-import uuid
 import copy
+import uuid
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from xml.dom import minidom
 
 from .models import (
-    Project, Timeline, Clip, Marker, MarkerType, MarkerColor,
-    Keyword, Timecode, TimeValue
+    MarkerColor,
+    MarkerType,
+    Project,
+    Timecode,
+    TimeValue,
 )
-
 
 # ============================================================================
 # FCPXML MODIFIER - Load, Edit, Save Workflow
@@ -681,7 +682,7 @@ class FCPXMLModifier:
         clip_start = self._parse_time(clip.get('start', '0s'))
         clip_duration = self._parse_time(clip.get('duration', '0s'))
         clip_name = clip.get('name', 'Clip')
-        clip_ref = clip.get('ref')
+        clip.get('ref')
 
         # Sort split points
         split_times = sorted([self._parse_time(sp) for sp in split_points])
@@ -916,7 +917,7 @@ class FCPXMLModifier:
         trimmed = []
 
         max_dur = self._parse_time(max_duration) if max_duration else None
-        min_dur = self._parse_time(min_duration) if min_duration else None
+        self._parse_time(min_duration) if min_duration else None
 
         for clip in list(spine):
             if clip.tag not in ('clip', 'asset-clip', 'video', 'ref-clip'):

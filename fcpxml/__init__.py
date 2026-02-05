@@ -9,46 +9,40 @@ This package provides tools to:
 """
 
 from .models import (
-    # Enums
-    MarkerType,
-    MarkerColor,
-    TransitionType,
-    PacingStyle,
-
-    # Time handling
-    TimeValue,
-    Timecode,
-
+    AudioClip,
+    Clip,
     # Core models
     Keyword,
     Marker,
-    Clip,
-    AudioClip,
-    VideoClip,
-    Transition,
-    Timeline,
+    MarkerColor,
+    # Enums
+    MarkerType,
+    PacingConfig,
+    PacingStyle,
     Project,
-
+    RoughCutResult,
     # Rough cut models
     SegmentSpec,
-    PacingConfig,
-    RoughCutResult,
+    Timecode,
+    Timeline,
+    # Time handling
+    TimeValue,
+    Transition,
+    TransitionType,
+    VideoClip,
 )
-
 from .parser import FCPXMLParser, parse_fcpxml
-
-from .writer import (
-    FCPXMLWriter,
-    FCPXMLModifier,
-    modify_fcpxml,
-    add_marker_to_file,
-    trim_clip_in_file,
-)
-
 from .rough_cut import (
     RoughCutGenerator,
     generate_rough_cut,
     generate_segmented_rough_cut,
+)
+from .writer import (
+    FCPXMLModifier,
+    FCPXMLWriter,
+    add_marker_to_file,
+    modify_fcpxml,
+    trim_clip_in_file,
 )
 
 __version__ = "0.4.0"

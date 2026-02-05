@@ -1,18 +1,22 @@
 """Tests for v0.3.0 Speed Cutting & AI-Powered features."""
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
-import json
+import tempfile
+from pathlib import Path
 
-from fcpxml.writer import FCPXMLModifier
+import pytest
+
+from fcpxml.models import (
+    DuplicateGroup,
+    FlashFrameSeverity,
+    MontageConfig,
+    PacingCurve,
+    ValidationIssue,
+    ValidationResult,
+)
 from fcpxml.parser import FCPXMLParser
 from fcpxml.rough_cut import RoughCutGenerator
-from fcpxml.models import (
-    FlashFrameSeverity, FlashFrame, GapInfo, DuplicateGroup,
-    PacingCurve, MontageConfig, ValidationIssue, ValidationResult
-)
+from fcpxml.writer import FCPXMLModifier
 
 SAMPLE = Path(__file__).parent.parent / "examples" / "sample.fcpxml"
 
@@ -174,7 +178,7 @@ def test_duplicate_group_overlapping_ranges():
             {'name': 'Clip2', 'source_start': 10, 'source_duration': 5}
         ]
     )
-    assert group_no_overlap.has_overlapping_ranges == False
+    assert not group_no_overlap.has_overlapping_ranges
 
     # Overlapping
     group_overlap = DuplicateGroup(
@@ -185,7 +189,7 @@ def test_duplicate_group_overlapping_ranges():
             {'name': 'Clip2', 'source_start': 5, 'source_duration': 10}  # Overlaps!
         ]
     )
-    assert group_overlap.has_overlapping_ranges == True
+    assert group_overlap.has_overlapping_ranges
 
 
 def test_validation_result_counts():
@@ -375,7 +379,7 @@ def test_full_workflow_trim_and_validate(temp_fcpxml):
     modifier = FCPXMLModifier(temp_fcpxml)
 
     # Step 1: Rapid trim
-    trimmed = modifier.rapid_trim(max_duration='2s')
+    modifier.rapid_trim(max_duration='2s')
 
     # Step 2: Save
     output = temp_fcpxml.replace('.fcpxml', '_workflow.fcpxml')

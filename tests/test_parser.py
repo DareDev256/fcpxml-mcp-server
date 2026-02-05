@@ -1,9 +1,9 @@
 """Tests for FCPXML parser."""
 
-import pytest
 from pathlib import Path
-from fcpxml.parser import FCPXMLParser
+
 from fcpxml.models import MarkerType
+from fcpxml.parser import FCPXMLParser
 
 SAMPLE = Path(__file__).parent.parent / "examples" / "sample.fcpxml"
 
