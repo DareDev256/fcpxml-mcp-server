@@ -259,8 +259,9 @@ fcp-mcp-server/
 ├── docs/
 │   └── specs/             # Design specs and schemas
 ├── tests/
-│   ├── test_parser.py     # Parser tests (8 tests)
-│   ├── test_writer.py     # Writer tests (8 tests)
+│   ├── test_models.py         # Model & TimeValue tests (57 tests)
+│   ├── test_parser.py         # Parser tests (8 tests)
+│   ├── test_writer.py         # Writer tests (8 tests)
 │   └── test_speed_cutting.py  # Speed cutting & montage tests (22 tests)
 ├── examples/
 │   └── sample.fcpxml      # Sample FCPXML for testing
