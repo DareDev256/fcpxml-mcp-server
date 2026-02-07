@@ -4,9 +4,21 @@ Covers the core time math and model properties that underpin all 34 tools.
 """
 
 import pytest
+
 from fcpxml.models import (
-    Clip, FlashFrame, FlashFrameSeverity, GapInfo, Keyword, Marker, PacingConfig,
-    Project, Timecode, Timeline, TimeValue, ValidationIssue, ValidationIssueType,
+    Clip,
+    FlashFrame,
+    FlashFrameSeverity,
+    GapInfo,
+    Keyword,
+    Marker,
+    PacingConfig,
+    Project,
+    Timecode,
+    Timeline,
+    TimeValue,
+    ValidationIssue,
+    ValidationIssueType,
     ValidationResult,
 )
 
