@@ -445,3 +445,183 @@ def test_change_speed_invalid_clip(temp_fcpxml):
 
     with pytest.raises(ValueError, match="Clip not found"):
         modifier.change_speed(clip_id='ghost', speed=2.0)
+
+
+# ============================================================
+# Add Transition Tests
+# ============================================================
+
+def test_add_transition_at_end(temp_fcpxml):
+    """Add a cross-dissolve transition at the end of a clip."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    initial_count = len(list(spine))
+
+    transition = modifier.add_transition(
+        clip_id='Broll_City',
+        position='end',
+        transition_type='cross-dissolve',
+        duration='00:00:00:12'
+    )
+
+    assert transition.tag == 'transition'
+    assert transition.get('name') == 'Cross Dissolve'
+    assert transition.get('duration') is not None
+    assert transition.find('filter-video') is not None
+    assert len(list(modifier._get_spine())) == initial_count + 1
+
+
+def test_add_transition_at_both(temp_fcpxml):
+    """Add transitions at both ends inserts two elements."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    initial_count = len(list(modifier._get_spine()))
+
+    result = modifier.add_transition(
+        clip_id='Broll_City', position='both',
+        transition_type='cross-dissolve', duration='00:00:00:12'
+    )
+
+    assert isinstance(result, list) or result.tag == 'transition'
+    assert len(list(modifier._get_spine())) == initial_count + 2
+
+
+def test_add_transition_invalid_clip(temp_fcpxml):
+    """Adding a transition to a nonexistent clip raises ValueError."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    with pytest.raises(ValueError, match="Clip not found"):
+        modifier.add_transition(clip_id='ghost_clip', position='end')
+
+
+# ============================================================
+# Reorder Clips Tests
+# ============================================================
+
+def test_reorder_clips_to_end(temp_fcpxml):
+    """Move a clip to the end of the timeline."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    initial_count = len(list(modifier._get_spine()))
+
+    modifier.reorder_clips(
+        clip_ids=['Broll_City'], target_position='end', ripple=True
+    )
+
+    spine_list = list(modifier._get_spine())
+    assert len(spine_list) == initial_count
+    assert spine_list[-1].get('name') == 'Broll_City'
+
+
+def test_reorder_clips_to_start(temp_fcpxml):
+    """Move a clip to the start of the timeline."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    modifier.reorder_clips(
+        clip_ids=['Broll_City'], target_position='start', ripple=True
+    )
+
+    first_clip = list(modifier._get_spine())[0]
+    assert first_clip.get('name') == 'Broll_City'
+    assert first_clip.get('offset') in ('0s', '0/24s')
+
+
+def test_reorder_clips_invalid_raises(temp_fcpxml):
+    """Reordering nonexistent clips raises ValueError."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    with pytest.raises(ValueError, match="No clips found"):
+        modifier.reorder_clips(clip_ids=['nonexistent'], target_position='start')
+
+
+# ============================================================
+# Add Marker at Timeline Tests
+# ============================================================
+
+def test_add_marker_at_timeline_position(temp_fcpxml):
+    """Add a marker at a timeline position within an indexed clip."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # Broll_Studio (last indexed): offset 222/24s=9.25s, dur 120/24s=5s
+    marker = modifier.add_marker_at_timeline(
+        timecode='00:00:10:00', name='Timeline marker'
+    )
+
+    assert marker is not None
+    assert marker.get('value') == 'Timeline marker'
+
+
+def test_add_marker_at_timeline_invalid_position(temp_fcpxml):
+    """Adding a marker past the timeline end raises ValueError."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    with pytest.raises(ValueError, match="No clip found"):
+        modifier.add_marker_at_timeline(timecode='99:00:00:00', name='Way past end')
+
+
+# ============================================================
+# Batch Add Markers Tests
+# ============================================================
+
+def test_batch_add_markers_explicit(temp_fcpxml):
+    """Add multiple explicit markers in a batch."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    markers = [
+        {'timecode': '00:00:10:00', 'name': 'Marker A'},
+        {'timecode': '00:00:48:00', 'name': 'Marker B'},
+    ]
+
+    created = modifier.batch_add_markers(markers=markers)
+
+    assert len(created) == 2
+    assert created[0].get('value') == 'Marker A'
+    assert created[1].get('value') == 'Marker B'
+
+
+def test_batch_add_markers_with_type(temp_fcpxml):
+    """Batch markers respect marker_type parameter."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    markers = [
+        {'timecode': '00:00:10:00', 'name': 'Chapter 1', 'marker_type': 'chapter'},
+    ]
+
+    created = modifier.batch_add_markers(markers=markers)
+
+    assert len(created) == 1
+    assert created[0].tag == 'chapter-marker'
+
+
+# ============================================================
+# Select by Keyword Tests
+# ============================================================
+
+def test_select_by_keyword_any(temp_fcpxml):
+    """Select clips matching any of the given keywords."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    matches = modifier.select_by_keyword(keywords=['B-Roll'], match_mode='any')
+
+    assert len(matches) >= 1
+    for clip_id in matches:
+        clip = modifier.clips[clip_id]
+        kw_values = [kw.get('value', '') for kw in clip.findall('keyword')]
+        assert 'B-Roll' in kw_values
+
+
+def test_select_by_keyword_no_matches(temp_fcpxml):
+    """Selecting with a nonexistent keyword returns empty list."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    matches = modifier.select_by_keyword(keywords=['FakeKeyword'], match_mode='any')
+    assert matches == []
+
+
+def test_select_by_keyword_all_mode(temp_fcpxml):
+    """'all' mode requires clips to have every keyword."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # No clip has both 'Interview' AND 'B-Roll'
+    matches = modifier.select_by_keyword(
+        keywords=['Interview', 'B-Roll'], match_mode='all'
+    )
+    assert matches == []
