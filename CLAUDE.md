@@ -32,7 +32,7 @@ uv run --extra dev pytest tests/ -v # Run tests
 
 ## Testing
 
-95 tests across 4 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. Other tests use `examples/sample.fcpxml` as fixture data. Tests create temp files and clean up after.
+112 tests across 4 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. Other tests use `examples/sample.fcpxml` as fixture data. Tests create temp files and clean up after.
 
 ## FCPXML Gotchas
 
