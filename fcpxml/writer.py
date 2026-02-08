@@ -13,6 +13,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from xml.dom import minidom
 
+from .models import (
+    MarkerColor,
+    MarkerType,
+    Project,
+    Timecode,
+    TimeValue,
+)
+
 
 def write_fcpxml(root: ET.Element, filepath: str) -> str:
     """Format an ElementTree root as pretty-printed FCPXML and write to disk.
@@ -39,14 +47,6 @@ def write_fcpxml(root: ET.Element, filepath: str) -> str:
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(final_xml)
     return filepath
-
-from .models import (
-    MarkerColor,
-    MarkerType,
-    Project,
-    Timecode,
-    TimeValue,
-)
 
 # ============================================================================
 # FCPXML MODIFIER - Load, Edit, Save Workflow

@@ -12,8 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .writer import write_fcpxml
-
 from .models import (
     MontageConfig,
     PacingConfig,
@@ -22,6 +20,7 @@ from .models import (
     SegmentSpec,
     TimeValue,
 )
+from .writer import write_fcpxml
 
 
 class RoughCutGenerator:

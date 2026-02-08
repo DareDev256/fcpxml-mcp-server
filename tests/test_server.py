@@ -6,7 +6,6 @@ imported without the real MCP SDK.
 """
 
 import asyncio
-import json
 import sys
 import tempfile
 import types
@@ -87,8 +86,6 @@ def _install_mcp_shim():
 
 if _NEEDS_SHIM:
     _install_mcp_shim()
-
-import pytest  # noqa: E402  (must come after shim)
 
 from server import (  # noqa: E402
     call_tool,
@@ -360,7 +357,7 @@ class TestHandleListClips:
         result = _run(handle_list_clips({"filepath": SAMPLE, "limit": 2}))
         text = result[0].text
         # Only 2 data rows should appear (not all 9)
-        data_rows = [l for l in text.split("\n") if l.startswith("| ") and "---" not in l and "#" not in l]
+        data_rows = [line for line in text.split("\n") if line.startswith("| ") and "---" not in line and "#" not in line]
         assert len(data_rows) == 2
 
 
