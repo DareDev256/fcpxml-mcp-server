@@ -8,6 +8,8 @@ workflows for common editing tasks.
 Author: DareDev256 (https://github.com/DareDev256)
 """
 
+from __future__ import annotations
+
 import json
 import os
 import re
