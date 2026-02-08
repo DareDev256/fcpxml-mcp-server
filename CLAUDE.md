@@ -30,9 +30,18 @@ uv run server.py                    # Start MCP server
 uv run --extra dev pytest tests/ -v # Run tests
 ```
 
+## Pre-Commit (MANDATORY)
+
+Before committing ANY changes, run both:
+```bash
+ruff check . --exclude docs/   # Lint — must pass with zero errors
+pytest tests/ -v               # Tests — all must pass
+```
+CI runs both on every push to main. If either fails, the commit gets an X on GitHub. Fix lint errors before committing, not after.
+
 ## Testing
 
-112 tests across 4 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. Other tests use `examples/sample.fcpxml` as fixture data. Tests create temp files and clean up after.
+283 tests across 4 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. Tests use `examples/sample.fcpxml` as fixture data. Tests create temp files and clean up after.
 
 ## FCPXML Gotchas
 
