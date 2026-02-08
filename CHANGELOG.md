@@ -1,0 +1,74 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- 283 unit tests across 7 test files covering models, parser, writer, server handlers, and rough cut generation
+- GitHub Actions CI pipeline with linting (ruff) and test execution
+- MCP registry metadata files for discoverability
+
+### Fixed
+
+- Import sort order in test files for ruff I001 compliance
+
+## [0.4.0] - 2026-02-05
+
+### Added
+
+- 5 pre-built MCP prompt workflows: QC check, YouTube chapters, rough cut, timeline summary, cleanup
+- MCP resources for automatic FCPXML file discovery in project directories
+- SRT/VTT subtitle import as timeline markers (`import_srt_markers`)
+- YouTube chapter/transcript import as markers (`import_transcript_markers`)
+- Server architecture refactored to dispatch-dict pattern (`TOOL_HANDLERS`)
+
+## [0.3.0] - 2026-01-20
+
+### Added
+
+- AI-powered rough cut generation from source clips (`auto_rough_cut`)
+- Montage generator with pacing curves: accelerating, decelerating, pyramid (`generate_montage`)
+- A/B roll generator for documentary-style edits (`generate_ab_roll`)
+- Beat sync tools: `import_beat_markers`, `snap_to_beats`
+- Flash frame detection and auto-fix (`detect_flash_frames`, `fix_flash_frames`)
+- Duplicate clip detection (`detect_duplicates`)
+- Gap detection (`detect_gaps`, `fill_gaps`)
+- Timeline validation with health score (`validate_timeline`)
+- Batch rapid trim (`rapid_trim`)
+- Speed change tool (`change_speed`)
+- Clip splitting at timecodes (`split_clip`)
+- Clip deletion with ripple support (`delete_clips`)
+- Transition insertion: cross-dissolve, fade, wipe (`add_transition`)
+
+## [0.2.0] - 2026-01-20
+
+### Added
+
+- Library clip listing (`list_library_clips`)
+- Timeline clip insertion from library (`insert_clip`)
+- Clip trimming with ripple (`trim_clip`)
+- Clip reordering with ripple support (`reorder_clips`)
+- Batch marker operations (`batch_add_markers`)
+- Pacing analysis with suggestions (`analyze_pacing`)
+- Keyword listing and selection (`list_keywords`, `select_by_keyword`)
+- EDL export (`export_edl`)
+- CSV export (`export_csv`)
+
+## [0.1.0] - 2026-01-18
+
+### Added
+
+- Initial release — first MCP server for Final Cut Pro
+- FCPXML parser supporting versions 1.8–1.11
+- Timeline analysis (`analyze_timeline`)
+- Clip listing with timecodes (`list_clips`)
+- Marker listing (`list_markers`)
+- Short cut and long clip detection (`find_short_cuts`, `find_long_clips`)
+- Single marker insertion (`add_marker`)
+- Project file discovery (`list_projects`)
+- Python data models: TimeValue (rational time arithmetic), Timecode, Clip, Timeline, Project

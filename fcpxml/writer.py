@@ -1254,18 +1254,22 @@ class FCPXMLWriter:
     """Writer for generating Final Cut Pro FCPXML files from Python objects."""
 
     def __init__(self, version: str = "1.11"):
+        """Initialize writer targeting the given FCPXML version."""
         self.version = version
         self.resource_counter = 1
 
     def _next_resource_id(self) -> str:
+        """Return an auto-incrementing resource ID (r1, r2, ...)."""
         rid = f"r{self.resource_counter}"
         self.resource_counter += 1
         return rid
 
     def _generate_uid(self) -> str:
+        """Generate a unique identifier for FCPXML elements."""
         return str(uuid.uuid4()).upper()
 
     def _tc_to_rational(self, tc: Timecode) -> str:
+        """Convert a Timecode to FCPXML rational time string (e.g. '48/24s')."""
         return f"{tc.frames}/{int(tc.frame_rate)}s"
 
     def write_project(self, project: Project, filepath: str):
@@ -1284,6 +1288,7 @@ class FCPXMLWriter:
             f.write(final_xml)
 
     def _build_fcpxml(self, project: Project) -> ET.Element:
+        """Build the full FCPXML element tree: fcpxml > resources + library > event > project."""
         root = ET.Element('fcpxml', version=self.version)
         resources = ET.SubElement(root, 'resources')
         resource_map = {}
@@ -1307,6 +1312,7 @@ class FCPXMLWriter:
         return root
 
     def _add_timeline(self, event, timeline, resources, resource_map):
+        """Add a timeline as a project > sequence > spine structure under the event."""
         project_elem = ET.SubElement(event, 'project',
             name=timeline.name, uid=self._generate_uid(),
             modDate=datetime.now().strftime("%Y-%m-%d %H:%M:%S -0500"))
@@ -1323,6 +1329,7 @@ class FCPXMLWriter:
             self._add_marker(sequence, marker)
 
     def _add_clip(self, spine, clip, resources, resource_map):
+        """Add a clip as an asset-clip element, creating its asset resource if needed."""
         if clip.media_path and clip.media_path not in resource_map:
             asset_id = self._next_resource_id()
             ET.SubElement(resources, 'asset', id=asset_id, name=clip.name,
@@ -1343,6 +1350,7 @@ class FCPXMLWriter:
             self._add_keyword(clip_elem, keyword)
 
     def _add_marker(self, parent, marker):
+        """Add a marker or chapter-marker element to a parent clip or sequence."""
         tag = 'chapter-marker' if marker.marker_type == MarkerType.CHAPTER else 'marker'
         elem = ET.SubElement(parent, tag,
             start=self._tc_to_rational(marker.start),
@@ -1352,6 +1360,7 @@ class FCPXMLWriter:
             elem.set('note', marker.note)
 
     def _add_keyword(self, parent, keyword):
+        """Add a keyword element with optional start/duration range to a parent clip."""
         attrs = {'value': keyword.value}
         if keyword.start:
             attrs['start'] = self._tc_to_rational(keyword.start)
