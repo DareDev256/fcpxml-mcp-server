@@ -11,7 +11,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from xml.dom import minidom
+
+from .writer import write_fcpxml
 
 from .models import (
     MontageConfig,
@@ -416,18 +417,7 @@ class RoughCutGenerator:
             current_offset = current_offset + clip['use_duration']
 
         # Write output
-        xml_str = ET.tostring(root, encoding='unicode')
-        dom = minidom.parseString(xml_str)
-        pretty_xml = dom.toprettyxml(indent="    ")
-        lines = [line for line in pretty_xml.split('\n') if line.strip()]
-        final_xml = '\n'.join(lines)
-        final_xml = final_xml.replace(
-            '<?xml version="1.0" ?>',
-            '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>'
-        )
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(final_xml)
+        write_fcpxml(root, output_path)
 
         return total_duration.to_seconds()
 

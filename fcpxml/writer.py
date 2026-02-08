@@ -13,6 +13,33 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from xml.dom import minidom
 
+
+def write_fcpxml(root: ET.Element, filepath: str) -> str:
+    """Format an ElementTree root as pretty-printed FCPXML and write to disk.
+
+    Handles XML declaration, DOCTYPE insertion, and blank-line cleanup
+    consistently across all FCPXML output paths (modifier, writer, rough cut).
+
+    Args:
+        root: The <fcpxml> root Element to serialize.
+        filepath: Destination file path.
+
+    Returns:
+        The filepath written to.
+    """
+    xml_str = ET.tostring(root, encoding='unicode')
+    dom = minidom.parseString(xml_str)
+    pretty_xml = dom.toprettyxml(indent="    ")
+    lines = [line for line in pretty_xml.split('\n') if line.strip()]
+    final_xml = '\n'.join(lines)
+    final_xml = final_xml.replace(
+        '<?xml version="1.0" ?>',
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>'
+    )
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(final_xml)
+    return filepath
+
 from .models import (
     MarkerColor,
     MarkerType,
@@ -115,26 +142,7 @@ class FCPXMLModifier:
     def save(self, output_path: Optional[str] = None) -> str:
         """Write modified FCPXML to file."""
         out_path = output_path or str(self.path)
-
-        # Write with XML declaration and DOCTYPE
-        xml_str = ET.tostring(self.root, encoding='unicode')
-        dom = minidom.parseString(xml_str)
-        pretty_xml = dom.toprettyxml(indent="    ")
-
-        # Clean up extra blank lines
-        lines = [line for line in pretty_xml.split('\n') if line.strip()]
-        final_xml = '\n'.join(lines)
-
-        # Fix XML declaration
-        final_xml = final_xml.replace(
-            '<?xml version="1.0" ?>',
-            '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>'
-        )
-
-        with open(out_path, 'w', encoding='utf-8') as f:
-            f.write(final_xml)
-
-        return out_path
+        return write_fcpxml(self.root, out_path)
 
     # ========================================================================
     # MARKER OPERATIONS
@@ -1275,17 +1283,7 @@ class FCPXMLWriter:
     def write_project(self, project: Project, filepath: str):
         """Write a project to an FCPXML file."""
         root = self._build_fcpxml(project)
-        xml_str = ET.tostring(root, encoding='unicode')
-        dom = minidom.parseString(xml_str)
-        pretty_xml = dom.toprettyxml(indent="    ")
-        lines = [line for line in pretty_xml.split('\n') if line.strip()]
-        final_xml = '\n'.join(lines)
-        final_xml = final_xml.replace(
-            '<?xml version="1.0" ?>',
-            '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>'
-        )
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(final_xml)
+        write_fcpxml(root, filepath)
 
     def _build_fcpxml(self, project: Project) -> ET.Element:
         """Build the full FCPXML element tree: fcpxml > resources + library > event > project."""

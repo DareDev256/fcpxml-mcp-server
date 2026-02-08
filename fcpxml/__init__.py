@@ -43,6 +43,7 @@ from .writer import (
     add_marker_to_file,
     modify_fcpxml,
     trim_clip_in_file,
+    write_fcpxml,
 )
 
 __version__ = "0.4.0"
@@ -85,6 +86,7 @@ __all__ = [
     "modify_fcpxml",
     "add_marker_to_file",
     "trim_clip_in_file",
+    "write_fcpxml",
 
     # Rough Cut
     "RoughCutGenerator",
