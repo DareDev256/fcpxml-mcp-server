@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Import sort order in test files for ruff I001 compliance
 
+### Security
+
+- Add path validation to all 34 tool handlers — blocks path traversal, null bytes, symlink attacks, and oversized files (100 MB limit)
+- Enforce file extension whitelists: `.fcpxml`/`.fcpxmld` for projects, `.json` for beats, `.srt`/`.vtt` for subtitles
+- Validate output paths to prevent writing to arbitrary filesystem locations
+- Harden error handler to avoid leaking internal paths and stack traces in unexpected errors
+
 ## [0.4.0] - 2026-02-05
 
 ### Added

@@ -556,7 +556,7 @@ class TestHandleImportTranscriptMarkers:
         assert "Provide either" in text
 
     def test_missing_transcript_file(self):
-        result = _run(handle_import_transcript_markers({
+        result = _run(call_tool("import_transcript_markers", {
             "filepath": SAMPLE,
             "transcript_path": "/nonexistent/path.txt",
         }))

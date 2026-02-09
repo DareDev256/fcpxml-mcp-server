@@ -44,6 +44,60 @@ from fcpxml.writer import FCPXMLModifier
 server = Server("fcp-mcp-server")
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
 
+# Maximum file size for parsing (100 MB).
+MAX_FILE_SIZE = 100 * 1024 * 1024
+
+
+# ============================================================================
+# SECURITY UTILITIES
+# ============================================================================
+
+def _validate_filepath(filepath: str, allowed_extensions: tuple[str, ...] | None = None) -> str:
+    """Validate a user-provided file path against traversal and size attacks.
+
+    Resolves symlinks, blocks null bytes, enforces extension whitelist, and
+    checks file size before any parsing takes place.
+
+    Raises:
+        ValueError: For invalid paths (null bytes, bad extensions, oversized).
+        FileNotFoundError: When the resolved path does not exist.
+    """
+    if '\x00' in filepath:
+        raise ValueError("Invalid file path: null byte detected")
+
+    resolved = Path(filepath).resolve()
+
+    if not resolved.exists():
+        raise FileNotFoundError(f"File not found: {filepath}")
+
+    if not resolved.is_file():
+        raise ValueError(f"Not a regular file: {filepath}")
+
+    if allowed_extensions and resolved.suffix.lower() not in allowed_extensions:
+        raise ValueError(
+            f"Invalid file type '{resolved.suffix}'. "
+            f"Allowed: {', '.join(allowed_extensions)}"
+        )
+
+    if resolved.stat().st_size > MAX_FILE_SIZE:
+        size_mb = resolved.stat().st_size / (1024 * 1024)
+        raise ValueError(f"File too large ({size_mb:.1f} MB). Maximum: {MAX_FILE_SIZE // (1024 * 1024)} MB")
+
+    return str(resolved)
+
+
+def _validate_output_path(output_path: str) -> str:
+    """Validate an output path: resolve traversal, block null bytes, ensure parent exists."""
+    if '\x00' in output_path:
+        raise ValueError("Invalid output path: null byte detected")
+
+    resolved = Path(output_path).resolve()
+
+    if not resolved.parent.exists():
+        raise ValueError(f"Output directory does not exist: {resolved.parent}")
+
+    return str(resolved)
+
 
 # ============================================================================
 # UTILITIES
@@ -87,6 +141,7 @@ def generate_output_path(input_path: str, suffix: str = "_modified") -> str:
 
 def _parse_project(filepath: str):
     """Parse an FCPXML file and return the project with its primary timeline."""
+    filepath = _validate_filepath(filepath, ('.fcpxml', '.fcpxmld'))
     project = FCPXMLParser().parse_file(filepath)
     if not project.timelines:
         return None, None
@@ -238,8 +293,10 @@ async def list_resources() -> list[Resource]:
 async def read_resource(uri: str) -> str:
     """Read an FCPXML file and return a summary."""
     filepath = str(uri).replace("file://", "")
-    if not Path(filepath).exists():
-        return f"File not found: {filepath}"
+    try:
+        filepath = _validate_filepath(filepath, ('.fcpxml', '.fcpxmld'))
+    except (ValueError, FileNotFoundError) as e:
+        return str(e)
 
     project, tl = _parse_project(filepath)
     if not tl:
@@ -937,7 +994,10 @@ async def list_tools() -> list[Tool]:
 
 async def handle_list_projects(arguments: dict) -> Sequence[TextContent]:
     directory = arguments.get("directory", PROJECTS_DIR)
-    files = find_fcpxml_files(directory)
+    resolved_dir = Path(directory).resolve()
+    if not resolved_dir.is_dir():
+        return [TextContent(type="text", text=f"Not a valid directory: {directory}")]
+    files = find_fcpxml_files(str(resolved_dir))
     if not files:
         return [TextContent(type="text", text=f"No FCPXML files found in {directory}")]
     return [TextContent(type="text", text=f"Found {len(files)} FCPXML file(s):\n" + "\n".join(f"  - {f}" for f in files))]
@@ -1113,8 +1173,9 @@ async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_list_library_clips(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
     parser = FCPXMLParser()
-    parser.parse_file(arguments["filepath"])
+    parser.parse_file(filepath)
     keywords = arguments.get("keywords")
     library_clips = parser.get_library_clips(keywords=keywords)
     limit = arguments.get("limit")
@@ -1187,8 +1248,9 @@ async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
     parser = FCPXMLParser()
-    project = parser.parse_file(arguments["filepath"])
+    project = parser.parse_file(filepath)
     if not project.timelines:
         return _no_timeline()
     tl = project.primary_timeline
@@ -1299,8 +1361,10 @@ async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
 # ----- WRITE HANDLERS -----
 
 async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     marker_type = MarkerType[arguments.get("marker_type", "standard").upper()]
     modifier.add_marker_at_timeline(
@@ -1312,8 +1376,10 @@ async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     markers_added = modifier.batch_add_markers(
         markers=arguments.get("markers", []),
@@ -1325,8 +1391,10 @@ async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     modifier.trim_clip(
         clip_id=arguments["clip_id"],
@@ -1339,8 +1407,10 @@ async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     modifier.reorder_clips(
         clip_ids=arguments["clip_ids"],
@@ -1353,8 +1423,10 @@ async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     modifier.add_transition(
         clip_id=arguments["clip_id"],
@@ -1367,8 +1439,10 @@ async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     modifier.change_speed(
         clip_id=arguments["clip_id"],
@@ -1382,8 +1456,10 @@ async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     modifier.delete_clip(
         clip_ids=arguments["clip_ids"],
@@ -1394,8 +1470,10 @@ async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     new_clips = modifier.split_clip(
         clip_id=arguments["clip_id"],
@@ -1406,8 +1484,10 @@ async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath)
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
     modifier = FCPXMLModifier(filepath)
     new_clip = modifier.insert_clip(
         asset_id=arguments.get("asset_id"),
@@ -1427,8 +1507,10 @@ async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
 # ----- BATCH FIX HANDLERS -----
 
 async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_flash_fixed")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_flash_fixed")
+    )
     modifier = FCPXMLModifier(filepath)
     fixed = modifier.fix_flash_frames(
         mode=arguments.get("mode", "auto"),
@@ -1458,8 +1540,10 @@ async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_rapid_trim")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_rapid_trim")
+    )
     modifier = FCPXMLModifier(filepath)
     trimmed = modifier.rapid_trim(
         max_duration=arguments["max_duration"],
@@ -1495,8 +1579,10 @@ async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_gaps_filled")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_gaps_filled")
+    )
     modifier = FCPXMLModifier(filepath)
     filled = modifier.fill_gaps(
         mode=arguments.get("mode", "extend_previous"),
@@ -1603,8 +1689,8 @@ async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
 # ----- GENERATION HANDLERS -----
 
 async def handle_auto_rough_cut(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments["output_path"]
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(arguments["output_path"])
 
     segments = None
     if arguments.get("segments"):
@@ -1646,8 +1732,8 @@ Saved to: `{result.output_path}`
 
 
 async def handle_generate_montage(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments["output_path"]
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(arguments["output_path"])
 
     generator = RoughCutGenerator(filepath)
     result = generator.generate_montage(
@@ -1685,8 +1771,8 @@ Saved to: `{result['output_path']}`
 
 
 async def handle_generate_ab_roll(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments["output_path"]
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(arguments["output_path"])
 
     generator = RoughCutGenerator(filepath)
     result = generator.generate_ab_roll(
@@ -1723,9 +1809,11 @@ Saved to: `{result['output_path']}`
 # ----- BEAT SYNC HANDLERS -----
 
 async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    beats_path = arguments["beats_path"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_beats")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    beats_path = _validate_filepath(arguments["beats_path"], ('.json',))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_beats")
+    )
 
     with open(beats_path, 'r') as f:
         beats_data = json.load(f)
@@ -1778,8 +1866,10 @@ Saved to: `{output_path}`
 
 
 async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_synced")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_synced")
+    )
     max_shift = arguments.get("max_shift_frames", 6)
     prefer = arguments.get("prefer", "nearest")
 
@@ -1868,18 +1958,16 @@ Your edits are now synced to the beat!
 # ----- SUBTITLE / TRANSCRIPT HANDLERS -----
 
 async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    srt_path = arguments["srt_path"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_subtitled")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    srt_path = _validate_filepath(arguments["srt_path"], ('.srt', '.vtt'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_subtitled")
+    )
     mode = arguments.get("mode", "first_per_minute")
     marker_type = arguments.get("marker_type", "chapter")
     max_label = arguments.get("max_label_length", 50)
 
-    srt_file = Path(srt_path)
-    if not srt_file.exists():
-        return [TextContent(type="text", text=f"File not found: {srt_path}")]
-
-    text = srt_file.read_text(encoding='utf-8')
+    text = Path(srt_path).read_text(encoding='utf-8')
 
     # Detect format and parse
     if srt_path.endswith('.vtt') or text.strip().startswith('WEBVTT'):
@@ -1944,8 +2032,10 @@ Saved to: `{output_path}`
 
 
 async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = arguments["filepath"]
-    output_path = arguments.get("output_path") or generate_output_path(filepath, "_chapters")
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_chapters")
+    )
     marker_type = arguments.get("marker_type", "chapter")
 
     # Get transcript text from inline or file
@@ -1956,10 +2046,8 @@ async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextCont
         return [TextContent(type="text", text="Provide either 'transcript' (inline text) or 'transcript_path' (path to file)")]
 
     if transcript_path:
-        tp = Path(transcript_path)
-        if not tp.exists():
-            return [TextContent(type="text", text=f"File not found: {transcript_path}")]
-        transcript = tp.read_text(encoding='utf-8')
+        transcript_path = _validate_filepath(transcript_path, ('.txt', '.srt', '.vtt'))
+        transcript = Path(transcript_path).read_text(encoding='utf-8')
 
     raw_markers = parse_transcript_timestamps(transcript or "")
 
@@ -2051,8 +2139,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
         return await handler(arguments)
     except FileNotFoundError as e:
         return [TextContent(type="text", text=f"File not found: {e}")]
+    except ValueError as e:
+        return [TextContent(type="text", text=f"Validation error: {e}")]
     except Exception as e:
-        return [TextContent(type="text", text=f"Error: {str(e)}")]
+        return [TextContent(type="text", text=f"Error: {type(e).__name__}")]
 
 
 # ============================================================================
