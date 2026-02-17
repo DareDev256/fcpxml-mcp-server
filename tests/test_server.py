@@ -118,7 +118,7 @@ SAMPLE = str(Path(__file__).parent.parent / "examples" / "sample.fcpxml")
 
 def _run(coro):
     """Run an async handler synchronously."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ============================================================
