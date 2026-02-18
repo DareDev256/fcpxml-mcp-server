@@ -151,6 +151,14 @@ def test_todo_marker():
     assert m.marker_type == MarkerType.TODO
 
 
+def test_completed_marker():
+    """Marker with completed='1' should be COMPLETED, not TODO."""
+    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+                '<marker start="24/24s" duration="1/24s" value="Done" completed="1"/></asset-clip>')
+    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
+    assert m.marker_type == MarkerType.COMPLETED
+
+
 def test_chapter_markers_on_sequence():
     # Chapter markers are children of sequence (parsed via findall .//chapter-marker)
     tl = FCPXMLParser().parse_file(str(SAMPLE)).primary_timeline

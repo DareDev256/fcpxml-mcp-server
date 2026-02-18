@@ -196,8 +196,10 @@ class FCPXMLModifier:
         if marker_type == MarkerType.CHAPTER:
             marker.set('posterOffset', '0s')
 
-        # Add completed attribute for todo markers
-        if marker_type == MarkerType.COMPLETED:
+        # Add completed attribute for todo/completed markers
+        if marker_type == MarkerType.TODO:
+            marker.set('completed', '0')
+        elif marker_type == MarkerType.COMPLETED:
             marker.set('completed', '1')
 
         # Add note if specified
@@ -1354,6 +1356,10 @@ class FCPXMLWriter:
             start=self._tc_to_rational(marker.start),
             duration=self._tc_to_rational(marker.duration) if marker.duration else "1/24s",
             value=marker.name)
+        if marker.marker_type == MarkerType.TODO:
+            elem.set('completed', '0')
+        elif marker.marker_type == MarkerType.COMPLETED:
+            elem.set('completed', '1')
         if marker.note and tag == 'marker':
             elem.set('note', marker.note)
 

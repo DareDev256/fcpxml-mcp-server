@@ -295,7 +295,13 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 
 ## Releases
 
-### v0.4.0 — Prompts, Resources & Refactor (Latest)
+### v0.4.2 — Marker Round-Trip Fix (Latest)
+
+- **Fixed:** TODO and COMPLETED marker types now survive save/re-parse round-trips
+- **Fixed:** Parser distinguishes `completed="0"` (TODO) from `completed="1"` (COMPLETED)
+- **Fixed:** `list_markers` filter now supports "completed" marker type
+
+### v0.4.0 — Prompts, Resources & Refactor
 
 - **MCP Prompts:** 5 pre-built workflows (qc-check, youtube-chapters, rough-cut, timeline-summary, cleanup)
 - **MCP Resources:** Auto-discovery of FCPXML files in projects directory

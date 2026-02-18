@@ -1056,7 +1056,7 @@ async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
         markers.extend(clip.markers)
     marker_type = arguments.get("marker_type", "all")
     if marker_type != "all":
-        type_map = {"chapter": MarkerType.CHAPTER, "todo": MarkerType.TODO, "standard": MarkerType.STANDARD}
+        type_map = {"chapter": MarkerType.CHAPTER, "todo": MarkerType.TODO, "standard": MarkerType.STANDARD, "completed": MarkerType.COMPLETED}
         markers = [m for m in markers if m.marker_type == type_map.get(marker_type)]
     markers.sort(key=lambda m: m.start.frames)
     fmt = arguments.get("format", "detailed")

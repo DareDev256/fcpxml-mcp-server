@@ -168,7 +168,11 @@ class FCPXMLParser:
             name=elem.get('value', ''),
             start=Timecode.from_rational(elem.get('start', '0s'), self.frame_rate),
             duration=Timecode.from_rational(elem.get('duration', '1/24s'), self.frame_rate),
-            marker_type=MarkerType.TODO if elem.get('completed') is not None else MarkerType.STANDARD,
+            marker_type=(
+                MarkerType.COMPLETED if elem.get('completed') == '1'
+                else MarkerType.TODO if elem.get('completed') is not None
+                else MarkerType.STANDARD
+            ),
             note=elem.get('note', '')
         )
 

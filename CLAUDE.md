@@ -41,7 +41,7 @@ CI runs both on every push to main. If either fails, the commit gets an X on Git
 
 ## Testing
 
-283 tests across 4 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. Tests use `examples/sample.fcpxml` as fixture data. Tests create temp files and clean up after.
+285 tests across 4 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. Tests use `examples/sample.fcpxml` as fixture data. Tests create temp files and clean up after.
 
 ## FCPXML Gotchas
 

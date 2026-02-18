@@ -5,11 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-02-18
+
+### Fixed
+
+- TODO markers now set `completed="0"` attribute so they survive round-trip (save → re-parse) without degrading to STANDARD markers
+- COMPLETED markers (`completed="1"`) are now correctly distinguished from TODO markers (`completed="0"`) during parsing — previously both were mapped to TODO
+- FCPXMLWriter generator now emits `completed` attribute for TODO and COMPLETED markers
+- `list_markers` tool now supports filtering by "completed" marker type
+
 ## [Unreleased]
 
 ### Added
 
-- 283 unit tests across 7 test files covering models, parser, writer, server handlers, and rough cut generation
+- 285 unit tests across 7 test files covering models, parser, writer, server handlers, and rough cut generation
 - GitHub Actions CI pipeline with linting (ruff) and test execution
 - MCP registry metadata files for discoverability
 

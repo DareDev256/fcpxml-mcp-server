@@ -217,7 +217,7 @@ def test_add_marker_chapter(temp_fcpxml):
 
 
 def test_add_marker_todo(temp_fcpxml):
-    """Add a TODO marker to a clip."""
+    """Add a TODO marker to a clip — must set completed='0' for round-trip fidelity."""
     from fcpxml.models import MarkerType
 
     modifier = FCPXMLModifier(temp_fcpxml)
@@ -231,6 +231,7 @@ def test_add_marker_todo(temp_fcpxml):
 
     assert marker.tag == 'marker'
     assert marker.get('value') == 'Fix color'
+    assert marker.get('completed') == '0'
 
 
 def test_add_marker_completed(temp_fcpxml):
@@ -247,6 +248,28 @@ def test_add_marker_completed(temp_fcpxml):
     )
 
     assert marker.get('completed') == '1'
+
+
+def test_marker_type_roundtrip(temp_fcpxml, tmp_path):
+    """TODO and COMPLETED markers survive save/re-parse without losing their type."""
+    from fcpxml.models import MarkerType
+    from fcpxml.parser import FCPXMLParser
+
+    modifier = FCPXMLModifier(temp_fcpxml)
+    modifier.add_marker('Broll_City', '00:00:00:06', 'Todo task', MarkerType.TODO)
+    modifier.add_marker('Broll_City', '00:00:00:12', 'Done task', MarkerType.COMPLETED)
+
+    output = str(tmp_path / 'roundtrip.fcpxml')
+    modifier.save(output)
+
+    project = FCPXMLParser().parse_file(output)
+    # Collect all markers across all clips (duplicate names mean markers land on last Broll_City)
+    all_markers = []
+    for clip in project.primary_timeline.clips:
+        all_markers.extend(clip.markers)
+    types = {m.name: m.marker_type for m in all_markers}
+    assert types['Todo task'] == MarkerType.TODO
+    assert types['Done task'] == MarkerType.COMPLETED
 
 
 def test_add_marker_with_note(temp_fcpxml):
