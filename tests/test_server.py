@@ -5,7 +5,6 @@ Python vs uv venv).  We shim it with lightweight stubs so server.py can be
 imported without the real MCP SDK.
 """
 
-import asyncio
 import sys
 import tempfile
 import types
@@ -115,10 +114,6 @@ from server import (  # noqa: E402
 
 SAMPLE = str(Path(__file__).parent.parent / "examples" / "sample.fcpxml")
 
-
-def _run(coro):
-    """Run an async handler synchronously."""
-    return asyncio.run(coro)
 
 
 # ============================================================
@@ -324,21 +319,21 @@ class TestParseTranscriptTimestamps:
 
 
 class TestHandleListProjects:
-    def test_finds_sample(self):
+    async def test_finds_sample(self):
         example_dir = str(Path(SAMPLE).parent)
-        result = _run(handle_list_projects({"directory": example_dir}))
+        result = await handle_list_projects({"directory": example_dir})
         assert len(result) == 1
         assert "sample.fcpxml" in result[0].text
 
-    def test_empty_dir(self):
+    async def test_empty_dir(self):
         with tempfile.TemporaryDirectory() as d:
-            result = _run(handle_list_projects({"directory": d}))
+            result = await handle_list_projects({"directory": d})
             assert "No FCPXML files" in result[0].text
 
 
 class TestHandleAnalyzeTimeline:
-    def test_returns_markdown(self):
-        result = _run(handle_analyze_timeline({"filepath": SAMPLE}))
+    async def test_returns_markdown(self):
+        result = await handle_analyze_timeline({"filepath": SAMPLE})
         text = result[0].text
         assert "# Timeline Analysis" in text
         assert "Music Video Edit" in text
@@ -347,14 +342,14 @@ class TestHandleAnalyzeTimeline:
 
 
 class TestHandleListClips:
-    def test_lists_all_clips(self):
-        result = _run(handle_list_clips({"filepath": SAMPLE}))
+    async def test_lists_all_clips(self):
+        result = await handle_list_clips({"filepath": SAMPLE})
         text = result[0].text
         assert "Interview_A" in text
         assert "Broll_City" in text
 
-    def test_with_limit(self):
-        result = _run(handle_list_clips({"filepath": SAMPLE, "limit": 2}))
+    async def test_with_limit(self):
+        result = await handle_list_clips({"filepath": SAMPLE, "limit": 2})
         text = result[0].text
         # Only 2 data rows should appear (not all 9)
         data_rows = [line for line in text.split("\n") if line.startswith("| ") and "---" not in line and "#" not in line]
@@ -362,73 +357,73 @@ class TestHandleListClips:
 
 
 class TestHandleListMarkers:
-    def test_default_format(self):
-        result = _run(handle_list_markers({"filepath": SAMPLE}))
+    async def test_default_format(self):
+        result = await handle_list_markers({"filepath": SAMPLE})
         text = result[0].text
         assert "Markers" in text
         assert "Good take" in text
 
-    def test_youtube_format(self):
-        result = _run(handle_list_markers({"filepath": SAMPLE, "format": "youtube"}))
+    async def test_youtube_format(self):
+        result = await handle_list_markers({"filepath": SAMPLE, "format": "youtube"})
         text = result[0].text
         assert "YouTube Chapters" in text
 
-    def test_simple_format(self):
-        result = _run(handle_list_markers({"filepath": SAMPLE, "format": "simple"}))
+    async def test_simple_format(self):
+        result = await handle_list_markers({"filepath": SAMPLE, "format": "simple"})
         text = result[0].text
         assert " - " in text
 
-    def test_filter_chapter_markers(self):
-        result = _run(handle_list_markers({"filepath": SAMPLE, "marker_type": "chapter"}))
+    async def test_filter_chapter_markers(self):
+        result = await handle_list_markers({"filepath": SAMPLE, "marker_type": "chapter"})
         text = result[0].text
         assert "Intro" in text
         assert "Good take" not in text
 
 
 class TestHandleFindShortCuts:
-    def test_finds_flash_frame(self):
+    async def test_finds_flash_frame(self):
         # Sample has a 6/24s = 0.25s clip (Broll_Studio)
-        result = _run(handle_find_short_cuts({"filepath": SAMPLE, "threshold_seconds": 0.5}))
+        result = await handle_find_short_cuts({"filepath": SAMPLE, "threshold_seconds": 0.5})
         text = result[0].text
         assert "Short Clips" in text
         assert "Broll_Studio" in text
 
-    def test_no_short_clips(self):
-        result = _run(handle_find_short_cuts({"filepath": SAMPLE, "threshold_seconds": 0.01}))
+    async def test_no_short_clips(self):
+        result = await handle_find_short_cuts({"filepath": SAMPLE, "threshold_seconds": 0.01})
         text = result[0].text
         assert "No clips shorter than" in text
 
 
 class TestHandleFindLongClips:
-    def test_finds_long_clip(self):
+    async def test_finds_long_clip(self):
         # Longest clip is Interview_A at 720/24s = 30s
-        result = _run(handle_find_long_clips({"filepath": SAMPLE, "threshold_seconds": 20}))
+        result = await handle_find_long_clips({"filepath": SAMPLE, "threshold_seconds": 20})
         text = result[0].text
         assert "Long Clips" in text
         assert "Interview_A" in text
 
-    def test_no_long_clips(self):
-        result = _run(handle_find_long_clips({"filepath": SAMPLE, "threshold_seconds": 999}))
+    async def test_no_long_clips(self):
+        result = await handle_find_long_clips({"filepath": SAMPLE, "threshold_seconds": 999})
         text = result[0].text
         assert "No clips longer than" in text
 
 
 class TestHandleListKeywords:
-    def test_finds_keywords(self):
-        result = _run(handle_list_keywords({"filepath": SAMPLE}))
+    async def test_finds_keywords(self):
+        result = await handle_list_keywords({"filepath": SAMPLE})
         text = result[0].text
         assert "Interview" in text
         assert "B-Roll" in text
 
-    def test_counts(self):
-        result = _run(handle_list_keywords({"filepath": SAMPLE}))
+    async def test_counts(self):
+        result = await handle_list_keywords({"filepath": SAMPLE})
         text = result[0].text
         assert "clips)" in text
 
 
 class TestHandleExportEdl:
-    def test_edl_format(self):
-        result = _run(handle_export_edl({"filepath": SAMPLE}))
+    async def test_edl_format(self):
+        result = await handle_export_edl({"filepath": SAMPLE})
         text = result[0].text
         assert "TITLE:" in text
         assert "FROM CLIP NAME:" in text
@@ -436,8 +431,8 @@ class TestHandleExportEdl:
 
 
 class TestHandleExportCsv:
-    def test_csv_format(self):
-        result = _run(handle_export_csv({"filepath": SAMPLE}))
+    async def test_csv_format(self):
+        result = await handle_export_csv({"filepath": SAMPLE})
         text = result[0].text
         assert "Name,Start,End,Duration,Keywords" in text
         assert "Interview_A" in text
@@ -445,8 +440,8 @@ class TestHandleExportCsv:
 
 
 class TestHandleAnalyzePacing:
-    def test_pacing_analysis(self):
-        result = _run(handle_analyze_pacing({"filepath": SAMPLE}))
+    async def test_pacing_analysis(self):
+        result = await handle_analyze_pacing({"filepath": SAMPLE})
         text = result[0].text
         assert "Pacing Analysis" in text
         assert "Cuts/Min" in text
@@ -459,69 +454,69 @@ class TestHandleAnalyzePacing:
 
 
 class TestHandleDetectFlashFrames:
-    def test_detects_flash(self):
+    async def test_detects_flash(self):
         # Sample has 6/24s = 0.25s clip = 6 frames at 24fps
         # Default warning_threshold_frames=6, so 6 < 6 is false
         # Use threshold=7 to catch it
-        result = _run(handle_detect_flash_frames({
+        result = await handle_detect_flash_frames({
             "filepath": SAMPLE, "warning_threshold_frames": 7
-        }))
+        })
         text = result[0].text
         assert "Flash Frame" in text
         assert "Broll_Studio" in text
 
-    def test_no_flash_default(self):
+    async def test_no_flash_default(self):
         # With default thresholds, the 6-frame clip is exactly at the boundary
-        result = _run(handle_detect_flash_frames({"filepath": SAMPLE}))
+        result = await handle_detect_flash_frames({"filepath": SAMPLE})
         # At default (warning=6), clip with exactly 6 frames: 6 < 6 = False → no detection
         text = result[0].text
         assert "No flash frames detected" in text
 
 
 class TestHandleDetectDuplicates:
-    def test_same_source_mode(self):
-        result = _run(handle_detect_duplicates({
+    async def test_same_source_mode(self):
+        result = await handle_detect_duplicates({
             "filepath": SAMPLE, "mode": "same_source"
-        }))
+        })
         text = result[0].text
         # Interview_A used 4 times, Broll_City 3 times, Broll_Studio 2 times
         assert "Duplicate" in text
 
-    def test_no_identical(self):
-        result = _run(handle_detect_duplicates({
+    async def test_no_identical(self):
+        result = await handle_detect_duplicates({
             "filepath": SAMPLE, "mode": "identical"
-        }))
+        })
         text = result[0].text
         # No two clips use exact same source range
         assert "No duplicate clips" in text
 
 
 class TestHandleDetectGaps:
-    def test_no_gaps_in_sample(self):
-        result = _run(handle_detect_gaps({"filepath": SAMPLE}))
+    async def test_no_gaps_in_sample(self):
+        result = await handle_detect_gaps({"filepath": SAMPLE})
         text = result[0].text
         # Clips in sample are contiguous (offsets line up)
         assert "No gaps detected" in text
 
 
 class TestHandleValidateTimeline:
-    def test_returns_health_score(self):
-        result = _run(handle_validate_timeline({"filepath": SAMPLE}))
+    async def test_returns_health_score(self):
+        result = await handle_validate_timeline({"filepath": SAMPLE})
         text = result[0].text
         assert "Health Score" in text
         assert "%" in text
 
-    def test_selective_checks(self):
-        result = _run(handle_validate_timeline({
+    async def test_selective_checks(self):
+        result = await handle_validate_timeline({
             "filepath": SAMPLE, "checks": ["flash_frames"]
-        }))
+        })
         text = result[0].text
         assert "Flash Frames" in text
 
-    def test_no_issues_passes(self):
-        result = _run(handle_validate_timeline({
+    async def test_no_issues_passes(self):
+        result = await handle_validate_timeline({
             "filepath": SAMPLE, "checks": ["gaps"]
-        }))
+        })
         text = result[0].text
         assert "PASS" in text
 
@@ -532,34 +527,34 @@ class TestHandleValidateTimeline:
 
 
 class TestHandleImportTranscriptMarkers:
-    def test_inline_transcript(self):
+    async def test_inline_transcript(self):
         with tempfile.TemporaryDirectory() as d:
             out = str(Path(d, "out.fcpxml"))
             # Clip index deduplicates by name (last wins).  Accessible clips:
             #   Broll_Studio: [9.25s, 14.25s)
             #   Interview_A:  [46.75s, 53.75s)
             # Use timecodes in seconds that fall within these ranges.
-            result = _run(handle_import_transcript_markers({
+            result = await handle_import_transcript_markers({
                 "filepath": SAMPLE,
                 "output_path": out,
                 "transcript": "0:10 Marker A\n0:47 Marker B",
-            }))
+            })
             text = result[0].text
             assert "Markers Added" in text
             assert Path(out).exists()
 
-    def test_no_transcript_provided(self):
-        result = _run(handle_import_transcript_markers({
+    async def test_no_transcript_provided(self):
+        result = await handle_import_transcript_markers({
             "filepath": SAMPLE,
-        }))
+        })
         text = result[0].text
         assert "Provide either" in text
 
-    def test_missing_transcript_file(self):
-        result = _run(call_tool("import_transcript_markers", {
+    async def test_missing_transcript_file(self):
+        result = await call_tool("import_transcript_markers", {
             "filepath": SAMPLE,
             "transcript_path": "/nonexistent/path.txt",
-        }))
+        })
         text = result[0].text
         assert "File not found" in text
 
@@ -570,15 +565,15 @@ class TestHandleImportTranscriptMarkers:
 
 
 class TestCallTool:
-    def test_unknown_tool(self):
-        result = _run(call_tool("nonexistent_tool", {}))
+    async def test_unknown_tool(self):
+        result = await call_tool("nonexistent_tool", {})
         assert "Unknown tool" in result[0].text
 
-    def test_file_not_found_handled(self):
-        result = _run(call_tool("analyze_timeline", {"filepath": "/no/such/file.fcpxml"}))
+    async def test_file_not_found_handled(self):
+        result = await call_tool("analyze_timeline", {"filepath": "/no/such/file.fcpxml"})
         assert "File not found" in result[0].text or "Error" in result[0].text
 
-    def test_dispatches_correctly(self):
+    async def test_dispatches_correctly(self):
         example_dir = str(Path(SAMPLE).parent)
-        result = _run(call_tool("list_projects", {"directory": example_dir}))
+        result = await call_tool("list_projects", {"directory": example_dir})
         assert "sample.fcpxml" in result[0].text
