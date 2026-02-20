@@ -517,7 +517,7 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "filepath": {"type": "string"},
-                    "marker_type": {"type": "string", "enum": ["all", "chapter", "todo", "standard"]},
+                    "marker_type": {"type": "string", "enum": ["all", "chapter", "todo", "standard", "completed"]},
                     "format": {"type": "string", "enum": ["detailed", "youtube", "simple"]}
                 },
                 "required": ["filepath"]
@@ -649,7 +649,7 @@ async def list_tools() -> list[Tool]:
                     "filepath": {"type": "string", "description": "Path to FCPXML file"},
                     "timecode": {"type": "string", "description": "Position (00:00:10:00 or 10s)"},
                     "name": {"type": "string", "description": "Marker label"},
-                    "marker_type": {"type": "string", "enum": ["standard", "chapter", "todo"], "default": "standard"},
+                    "marker_type": {"type": "string", "enum": ["standard", "chapter", "todo", "completed"], "default": "standard"},
                     "note": {"type": "string", "description": "Optional note"},
                     "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
                 },
@@ -1056,8 +1056,7 @@ async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
         markers.extend(clip.markers)
     marker_type = arguments.get("marker_type", "all")
     if marker_type != "all":
-        type_map = {"chapter": MarkerType.CHAPTER, "todo": MarkerType.TODO, "standard": MarkerType.STANDARD, "completed": MarkerType.COMPLETED}
-        markers = [m for m in markers if m.marker_type == type_map.get(marker_type)]
+        markers = [m for m in markers if m.marker_type == MarkerType.from_string(marker_type)]
     markers.sort(key=lambda m: m.start.frames)
     fmt = arguments.get("format", "detailed")
     if fmt == "youtube":
@@ -1366,7 +1365,7 @@ async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
         arguments.get("output_path") or generate_output_path(filepath)
     )
     modifier = FCPXMLModifier(filepath)
-    marker_type = MarkerType[arguments.get("marker_type", "standard").upper()]
+    marker_type = MarkerType.from_string(arguments.get("marker_type", "standard"))
     modifier.add_marker_at_timeline(
         timecode=arguments["timecode"], name=arguments["name"],
         marker_type=marker_type, note=arguments.get("note"),

@@ -155,6 +155,11 @@ class FCPXMLParser:
             if marker:
                 clip.markers.append(marker)
 
+        for marker_elem in elem.findall('chapter-marker'):
+            marker = self._parse_chapter_marker(marker_elem)
+            if marker:
+                clip.markers.append(marker)
+
         for keyword_elem in elem.findall('keyword'):
             keyword = self._parse_keyword(keyword_elem)
             if keyword:
@@ -170,7 +175,7 @@ class FCPXMLParser:
             duration=Timecode.from_rational(elem.get('duration', '1/24s'), self.frame_rate),
             marker_type=(
                 MarkerType.COMPLETED if elem.get('completed') == '1'
-                else MarkerType.TODO if elem.get('completed') is not None
+                else MarkerType.TODO if elem.get('completed') == '0'
                 else MarkerType.STANDARD
             ),
             note=elem.get('note', '')

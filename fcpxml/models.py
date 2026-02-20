@@ -21,6 +21,29 @@ class MarkerType(Enum):
     CHAPTER = "chapter"
     COMPLETED = "completed"
 
+    @classmethod
+    def from_string(cls, value: str) -> 'MarkerType':
+        """Convert a string to MarkerType, accepting both enum names and values.
+
+        Examples:
+            MarkerType.from_string("todo")      -> MarkerType.TODO
+            MarkerType.from_string("TODO")       -> MarkerType.TODO
+            MarkerType.from_string("completed")  -> MarkerType.COMPLETED
+        """
+        lowered = value.lower()
+        try:
+            return cls(lowered)
+        except ValueError:
+            raise ValueError(
+                f"Invalid marker type: '{value}'. "
+                f"Valid types: {', '.join(m.value for m in cls)}"
+            )
+
+    @property
+    def xml_tag(self) -> str:
+        """Return the FCPXML element tag for this marker type."""
+        return 'chapter-marker' if self == MarkerType.CHAPTER else 'marker'
+
 
 class MarkerColor(Enum):
     """Marker color options (FCP internal values)."""

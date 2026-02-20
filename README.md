@@ -295,7 +295,15 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 
 ## Releases
 
-### v0.4.2 — Marker Round-Trip Fix (Latest)
+### v0.4.3 — Marker Type Consolidation (Latest)
+
+- **Refactored:** Unified three marker type lookup patterns into `MarkerType.from_string()` and `MarkerType.xml_tag`
+- **Fixed:** `add_marker` and `list_markers` schemas now expose `"completed"` type
+- **Fixed:** Clip-level chapter markers are now parsed (were silently dropped)
+- **Fixed:** `FCPXMLWriter` now emits `posterOffset` on chapter markers
+- **Fixed:** Tightened TODO detection to match only `completed="0"` exactly
+
+### v0.4.2 — Marker Round-Trip Fix
 
 - **Fixed:** TODO and COMPLETED marker types now survive save/re-parse round-trips
 - **Fixed:** Parser distinguishes `completed="0"` (TODO) from `completed="1"` (COMPLETED)

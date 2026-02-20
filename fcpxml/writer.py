@@ -178,13 +178,7 @@ class FCPXMLModifier:
         time_value = self._parse_time(timecode)
 
         # Determine XML tag based on marker type
-        tag_map = {
-            MarkerType.STANDARD: 'marker',
-            MarkerType.CHAPTER: 'chapter-marker',
-            MarkerType.TODO: 'marker',
-            MarkerType.COMPLETED: 'marker'
-        }
-        tag = tag_map.get(marker_type, 'marker')
+        tag = marker_type.xml_tag
 
         # Create marker element
         marker = ET.SubElement(clip, tag)
@@ -202,8 +196,8 @@ class FCPXMLModifier:
         elif marker_type == MarkerType.COMPLETED:
             marker.set('completed', '1')
 
-        # Add note if specified
-        if note:
+        # Add note if specified (chapter-marker elements don't support notes)
+        if note and marker_type != MarkerType.CHAPTER:
             marker.set('note', note)
 
         return marker
@@ -263,7 +257,7 @@ class FCPXMLModifier:
             marker = self.add_marker_at_timeline(
                 timecode=m['timecode'],
                 name=m['name'],
-                marker_type=MarkerType[m.get('marker_type', 'STANDARD').upper()],
+                marker_type=MarkerType.from_string(m.get('marker_type', 'standard')),
                 color=MarkerColor[m['color'].upper()] if m.get('color') else None,
                 note=m.get('note')
             )
@@ -1351,16 +1345,18 @@ class FCPXMLWriter:
 
     def _add_marker(self, parent, marker):
         """Add a marker or chapter-marker element to a parent clip or sequence."""
-        tag = 'chapter-marker' if marker.marker_type == MarkerType.CHAPTER else 'marker'
+        tag = marker.marker_type.xml_tag
         elem = ET.SubElement(parent, tag,
             start=self._tc_to_rational(marker.start),
             duration=self._tc_to_rational(marker.duration) if marker.duration else "1/24s",
             value=marker.name)
-        if marker.marker_type == MarkerType.TODO:
+        if marker.marker_type == MarkerType.CHAPTER:
+            elem.set('posterOffset', '0s')
+        elif marker.marker_type == MarkerType.TODO:
             elem.set('completed', '0')
         elif marker.marker_type == MarkerType.COMPLETED:
             elem.set('completed', '1')
-        if marker.note and tag == 'marker':
+        if marker.note and marker.marker_type != MarkerType.CHAPTER:
             elem.set('note', marker.note)
 
     def _add_keyword(self, parent, keyword):
@@ -1400,7 +1396,7 @@ def add_marker_to_file(
     modifier = FCPXMLModifier(filepath)
     modifier.add_marker_at_timeline(
         timecode, name,
-        MarkerType[marker_type.upper()]
+        MarkerType.from_string(marker_type)
     )
     return modifier.save(output_path)
 
