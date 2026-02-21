@@ -6,11 +6,16 @@ This package provides tools to:
 - Modify existing FCPXML files (add markers, trim clips, reorder, etc.)
 - Generate new FCPXML files from scratch
 - Create AI-powered rough cuts from source material
+- Compare timelines and export to other NLE formats
 """
 
+from .diff import ClipDiff, MarkerDiff, TimelineDiff, compare_timelines
+from .export import DaVinciExporter
 from .models import (
     AudioClip,
     Clip,
+    CompoundClip,
+    ConnectedClip,
     # Core models
     Keyword,
     Marker,
@@ -23,6 +28,7 @@ from .models import (
     RoughCutResult,
     # Rough cut models
     SegmentSpec,
+    SilenceCandidate,
     Timecode,
     Timeline,
     # Time handling
@@ -46,7 +52,7 @@ from .writer import (
     write_fcpxml,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "DareDev256"
 
 __all__ = [
@@ -69,6 +75,9 @@ __all__ = [
     "Clip",
     "AudioClip",
     "VideoClip",
+    "ConnectedClip",
+    "CompoundClip",
+    "SilenceCandidate",
     "Transition",
     "Timeline",
     "Project",
@@ -92,4 +101,13 @@ __all__ = [
     "RoughCutGenerator",
     "generate_rough_cut",
     "generate_segmented_rough_cut",
+
+    # Diff
+    "compare_timelines",
+    "TimelineDiff",
+    "ClipDiff",
+    "MarkerDiff",
+
+    # Export
+    "DaVinciExporter",
 ]

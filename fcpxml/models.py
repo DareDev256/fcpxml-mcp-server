@@ -370,6 +370,13 @@ class Clip:
     is_favorite: bool = False
     is_rejected: bool = False
 
+    # Roles (FCP audio/video role assignments)
+    audio_role: str = ""
+    video_role: str = ""
+
+    # Connected clips (B-roll, titles, audio attached to this clip)
+    connected_clips: List['ConnectedClip'] = field(default_factory=list)
+
     @property
     def end(self) -> Timecode:
         return Timecode(
@@ -404,6 +411,58 @@ class VideoClip(Clip):
 
 
 @dataclass
+class ConnectedClip:
+    """A clip connected to a primary storyline clip (B-roll, titles, audio).
+
+    In FCP's magnetic timeline, connected clips hang off spine clips via lanes.
+    Positive lanes are above (video overlays), negative lanes are below (audio).
+    """
+    name: str
+    start: Timecode
+    duration: Timecode
+    lane: int = 1
+    offset: Optional[Timecode] = None
+    source_start: Optional[Timecode] = None
+    media_path: str = ""
+    clip_type: str = "asset-clip"
+    role: str = ""
+    ref_id: str = ""
+    parent_clip_name: str = ""
+    markers: List[Marker] = field(default_factory=list)
+    keywords: List[Keyword] = field(default_factory=list)
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.duration.seconds
+
+
+@dataclass
+class CompoundClip:
+    """A compound clip (ref-clip) containing a nested timeline."""
+    name: str
+    ref_id: str
+    duration: Timecode
+    start: Timecode
+    clips: List[Clip] = field(default_factory=list)
+    connected_clips: List[ConnectedClip] = field(default_factory=list)
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.duration.seconds
+
+
+@dataclass
+class SilenceCandidate:
+    """A potential silence region detected by timeline heuristics."""
+    start_timecode: str
+    duration_seconds: float
+    reason: str  # "gap", "ultra_short", "name_match", "duration_anomaly"
+    confidence: float = 0.5  # 0.0 to 1.0
+    clip_name: Optional[str] = None
+    clip_index: Optional[int] = None
+
+
+@dataclass
 class Transition:
     """Represents a transition between clips."""
     name: str
@@ -424,6 +483,8 @@ class Timeline:
     audio_clips: List[AudioClip] = field(default_factory=list)
     transitions: List[Transition] = field(default_factory=list)
     markers: List[Marker] = field(default_factory=list)
+    connected_clips: List[ConnectedClip] = field(default_factory=list)
+    compound_clips: List[CompoundClip] = field(default_factory=list)
 
     @property
     def total_clips(self) -> int:

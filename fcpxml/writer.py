@@ -1249,6 +1249,300 @@ class FCPXMLModifier:
 
         return new_clip
 
+    # ========================================================================
+    # CONNECTED CLIP OPERATIONS (v0.5.0)
+    # ========================================================================
+
+    def add_connected_clip(
+        self,
+        parent_clip_id: str,
+        asset_id: Optional[str] = None,
+        asset_name: Optional[str] = None,
+        offset: str = "0s",
+        duration: Optional[str] = None,
+        lane: int = 1,
+    ) -> ET.Element:
+        """Add a connected clip (B-roll, title, audio) to an existing timeline clip.
+
+        Args:
+            parent_clip_id: Name/ID of the clip to attach to
+            asset_id: Asset reference ID
+            asset_name: Asset name (alternative to asset_id)
+            offset: Position relative to parent clip start
+            duration: Duration of connected clip (default: full asset)
+            lane: Lane number (positive=above, negative=below)
+
+        Returns:
+            The created connected clip element
+        """
+        parent = self.clips.get(parent_clip_id)
+        if parent is None:
+            raise ValueError(f"Parent clip not found: {parent_clip_id}")
+
+        asset = None
+        if asset_id and asset_id in self.resources:
+            asset = self.resources[asset_id]
+        elif asset_name:
+            for res_id, res_data in self.resources.items():
+                if res_data.get('name') == asset_name:
+                    asset = res_data
+                    asset_id = res_id
+                    break
+
+        if asset is None:
+            raise ValueError(f"Asset not found: {asset_id or asset_name}")
+
+        clip_duration = (
+            self._parse_time(duration) if duration
+            else self._parse_time(asset.get('duration', '0s'))
+        )
+        clip_offset = self._parse_time(offset)
+
+        new_clip = ET.SubElement(parent, 'asset-clip')
+        new_clip.set('ref', asset_id)
+        new_clip.set('lane', str(lane))
+        new_clip.set('offset', clip_offset.to_fcpxml())
+        new_clip.set('name', asset.get('name', 'Untitled'))
+        new_clip.set('start', '0s')
+        new_clip.set('duration', clip_duration.to_fcpxml())
+
+        return new_clip
+
+    # ========================================================================
+    # ROLE OPERATIONS (v0.5.0)
+    # ========================================================================
+
+    def assign_role(
+        self,
+        clip_id: str,
+        audio_role: Optional[str] = None,
+        video_role: Optional[str] = None,
+    ) -> ET.Element:
+        """Set the audio/video role on a clip.
+
+        Args:
+            clip_id: Name/ID of the clip
+            audio_role: Audio role (e.g., "dialogue", "music", "effects")
+            video_role: Video role (e.g., "video", "titles")
+
+        Returns:
+            The modified clip element
+        """
+        clip = self.clips.get(clip_id)
+        if clip is None:
+            raise ValueError(f"Clip not found: {clip_id}")
+
+        if audio_role is not None:
+            clip.set('audioRole', audio_role)
+        if video_role is not None:
+            clip.set('videoRole', video_role)
+
+        return clip
+
+    # ========================================================================
+    # REFORMAT OPERATIONS (v0.5.0)
+    # ========================================================================
+
+    SOCIAL_FORMATS = {
+        "9:16": (1080, 1920),
+        "1:1": (1080, 1080),
+        "4:5": (1080, 1350),
+        "16:9": (1920, 1080),
+        "4:3": (1440, 1080),
+    }
+
+    def reformat_resolution(self, width: int, height: int) -> None:
+        """Change the timeline format to a new resolution.
+
+        Updates the format resource dimensions. FCP handles spatial
+        conforming (letterbox/pillarbox) on import.
+
+        Args:
+            width: Target width in pixels
+            height: Target height in pixels
+        """
+        for fmt in self.root.findall('.//format'):
+            fmt.set('width', str(width))
+            fmt.set('height', str(height))
+            old_name = fmt.get('name', '')
+            if old_name:
+                fmt.set('name', f"FFVideoFormat{width}x{height}")
+
+        sequence = self.root.find('.//sequence')
+        if sequence is not None and sequence.get('format'):
+            pass  # format ref stays the same, dimensions updated in-place
+
+    # ========================================================================
+    # SILENCE DETECTION OPERATIONS (v0.5.0)
+    # ========================================================================
+
+    def detect_silence_candidates(
+        self,
+        min_gap_seconds: float = 0.5,
+        patterns: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Detect potential silence regions using timeline heuristics.
+
+        Checks for:
+        1. Gap elements in spine (high confidence)
+        2. Ultra-short clips < 0.5s (medium confidence)
+        3. Clips matching name patterns like "silence", "room tone" (high)
+        4. Duration anomalies > 2 std dev from mean (low-medium)
+
+        Args:
+            min_gap_seconds: Minimum gap duration to flag
+            patterns: Name patterns to match (default: gap, silence, room tone)
+
+        Returns:
+            List of silence candidate dicts
+        """
+        if patterns is None:
+            patterns = ['gap', 'silence', 'room tone', 'dead air', 'blank']
+
+        spine = self._get_spine()
+        candidates = []
+        durations = []
+        clip_index = 0
+
+        # First pass: collect durations for anomaly detection
+        for child in spine:
+            if child.tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                dur = self._parse_time(child.get('duration', '0s'))
+                durations.append(dur.to_seconds())
+
+        # Calculate stats for anomaly detection
+        mean_dur = sum(durations) / len(durations) if durations else 0
+        variance = (sum((d - mean_dur) ** 2 for d in durations) / len(durations)
+                     if len(durations) > 1 else 0)
+        std_dev = variance ** 0.5
+
+        # Second pass: detect candidates
+        for child in spine:
+            tag = child.tag
+            offset = child.get('offset', '0s')
+            dur = self._parse_time(child.get('duration', '0s'))
+            dur_secs = dur.to_seconds()
+            tc = TimeValue.from_timecode(offset, self.fps).to_timecode(self.fps)
+
+            if tag == 'gap' and dur_secs >= min_gap_seconds:
+                candidates.append({
+                    'start_timecode': tc,
+                    'duration_seconds': dur_secs,
+                    'reason': 'gap',
+                    'confidence': 0.9,
+                    'clip_name': None,
+                    'clip_index': None,
+                })
+            elif tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                name = child.get('name', '').lower()
+
+                # Name pattern match
+                for pat in patterns:
+                    if pat.lower() in name:
+                        candidates.append({
+                            'start_timecode': tc,
+                            'duration_seconds': dur_secs,
+                            'reason': 'name_match',
+                            'confidence': 0.85,
+                            'clip_name': child.get('name', ''),
+                            'clip_index': clip_index,
+                        })
+                        break
+
+                # Ultra-short clip
+                if dur_secs < 0.5:
+                    candidates.append({
+                        'start_timecode': tc,
+                        'duration_seconds': dur_secs,
+                        'reason': 'ultra_short',
+                        'confidence': 0.6,
+                        'clip_name': child.get('name', ''),
+                        'clip_index': clip_index,
+                    })
+
+                # Duration anomaly (> 2 std dev longer than mean)
+                if std_dev > 0 and dur_secs > mean_dur + 2 * std_dev:
+                    candidates.append({
+                        'start_timecode': tc,
+                        'duration_seconds': dur_secs,
+                        'reason': 'duration_anomaly',
+                        'confidence': 0.4,
+                        'clip_name': child.get('name', ''),
+                        'clip_index': clip_index,
+                    })
+
+                clip_index += 1
+
+        return candidates
+
+    def remove_silence_candidates(
+        self,
+        mode: str = "mark",
+        min_gap_seconds: float = 0.5,
+        min_confidence: float = 0.7,
+        patterns: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Remove or mark detected silence candidates.
+
+        Args:
+            mode: "delete" removes clips/gaps, "mark" adds red markers,
+                  "shorten" trims to minimum
+            min_gap_seconds: Minimum gap to consider
+            min_confidence: Only act on candidates above this threshold
+            patterns: Name patterns to match
+
+        Returns:
+            List of actions taken
+        """
+        candidates = self.detect_silence_candidates(min_gap_seconds, patterns)
+        candidates = [c for c in candidates if c['confidence'] >= min_confidence]
+
+        spine = self._get_spine()
+        actions = []
+
+        if mode == "mark":
+            for c in candidates:
+                # Find the element at this position and add a marker
+                for child in spine:
+                    offset_str = child.get('offset', '0s')
+                    tc = TimeValue.from_timecode(offset_str, self.fps).to_timecode(self.fps)
+                    if tc == c['start_timecode'] and child.tag in (
+                        'clip', 'asset-clip', 'video', 'ref-clip'
+                    ):
+                        marker = ET.SubElement(child, 'marker')
+                        marker.set('start', child.get('start', '0s'))
+                        marker.set('duration', '1/24s')
+                        marker.set('value', f"SILENCE: {c['reason']}")
+                        actions.append({
+                            'action': 'marked',
+                            'clip_name': c.get('clip_name', 'gap'),
+                            'reason': c['reason'],
+                        })
+                        break
+
+        elif mode == "delete":
+            elements_to_remove = []
+            for c in candidates:
+                for child in spine:
+                    offset_str = child.get('offset', '0s')
+                    tc = TimeValue.from_timecode(offset_str, self.fps).to_timecode(self.fps)
+                    if tc == c['start_timecode']:
+                        elements_to_remove.append(child)
+                        actions.append({
+                            'action': 'deleted',
+                            'clip_name': c.get('clip_name', 'gap'),
+                            'reason': c['reason'],
+                        })
+                        break
+
+            for elem in elements_to_remove:
+                spine.remove(elem)
+
+            if elements_to_remove:
+                self._recalculate_offsets(spine)
+
+        return actions
+
 
 # ============================================================================
 # FCPXML GENERATOR - Create from Python objects

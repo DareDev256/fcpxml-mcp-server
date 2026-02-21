@@ -6,7 +6,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .models import Clip, Keyword, Marker, MarkerType, Project, Timecode, Timeline, Transition
+from .models import (
+    Clip,
+    ConnectedClip,
+    Keyword,
+    Marker,
+    MarkerType,
+    Project,
+    Timecode,
+    Timeline,
+    Transition,
+)
 
 
 class FCPXMLParser:
@@ -117,7 +127,7 @@ class FCPXMLParser:
         return timeline
 
     def _parse_spine(self, spine: ET.Element, timeline: Timeline):
-        """Parse the spine (primary storyline)."""
+        """Parse the spine (primary storyline) including connected clips."""
         current_offset = 0
         for elem in spine:
             tag = elem.tag
@@ -125,10 +135,13 @@ class FCPXMLParser:
                 clip = self._parse_clip(elem, current_offset)
                 if clip:
                     timeline.clips.append(clip)
+                    self._parse_connected_clips(elem, clip, timeline)
                     current_offset += clip.duration.frames
             elif tag == 'gap':
                 duration_str = elem.get('duration', '0s')
-                current_offset += Timecode.from_rational(duration_str, self.frame_rate).frames
+                gap_frames = Timecode.from_rational(duration_str, self.frame_rate).frames
+                self._parse_gap_connected_clips(elem, current_offset, timeline)
+                current_offset += gap_frames
             elif tag == 'transition':
                 transition = self._parse_transition(elem, current_offset)
                 if transition:
@@ -147,7 +160,9 @@ class FCPXMLParser:
             start=Timecode(frames=offset, frame_rate=self.frame_rate),
             duration=duration,
             source_start=source_start,
-            media_path=media_path
+            media_path=media_path,
+            audio_role=elem.get('audioRole', ''),
+            video_role=elem.get('videoRole', ''),
         )
 
         for marker_elem in elem.findall('marker'):
@@ -240,6 +255,81 @@ class FCPXMLParser:
             return []
 
         return result
+
+    def _parse_connected_clips(self, parent_elem: ET.Element,
+                                parent_clip: Clip, timeline: Timeline):
+        """Parse connected clips attached to a primary storyline clip."""
+        clip_tags = ('asset-clip', 'clip', 'video', 'audio', 'title', 'ref-clip')
+        for child in parent_elem:
+            lane = child.get('lane')
+            if lane is not None and child.tag in clip_tags:
+                connected = self._parse_one_connected_clip(
+                    child, int(lane), parent_clip.name)
+                if connected:
+                    parent_clip.connected_clips.append(connected)
+                    timeline.connected_clips.append(connected)
+            elif child.tag == 'storyline':
+                lane_val = int(child.get('lane', '1'))
+                for sub_elem in child:
+                    if sub_elem.tag in clip_tags:
+                        connected = self._parse_one_connected_clip(
+                            sub_elem, lane_val, parent_clip.name)
+                        if connected:
+                            parent_clip.connected_clips.append(connected)
+                            timeline.connected_clips.append(connected)
+
+    def _parse_gap_connected_clips(self, gap_elem: ET.Element,
+                                    gap_offset: int, timeline: Timeline):
+        """Parse connected clips attached to gap elements."""
+        clip_tags = ('asset-clip', 'clip', 'video', 'audio', 'title', 'ref-clip')
+        for child in gap_elem:
+            lane = child.get('lane')
+            if lane is not None and child.tag in clip_tags:
+                connected = self._parse_one_connected_clip(
+                    child, int(lane), f"gap@{gap_offset}")
+                if connected:
+                    timeline.connected_clips.append(connected)
+            elif child.tag == 'storyline':
+                lane_val = int(child.get('lane', '1'))
+                for sub_elem in child:
+                    if sub_elem.tag in clip_tags:
+                        connected = self._parse_one_connected_clip(
+                            sub_elem, lane_val, f"gap@{gap_offset}")
+                        if connected:
+                            timeline.connected_clips.append(connected)
+
+    def _parse_one_connected_clip(self, elem: ET.Element, lane: int,
+                                   parent_name: str) -> Optional[ConnectedClip]:
+        """Parse a single connected clip element."""
+        name = elem.get('name', 'Untitled')
+        duration = Timecode.from_rational(
+            elem.get('duration', '0s'), self.frame_rate)
+        start = Timecode.from_rational(
+            elem.get('start', '0s'), self.frame_rate)
+        offset = Timecode.from_rational(
+            elem.get('offset', '0s'), self.frame_rate)
+        ref = elem.get('ref', '')
+        media_path = self.resources.get(ref, {}).get('src', '')
+        role = elem.get('audioRole', '') or elem.get('videoRole', '')
+
+        connected = ConnectedClip(
+            name=name, start=start, duration=duration,
+            lane=lane, offset=offset, source_start=start,
+            media_path=media_path, clip_type=elem.tag, role=role,
+            ref_id=ref, parent_clip_name=parent_name,
+        )
+
+        for marker_elem in elem.findall('marker'):
+            marker = self._parse_marker(marker_elem)
+            if marker:
+                connected.markers.append(marker)
+
+        for keyword_elem in elem.findall('keyword'):
+            keyword = self._parse_keyword(keyword_elem)
+            if keyword:
+                connected.keywords.append(keyword)
+
+        return connected
 
     def _parse_duration_to_seconds(self, duration_str: str) -> float:
         """Convert FCPXML duration string to seconds."""

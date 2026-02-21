@@ -134,7 +134,7 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 
 ---
 
-## All 34 Tools
+## All 47 Tools
 
 ### Analysis (Read) — 11 tools
 | Tool | Description |
@@ -150,6 +150,21 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 | `export_edl` | Generate EDL for color/audio handoffs |
 | `export_csv` | Export timeline data to CSV |
 | `analyze_pacing` | Get pacing metrics with suggestions |
+
+### Multi-Track & Connected Clips — 3 tools
+| Tool | Description |
+|------|-------------|
+| `list_connected_clips` | List B-roll, titles, and audio on secondary lanes with parent clip info |
+| `add_connected_clip` | Attach a clip to an existing timeline clip at a specified lane |
+| `list_compound_clips` | List compound clips (ref-clips) and their nested content |
+
+### Roles Management — 4 tools
+| Tool | Description |
+|------|-------------|
+| `list_roles` | Show all audio/video roles with clip counts |
+| `assign_role` | Set audio or video role on a clip |
+| `filter_by_role` | List clips matching a specific role |
+| `export_role_stems` | Export clip list grouped by role for audio mixing |
 
 ### QC & Validation — 4 tools
 | Tool | Description |
@@ -178,6 +193,28 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 | `fix_flash_frames` | Auto-fix flash frames (extend neighbors or delete) |
 | `rapid_trim` | Batch trim clips to max duration |
 | `fill_gaps` | Close gaps by extending adjacent clips |
+
+### Timeline Comparison — 1 tool
+| Tool | Description |
+|------|-------------|
+| `diff_timelines` | Compare two FCPXMLs — added/removed/moved/trimmed clips, markers, format changes |
+
+### Social Media Reformat — 1 tool
+| Tool | Description |
+|------|-------------|
+| `reformat_timeline` | Create FCPXML at different resolution (9:16, 1:1, 4:5, 4:3, or custom) |
+
+### Silence Detection — 2 tools
+| Tool | Description |
+|------|-------------|
+| `detect_silence_candidates` | Flag potential silence via heuristics (gaps, ultra-short clips, name patterns) |
+| `remove_silence_candidates` | Delete or mark detected silence candidates |
+
+### NLE Export — 2 tools
+| Tool | Description |
+|------|-------------|
+| `export_resolve_xml` | Simplified FCPXML v1.9 for DaVinci Resolve compatibility |
+| `export_fcp7_xml` | FCP7 XML (XMEML) for Premiere Pro / Resolve / Avid |
 
 ### Generation — 3 tools
 | Tool | Description |
@@ -249,20 +286,21 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 
 ```
 fcp-mcp-server/
-├── server.py              # MCP server (32 tools, 5 prompts, resources)
+├── server.py              # MCP server (47 tools, 5 prompts, resources)
 ├── fcpxml/
 │   ├── __init__.py
-│   ├── parser.py          # Read FCPXML → Python + library clip listing
-│   ├── writer.py          # Python → FCPXML, batch fixes, gap filling
+│   ├── parser.py          # Read FCPXML → Python (spine, connected clips, roles)
+│   ├── writer.py          # Write modifications (markers, trimming, reformatting, silence)
 │   ├── rough_cut.py       # Rough cut, montage, A/B roll generation
-│   └── models.py          # Timeline, Clip, Marker, TimeValue, PacingCurve
-├── docs/
-│   └── specs/             # Design specs and schemas
+│   ├── diff.py            # Timeline comparison engine
+│   ├── export.py          # DaVinci Resolve / XMEML export
+│   └── models.py          # Timeline, Clip, ConnectedClip, Marker, TimeValue, etc.
 ├── tests/
-│   ├── test_models.py         # Model & TimeValue tests (57 tests)
-│   ├── test_parser.py         # Parser tests (8 tests)
-│   ├── test_writer.py         # Writer tests (8 tests)
-│   └── test_speed_cutting.py  # Speed cutting & montage tests (22 tests)
+│   ├── test_models.py          # Model & TimeValue tests
+│   ├── test_parser.py          # Parser tests
+│   ├── test_writer.py          # Writer tests
+│   ├── test_speed_cutting.py   # Speed cutting & montage tests
+│   └── test_features_v05.py    # v0.5 features (connected clips, roles, diff, export)
 ├── examples/
 │   └── sample.fcpxml      # Sample FCPXML for testing
 ├── requirements.txt
@@ -295,7 +333,19 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 
 ## Releases
 
-### v0.4.3 — Marker Type Consolidation (Latest)
+### v0.5.0 — Multi-Track, Roles, Diff, Export (Latest)
+
+- **Connected Clips:** Full multi-track support — parse, list, and add B-roll, titles, and audio on secondary lanes
+- **Compound Clips:** Parse and inspect `ref-clip` compound clips
+- **Roles Management:** List, assign, filter, and export audio/video roles for mixing workflows
+- **Timeline Diff:** Compare two FCPXMLs — detect added/removed/moved/trimmed clips, marker changes, format changes
+- **Social Media Reformat:** Reformat timelines to 9:16, 1:1, 4:5, 4:3, or custom resolutions
+- **Silence Detection:** Heuristic-based silence candidate detection (gaps, ultra-short clips, name patterns) with mark/delete modes
+- **DaVinci Resolve Export:** Simplified FCPXML v1.9 for Resolve compatibility
+- **XMEML Export:** FCP7 XML for Premiere Pro / Resolve / Avid cross-NLE workflows
+- 13 new tools → 47 total
+
+### v0.4.3 — Marker Type Consolidation
 
 - **Refactored:** Unified three marker type lookup patterns into `MarkerType.from_string()` and `MarkerType.xml_tag`
 - **Fixed:** `add_marker` and `list_markers` schemas now expose `"completed"` type
@@ -375,9 +425,15 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 - [x] MCP Resources (file auto-discovery)
 - [x] SRT/VTT subtitle import as markers
 - [x] Timestamped transcript import as markers
+- [x] Connected clips & compound clip parsing
+- [x] Audio/video roles management
+- [x] Multi-timeline comparison (diff)
+- [x] Social media reformat (9:16, 1:1, 4:5)
+- [x] Silence detection & auto-cleanup
+- [x] DaVinci Resolve XML export
+- [x] FCP7 XMEML export (Premiere Pro / Avid)
 - [ ] Audio sync detection
-- [ ] Multi-timeline comparison
-- [ ] Premiere Pro XML support
+- [ ] Premiere Pro native XML support
 
 ---
 

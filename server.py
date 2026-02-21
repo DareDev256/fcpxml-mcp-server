@@ -2,7 +2,7 @@
 """
 FCPXML MCP Server — Batch operations and analysis for Final Cut Pro XML files.
 
-Provides 34 tools, MCP resources for file discovery, and pre-built prompt
+Provides 47 tools, MCP resources for file discovery, and pre-built prompt
 workflows for common editing tasks.
 
 Author: DareDev256 (https://github.com/DareDev256)
@@ -28,6 +28,8 @@ from mcp.types import (
     Tool,
 )
 
+from fcpxml.diff import compare_timelines
+from fcpxml.export import DaVinciExporter
 from fcpxml.models import (
     DuplicateGroup,
     FlashFrame,
@@ -979,6 +981,189 @@ async def list_tools() -> list[Tool]:
                     "transcript_path": {"type": "string", "description": "Path to text file with timestamps (alternative to inline transcript)"},
                     "marker_type": {"type": "string", "enum": ["standard", "chapter"], "default": "chapter"},
                     "output_path": {"type": "string", "description": "Output path (default: adds _chapters suffix)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        # ===== CONNECTED CLIPS & COMPOUND CLIPS (v0.5.0) =====
+        Tool(
+            name="list_connected_clips",
+            description="List all connected clips (B-roll, titles, audio) with their lanes and parent clips",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "lane": {"type": "integer", "description": "Filter by lane number (positive=above, negative=below)"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="add_connected_clip",
+            description="Connect a library clip to an existing timeline clip (B-roll overlay, audio, title)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "parent_clip_id": {"type": "string", "description": "Name/ID of the clip to attach to"},
+                    "asset_id": {"type": "string", "description": "Asset reference ID"},
+                    "asset_name": {"type": "string", "description": "Asset name (alternative to asset_id)"},
+                    "offset": {"type": "string", "default": "0s", "description": "Position relative to parent clip start"},
+                    "duration": {"type": "string", "description": "Duration (default: full asset)"},
+                    "lane": {"type": "integer", "default": 1, "description": "Lane number (positive=above, negative=below)"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
+                },
+                "required": ["filepath", "parent_clip_id"]
+            }
+        ),
+        Tool(
+            name="list_compound_clips",
+            description="List compound clips (ref-clips) and their nested content",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        # ===== ROLES MANAGEMENT (v0.5.0) =====
+        Tool(
+            name="list_roles",
+            description="List all audio/video roles used in the timeline with clip counts",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="assign_role",
+            description="Set the audio or video role on a clip (dialogue, music, effects, titles, etc.)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "clip_id": {"type": "string", "description": "Clip name or ID"},
+                    "audio_role": {"type": "string", "description": "Audio role (e.g., dialogue, music, effects)"},
+                    "video_role": {"type": "string", "description": "Video role (e.g., video, titles)"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _modified suffix)"}
+                },
+                "required": ["filepath", "clip_id"]
+            }
+        ),
+        Tool(
+            name="filter_by_role",
+            description="List all clips matching a specific audio or video role",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "role": {"type": "string", "description": "Role name to filter by"},
+                    "role_type": {"type": "string", "enum": ["audio", "video", "any"], "default": "any", "description": "Which role type to search"},
+                },
+                "required": ["filepath", "role"]
+            }
+        ),
+        Tool(
+            name="export_role_stems",
+            description="Export clip list grouped by role for audio mixing stem planning",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        # ===== TIMELINE DIFF (v0.5.0) =====
+        Tool(
+            name="diff_timelines",
+            description="Compare two FCPXML files and report differences in clips, markers, transitions, and format",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath_a": {"type": "string", "description": "Path to first FCPXML file (baseline)"},
+                    "filepath_b": {"type": "string", "description": "Path to second FCPXML file (comparison)"},
+                },
+                "required": ["filepath_a", "filepath_b"]
+            }
+        ),
+
+        # ===== SOCIAL MEDIA REFORMAT (v0.5.0) =====
+        Tool(
+            name="reformat_timeline",
+            description="Create new FCPXML with different resolution/aspect ratio (9:16 for TikTok, 1:1 for Instagram, etc.)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "format": {"type": "string", "enum": ["9:16", "1:1", "4:5", "16:9", "4:3", "custom"], "description": "Target format preset"},
+                    "width": {"type": "integer", "description": "Custom width (only with format='custom')"},
+                    "height": {"type": "integer", "description": "Custom height (only with format='custom')"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _reformatted suffix)"}
+                },
+                "required": ["filepath", "format"]
+            }
+        ),
+
+        # ===== SILENCE DETECTION (v0.5.0) =====
+        Tool(
+            name="detect_silence_candidates",
+            description="Detect potential silence/dead air using timeline heuristics (gaps, ultra-short clips, name patterns, duration anomalies)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "min_gap_seconds": {"type": "number", "default": 0.5, "description": "Minimum gap duration to flag"},
+                    "patterns": {"type": "array", "items": {"type": "string"}, "description": "Name patterns to match (default: gap, silence, room tone)"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="remove_silence_candidates",
+            description="Remove or mark detected silence candidates from timeline",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "mode": {"type": "string", "enum": ["delete", "mark"], "default": "mark", "description": "delete=remove clips/gaps, mark=add red markers"},
+                    "min_gap_seconds": {"type": "number", "default": 0.5},
+                    "min_confidence": {"type": "number", "default": 0.7, "description": "Only act on candidates above this confidence"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _silence_cleaned suffix)"}
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        # ===== NLE EXPORT (v0.5.0) =====
+        Tool(
+            name="export_resolve_xml",
+            description="Export timeline as DaVinci Resolve compatible FCPXML (simplified v1.9)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "flatten_compounds": {"type": "boolean", "default": True, "description": "Flatten compound clips for compatibility"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _resolve suffix)"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="export_fcp7_xml",
+            description="Export timeline as FCP7 XML (XMEML) for Premiere Pro, DaVinci Resolve, and Avid compatibility",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _fcp7.xml suffix)"},
                 },
                 "required": ["filepath"]
             }
@@ -2080,6 +2265,362 @@ Saved to: `{output_path}`
 """)]
 
 
+# ----- CONNECTED CLIPS & COMPOUND CLIPS HANDLERS (v0.5.0) -----
+
+async def handle_list_connected_clips(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+
+    lane_filter = arguments.get("lane")
+    clips = tl.connected_clips
+    if lane_filter is not None:
+        clips = [c for c in clips if c.lane == lane_filter]
+
+    if not clips:
+        return [TextContent(type="text", text="No connected clips found in timeline.")]
+
+    result = f"# Connected Clips in {tl.name}\n\n**Total**: {len(clips)}\n\n"
+    result += "| # | Name | Lane | Type | Duration | Parent | Role |\n"
+    result += "|---|------|------|------|----------|--------|------|\n"
+    for i, c in enumerate(clips, 1):
+        result += (
+            f"| {i} | {c.name} | {c.lane} | {c.clip_type} | "
+            f"{format_duration(c.duration_seconds)} | {c.parent_clip_name} | "
+            f"{c.role or '-'} |\n"
+        )
+    return [TextContent(type="text", text=result)]
+
+
+async def handle_add_connected_clip(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
+    modifier = FCPXMLModifier(filepath)
+    modifier.add_connected_clip(
+        parent_clip_id=arguments["parent_clip_id"],
+        asset_id=arguments.get("asset_id"),
+        asset_name=arguments.get("asset_name"),
+        offset=arguments.get("offset", "0s"),
+        duration=arguments.get("duration"),
+        lane=arguments.get("lane", 1),
+    )
+    modifier.save(output_path)
+    return [TextContent(type="text", text=(
+        f"Connected clip added to '{arguments['parent_clip_id']}' on lane {arguments.get('lane', 1)}\n\n"
+        f"Saved to: `{output_path}`"
+    ))]
+
+
+async def handle_list_compound_clips(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+
+    if not tl.compound_clips:
+        return [TextContent(type="text", text="No compound clips found in timeline.")]
+
+    result = f"# Compound Clips in {tl.name}\n\n"
+    for i, cc in enumerate(tl.compound_clips, 1):
+        result += f"### {i}. {cc.name}\n"
+        result += f"- **Ref ID**: {cc.ref_id}\n"
+        result += f"- **Duration**: {format_duration(cc.duration_seconds)}\n"
+        result += f"- **Clips inside**: {len(cc.clips)}\n\n"
+    return [TextContent(type="text", text=result)]
+
+
+# ----- ROLES HANDLERS (v0.5.0) -----
+
+async def handle_list_roles(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+
+    audio_roles: dict[str, int] = {}
+    video_roles: dict[str, int] = {}
+
+    for clip in tl.clips:
+        if clip.audio_role:
+            audio_roles[clip.audio_role] = audio_roles.get(clip.audio_role, 0) + 1
+        if clip.video_role:
+            video_roles[clip.video_role] = video_roles.get(clip.video_role, 0) + 1
+
+    for cc in tl.connected_clips:
+        if cc.role:
+            # Determine type from clip_type
+            if cc.clip_type in ('audio', 'audio-clip'):
+                audio_roles[cc.role] = audio_roles.get(cc.role, 0) + 1
+            else:
+                video_roles[cc.role] = video_roles.get(cc.role, 0) + 1
+
+    result = f"# Roles in {tl.name}\n\n"
+    if audio_roles:
+        result += "## Audio Roles\n\n| Role | Clips |\n|------|-------|\n"
+        for role, count in sorted(audio_roles.items()):
+            result += f"| {role} | {count} |\n"
+    else:
+        result += "## Audio Roles\n\nNo audio roles assigned.\n"
+
+    result += "\n"
+    if video_roles:
+        result += "## Video Roles\n\n| Role | Clips |\n|------|-------|\n"
+        for role, count in sorted(video_roles.items()):
+            result += f"| {role} | {count} |\n"
+    else:
+        result += "## Video Roles\n\nNo video roles assigned.\n"
+
+    return [TextContent(type="text", text=result)]
+
+
+async def handle_assign_role(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath)
+    )
+    modifier = FCPXMLModifier(filepath)
+    modifier.assign_role(
+        clip_id=arguments["clip_id"],
+        audio_role=arguments.get("audio_role"),
+        video_role=arguments.get("video_role"),
+    )
+    modifier.save(output_path)
+
+    roles_set = []
+    if arguments.get("audio_role"):
+        roles_set.append(f"audioRole={arguments['audio_role']}")
+    if arguments.get("video_role"):
+        roles_set.append(f"videoRole={arguments['video_role']}")
+
+    return [TextContent(type="text", text=(
+        f"Set {', '.join(roles_set)} on '{arguments['clip_id']}'\n\n"
+        f"Saved to: `{output_path}`"
+    ))]
+
+
+async def handle_filter_by_role(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+
+    role = arguments["role"].lower()
+    role_type = arguments.get("role_type", "any")
+    matches = []
+
+    for clip in tl.clips:
+        if role_type in ("audio", "any") and clip.audio_role.lower() == role:
+            matches.append((clip.name, "audio", clip.audio_role, format_duration(clip.duration_seconds)))
+        if role_type in ("video", "any") and clip.video_role.lower() == role:
+            matches.append((clip.name, "video", clip.video_role, format_duration(clip.duration_seconds)))
+
+    if not matches:
+        return [TextContent(type="text", text=f"No clips found with role '{role}'.")]
+
+    result = f"# Clips with role '{role}'\n\n"
+    result += "| Clip | Type | Role | Duration |\n|------|------|------|----------|\n"
+    for name, rtype, rval, dur in matches:
+        result += f"| {name} | {rtype} | {rval} | {dur} |\n"
+    return [TextContent(type="text", text=result)]
+
+
+async def handle_export_role_stems(arguments: dict) -> Sequence[TextContent]:
+    project, tl = _parse_project(arguments["filepath"])
+    if not tl:
+        return _no_timeline()
+
+    stems: dict[str, list] = {}
+    for clip in tl.clips:
+        role = clip.audio_role or "unassigned"
+        stems.setdefault(role, []).append(clip)
+
+    for cc in tl.connected_clips:
+        role = cc.role or "unassigned"
+        stems.setdefault(role, []).append(cc)
+
+    result = f"# Audio Stem Plan for {tl.name}\n\n"
+    for role, clips in sorted(stems.items()):
+        total_dur = sum(c.duration_seconds for c in clips)
+        result += f"## {role.title()} ({len(clips)} clips, {format_duration(total_dur)})\n\n"
+        for c in clips:
+            result += f"- {c.name} ({format_duration(c.duration_seconds)})\n"
+        result += "\n"
+
+    return [TextContent(type="text", text=result)]
+
+
+# ----- TIMELINE DIFF HANDLER (v0.5.0) -----
+
+async def handle_diff_timelines(arguments: dict) -> Sequence[TextContent]:
+    filepath_a = _validate_filepath(arguments["filepath_a"], ('.fcpxml', '.fcpxmld'))
+    filepath_b = _validate_filepath(arguments["filepath_b"], ('.fcpxml', '.fcpxmld'))
+
+    diff = compare_timelines(filepath_a, filepath_b)
+
+    if not diff.has_changes:
+        return [TextContent(type="text", text=(
+            f"# Timeline Diff: No Changes\n\n"
+            f"**{diff.timeline_a_name}** vs **{diff.timeline_b_name}** are identical."
+        ))]
+
+    result = (
+        f"# Timeline Diff\n\n"
+        f"**Baseline**: {diff.timeline_a_name}\n"
+        f"**Comparison**: {diff.timeline_b_name}\n"
+        f"**Total changes**: {diff.total_changes}\n\n"
+    )
+
+    if diff.format_changes:
+        result += "## Format Changes\n\n"
+        for change in diff.format_changes:
+            result += f"- {change}\n"
+        result += "\n"
+
+    clip_changes = [d for d in diff.clip_diffs if d.action != "unchanged"]
+    if clip_changes:
+        result += "## Clip Changes\n\n| Action | Clip | Details |\n|--------|------|--------|\n"
+        for d in clip_changes:
+            result += f"| {d.action.upper()} | {d.clip_name} | {d.details} |\n"
+        result += "\n"
+
+    if diff.marker_diffs:
+        result += "## Marker Changes\n\n| Action | Marker | Details |\n|--------|--------|--------|\n"
+        for d in diff.marker_diffs:
+            result += f"| {d.action.upper()} | {d.marker_name} | {d.details} |\n"
+        result += "\n"
+
+    if diff.transition_diffs:
+        result += "## Transition Changes\n\n"
+        for change in diff.transition_diffs:
+            result += f"- {change}\n"
+
+    return [TextContent(type="text", text=result)]
+
+
+# ----- SOCIAL MEDIA REFORMAT HANDLER (v0.5.0) -----
+
+async def handle_reformat_timeline(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_reformatted")
+    )
+
+    fmt = arguments["format"]
+    if fmt == "custom":
+        width = arguments.get("width")
+        height = arguments.get("height")
+        if not width or not height:
+            return [TextContent(type="text", text="Custom format requires both 'width' and 'height' parameters.")]
+    else:
+        formats = FCPXMLModifier.SOCIAL_FORMATS
+        if fmt not in formats:
+            return [TextContent(type="text", text=f"Unknown format: {fmt}. Valid: {', '.join(formats.keys())}")]
+        width, height = formats[fmt]
+
+    modifier = FCPXMLModifier(filepath)
+    modifier.reformat_resolution(width, height)
+    modifier.save(output_path)
+
+    return [TextContent(type="text", text=(
+        f"# Timeline Reformatted\n\n"
+        f"- **Format**: {fmt} ({width}x{height})\n"
+        f"- **Aspect ratio**: {width}:{height}\n\n"
+        f"Saved to: `{output_path}`\n\n"
+        f"**Next step**: Import into FCP (File > Import > XML). "
+        f"FCP will handle spatial conforming automatically."
+    ))]
+
+
+# ----- SILENCE DETECTION HANDLERS (v0.5.0) -----
+
+async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    modifier = FCPXMLModifier(filepath)
+    candidates = modifier.detect_silence_candidates(
+        min_gap_seconds=arguments.get("min_gap_seconds", 0.5),
+        patterns=arguments.get("patterns"),
+    )
+
+    if not candidates:
+        return [TextContent(type="text", text="No silence candidates detected.")]
+
+    result = f"# Silence Candidates Detected\n\n**Found**: {len(candidates)}\n\n"
+    result += "| # | Timecode | Duration | Reason | Confidence | Clip |\n"
+    result += "|---|----------|----------|--------|------------|------|\n"
+    for i, c in enumerate(candidates, 1):
+        result += (
+            f"| {i} | {c['start_timecode']} | {format_duration(c['duration_seconds'])} | "
+            f"{c['reason']} | {c['confidence']:.0%} | {c.get('clip_name') or '-'} |\n"
+        )
+    result += (
+        "\n**Note**: Detection uses timeline heuristics (gaps, ultra-short clips, name patterns). "
+        "Review candidates before removing — some may be intentional."
+    )
+    return [TextContent(type="text", text=result)]
+
+
+async def handle_remove_silence_candidates(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_silence_cleaned")
+    )
+    modifier = FCPXMLModifier(filepath)
+    actions = modifier.remove_silence_candidates(
+        mode=arguments.get("mode", "mark"),
+        min_gap_seconds=arguments.get("min_gap_seconds", 0.5),
+        min_confidence=arguments.get("min_confidence", 0.7),
+    )
+    modifier.save(output_path)
+
+    if not actions:
+        return [TextContent(type="text", text="No silence candidates met the confidence threshold.")]
+
+    mode = arguments.get("mode", "mark")
+    result = f"# Silence Candidates {'Marked' if mode == 'mark' else 'Removed'}\n\n"
+    result += f"**Actions taken**: {len(actions)}\n\n"
+    for a in actions:
+        result += f"- **{a['action']}** {a.get('clip_name', 'gap')} ({a['reason']})\n"
+    result += f"\nSaved to: `{output_path}`"
+    return [TextContent(type="text", text=result)]
+
+
+# ----- NLE EXPORT HANDLERS (v0.5.0) -----
+
+async def handle_export_resolve_xml(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_resolve")
+    )
+    exporter = DaVinciExporter(filepath)
+    exporter.export_simplified_fcpxml(
+        output_path,
+        flatten_compounds=arguments.get("flatten_compounds", True),
+    )
+    return [TextContent(type="text", text=(
+        f"# Exported for DaVinci Resolve\n\n"
+        f"- **Format**: Simplified FCPXML v1.9\n"
+        f"- **Compound clips flattened**: {arguments.get('flatten_compounds', True)}\n\n"
+        f"Saved to: `{output_path}`\n\n"
+        f"**Next step**: In DaVinci Resolve, go to File > Import > Timeline > Import AAF/EDL/XML"
+    ))]
+
+
+async def handle_export_fcp7_xml(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    default_out = str(Path(filepath).with_suffix('')) + "_fcp7.xml"
+    output_path = _validate_output_path(
+        arguments.get("output_path") or default_out
+    )
+    exporter = DaVinciExporter(filepath)
+    exporter.export_xmeml(output_path)
+    return [TextContent(type="text", text=(
+        f"# Exported as FCP7 XML (XMEML)\n\n"
+        f"- **Format**: XMEML v5\n"
+        f"- **Compatible with**: Premiere Pro, DaVinci Resolve, Avid Media Composer\n\n"
+        f"Saved to: `{output_path}`\n\n"
+        f"**Next step**: Import via File > Import in your target NLE"
+    ))]
+
+
 # ============================================================================
 # TOOL DISPATCH
 # ============================================================================
@@ -2126,6 +2667,25 @@ TOOL_HANDLERS = {
     # SRT / Transcript
     "import_srt_markers": handle_import_srt_markers,
     "import_transcript_markers": handle_import_transcript_markers,
+    # Connected Clips & Compound Clips (v0.5.0)
+    "list_connected_clips": handle_list_connected_clips,
+    "add_connected_clip": handle_add_connected_clip,
+    "list_compound_clips": handle_list_compound_clips,
+    # Roles (v0.5.0)
+    "list_roles": handle_list_roles,
+    "assign_role": handle_assign_role,
+    "filter_by_role": handle_filter_by_role,
+    "export_role_stems": handle_export_role_stems,
+    # Timeline Diff (v0.5.0)
+    "diff_timelines": handle_diff_timelines,
+    # Social Media Reformat (v0.5.0)
+    "reformat_timeline": handle_reformat_timeline,
+    # Silence Detection (v0.5.0)
+    "detect_silence_candidates": handle_detect_silence_candidates,
+    "remove_silence_candidates": handle_remove_silence_candidates,
+    # NLE Export (v0.5.0)
+    "export_resolve_xml": handle_export_resolve_xml,
+    "export_fcp7_xml": handle_export_fcp7_xml,
 }
 
 

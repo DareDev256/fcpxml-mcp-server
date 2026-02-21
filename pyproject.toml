@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fcp-mcp-server"
-version = "0.4.3"
-description = "MCP server for Final Cut Pro XML. Analyze timelines, add markers, trim clips, and generate rough cuts via Claude."
+version = "0.5.0"
+description = "MCP server for Final Cut Pro XML. 47 tools for timeline analysis, batch editing, QC, generation, multi-track support, and NLE export via Claude."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
