@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-02-22
+
+### Changed
+
+- **README rewrite:** Portfolio-grade overhaul — stronger narrative hook (personal story leads), architecture diagram with data flow, consolidated release history (points to CHANGELOG instead of duplicating it), tighter tool tables, updated stats (337 tests, ~7k LOC)
+- Roadmap condensed from 27 line items to 12 grouped milestones for scannability
+- "Why This Exists" moved from bottom of page to top — emotional hook before technical proof
+- Added test badge to header badges
+
 ## [0.5.0] - 2026-02-21
 
 ### Added

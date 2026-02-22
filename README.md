@@ -1,62 +1,50 @@
 # FCPXML MCP
 
-Batch operations and analysis for Final Cut Pro XML files via Claude.
+**47 tools for Final Cut Pro timelines — analysis, batch editing, QC, generation, and cross-NLE export — driven by Claude.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
+[![Tests](https://img.shields.io/badge/tests-337-brightgreen.svg)](#testing)
 
 ---
 
-## What This Is
+## Why This Exists
 
-A Model Context Protocol (MCP) server that reads and writes FCPXML files. Claude can analyze your timelines, make batch edits, and generate new sequences.
+After directing 350+ music videos (Chief Keef, Migos, Masicka), I noticed the same editing bottlenecks on every project: counting cuts manually, extracting chapter markers one by one, hunting flash frames by scrubbing, building rough cuts clip by clip.
 
-## What This Is NOT
+These are batch operations that don't need visual feedback. Export the XML, let Claude handle the tedium, import the result. That's the entire philosophy.
 
-- **Not a plugin** that runs inside Final Cut Pro
-- **Not real-time editing** — you export XML, modify it, then reimport
-- **Not a replacement** for manual editing when you need visual feedback
+---
 
-## The Workflow
+## How It Works
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Final Cut Pro  │────>│   Claude +      │────>│  Final Cut Pro  │
-│  Export XML     │     │   MCP Server    │     │  Import XML     │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
+                    FCPXML MCP Server
+                    ─────────────────
+  ┌──────────┐      ┌──────────────────────────────┐      ┌──────────┐
+  │ Final Cut│      │  parser.py   → Python objects │      │ Final Cut│
+  │   Pro    │─XML─>│  writer.py   → Modify & save  │─XML─>│   Pro    │
+  │          │      │  rough_cut.py→ Generate new   │      │          │
+  └──────────┘      │  diff.py     → Compare        │      └──────────┘
+                    │  export.py   → Resolve / FCP7 │
+                    └──────────────────────────────┘
+                              ▲
+                     Claude Desktop / MCP client
 ```
 
 1. **Export from FCP**: `File → Export XML...`
 2. **Run MCP tools**: Analyze, modify, generate via Claude
-3. **Import back to FCP**: `File → Import → XML`
+3. **Import back**: `File → Import → XML`
 
-This is a roundtrip workflow. Each edit cycle requires an export and import.
+This is a roundtrip workflow. Each edit cycle is an export-and-import.
 
----
+### What This Is NOT
 
-## When To Use This
-
-### Good For
-
-| Use Case | Why It Works |
-|----------|--------------|
-| **Batch marker insertion** | Add 100 chapter markers from a transcript in one operation |
-| **QC before delivery** | Find flash frames, gaps, duplicates programmatically |
-| **Data extraction** | Export EDL, CSV, chapter markers for handoffs |
-| **Template generation** | Create rough cuts from tagged clips automatically |
-| **Automated assembly** | Build montages from keywords and pacing rules |
-| **Timeline health checks** | Validate timing, find issues, get stats |
-
-### Not Ideal For
-
-| Use Case | Why Not |
-|----------|---------|
-| **Creative editing decisions** | No visual feedback — you can't see results until reimport |
-| **Real-time adjustments** | Export/import cycle is slow for iterative changes |
-| **Fine-tuning cuts** | Adjusting by a few frames is faster in FCP directly |
-| **Anything visual** | Color, framing, motion — need to see it |
+- **Not a plugin** that runs inside Final Cut Pro
+- **Not real-time editing** — you work with the XML between exports
+- **Not a replacement** for creative decisions that need visual feedback
 
 ---
 
@@ -81,9 +69,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
     "fcpxml": {
       "command": "uv",
       "args": ["--directory", "/path/to/fcp-mcp-server", "run", "server.py"],
-      "env": {
-        "FCP_PROJECTS_DIR": "/Users/you/Movies"
-      }
+      "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
     }
   }
 }
@@ -96,131 +82,132 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
     "fcpxml": {
       "command": "python",
       "args": ["/path/to/fcp-mcp-server/server.py"],
-      "env": {
-        "FCP_PROJECTS_DIR": "/Users/you/Movies"
-      }
+      "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
     }
   }
 }
 ```
 
-### 3. Export from Final Cut Pro
+### 3. Use It
 
-`File → Export XML...` (saves as `.fcpxml`)
-
-### 4. Use the Tools
-
-Open Claude Desktop and start working with your timeline.
+Export XML from Final Cut Pro, open Claude Desktop, and ask it to work with your timeline.
 
 ---
 
-## Pre-Built Workflows (Prompts)
+## When To Use This
 
-These are ready-to-use workflows that chain multiple tools together. Select them from Claude's prompt menu.
+| Good For | Not Ideal For |
+|----------|---------------|
+| Batch marker insertion (100 chapters from a transcript) | Creative editing decisions (no visual feedback) |
+| QC before delivery (flash frames, gaps, duplicates) | Real-time adjustments (export/import cycle) |
+| Data extraction (EDL, CSV, chapter markers) | Fine-tuning cuts (faster directly in FCP) |
+| Template generation (rough cuts from tagged clips) | Anything visual (color, framing, motion) |
+| Automated assembly (montages from keywords + pacing) | |
+| Timeline health checks (validation, stats, scoring) | |
+
+---
+
+## Pre-Built Workflows
+
+Select these from Claude's prompt menu — they chain multiple tools together automatically.
 
 | Prompt | What It Does |
 |--------|-------------|
 | **qc-check** | Full quality control — flash frames, gaps, duplicates, health score |
 | **youtube-chapters** | Extract chapter markers formatted for YouTube descriptions |
-| **rough-cut** | Guided rough cut — shows available clips, suggests structure, generates |
+| **rough-cut** | Guided rough cut — shows clips, suggests structure, generates |
 | **timeline-summary** | Quick overview — stats, pacing, keywords, markers, assessment |
 | **cleanup** | Find and auto-fix flash frames and gaps |
 
 ---
 
-## Auto-Discovery (Resources)
-
-The server automatically discovers `.fcpxml` files in your projects directory (`FCP_PROJECTS_DIR`). Claude can see them without you specifying paths manually.
-
----
-
 ## All 47 Tools
 
-### Analysis (Read) — 11 tools
+### Analysis — 11 tools
 | Tool | Description |
 |------|-------------|
 | `list_projects` | Find all FCPXML files in a directory |
-| `analyze_timeline` | Get stats on duration, resolution, pacing |
-| `list_clips` | List all clips with timecodes, durations, keywords |
-| `list_library_clips` | List all source clips available in the library |
-| `list_markers` | Extract markers with timestamps (YouTube chapter format) |
-| `find_short_cuts` | Find potential flash frames (< threshold) |
-| `find_long_clips` | Find clips that might need trimming |
-| `list_keywords` | Extract all keywords/tags from project |
-| `export_edl` | Generate EDL for color/audio handoffs |
-| `export_csv` | Export timeline data to CSV |
-| `analyze_pacing` | Get pacing metrics with suggestions |
+| `analyze_timeline` | Stats on duration, resolution, pacing |
+| `list_clips` | All clips with timecodes, durations, keywords |
+| `list_library_clips` | Source clips available in the library |
+| `list_markers` | Markers with timestamps (YouTube chapter format) |
+| `find_short_cuts` | Potential flash frames (< threshold) |
+| `find_long_clips` | Clips that might need trimming |
+| `list_keywords` | All keywords/tags from project |
+| `export_edl` | EDL for color/audio handoffs |
+| `export_csv` | Timeline data to CSV |
+| `analyze_pacing` | Pacing metrics with suggestions |
 
 ### Multi-Track & Connected Clips — 3 tools
 | Tool | Description |
 |------|-------------|
-| `list_connected_clips` | List B-roll, titles, and audio on secondary lanes with parent clip info |
-| `add_connected_clip` | Attach a clip to an existing timeline clip at a specified lane |
-| `list_compound_clips` | List compound clips (ref-clips) and their nested content |
+| `list_connected_clips` | B-roll, titles, audio on secondary lanes |
+| `add_connected_clip` | Attach a clip at a specified lane |
+| `list_compound_clips` | Inspect ref-clip compound clips |
 
-### Roles Management — 4 tools
+### Roles — 4 tools
 | Tool | Description |
 |------|-------------|
-| `list_roles` | Show all audio/video roles with clip counts |
-| `assign_role` | Set audio or video role on a clip |
-| `filter_by_role` | List clips matching a specific role |
-| `export_role_stems` | Export clip list grouped by role for audio mixing |
+| `list_roles` | Audio/video roles with clip counts |
+| `assign_role` | Set role on a clip |
+| `filter_by_role` | Clips matching a specific role |
+| `export_role_stems` | Clip list grouped by role for mixing |
 
 ### QC & Validation — 4 tools
 | Tool | Description |
 |------|-------------|
-| `detect_flash_frames` | Find ultra-short clips with severity (critical/warning) |
-| `detect_duplicates` | Find clips using same source media |
-| `detect_gaps` | Find unintentional gaps in timeline |
+| `detect_flash_frames` | Ultra-short clips with severity levels |
+| `detect_duplicates` | Clips using same source media |
+| `detect_gaps` | Unintentional gaps in timeline |
 | `validate_timeline` | Health check with score (0-100%) |
 
-### Editing (Write) — 9 tools
+### Editing — 9 tools
 | Tool | Description |
 |------|-------------|
-| `add_marker` | Add a single marker at a timecode |
-| `batch_add_markers` | Add multiple markers, or auto-generate at cuts/intervals |
-| `insert_clip` | Insert a library clip onto the timeline at any position |
+| `add_marker` | Single marker at a timecode |
+| `batch_add_markers` | Multiple markers, or auto-generate at cuts/intervals |
+| `insert_clip` | Library clip onto timeline at any position |
 | `trim_clip` | Adjust in/out points with optional ripple |
-| `reorder_clips` | Move clips to new timeline positions |
-| `add_transition` | Add cross-dissolve, fade, wipe between clips |
-| `change_speed` | Slow motion or speed up clips |
+| `reorder_clips` | Move clips to new positions |
+| `add_transition` | Cross-dissolve, fade, wipe between clips |
+| `change_speed` | Slow motion or speed ramps |
 | `delete_clips` | Remove clips with optional ripple |
-| `split_clip` | Split a clip at specified timecodes |
+| `split_clip` | Split at specified timecodes |
 
 ### Batch Fixes — 3 tools
 | Tool | Description |
 |------|-------------|
-| `fix_flash_frames` | Auto-fix flash frames (extend neighbors or delete) |
+| `fix_flash_frames` | Auto-fix by extending neighbors or deleting |
 | `rapid_trim` | Batch trim clips to max duration |
 | `fill_gaps` | Close gaps by extending adjacent clips |
 
 ### Timeline Comparison — 1 tool
 | Tool | Description |
 |------|-------------|
-| `diff_timelines` | Compare two FCPXMLs — added/removed/moved/trimmed clips, markers, format changes |
+| `diff_timelines` | Compare two FCPXMLs — added/removed/moved/trimmed clips |
 
-### Social Media Reformat — 1 tool
+### Reformat — 1 tool
 | Tool | Description |
 |------|-------------|
-| `reformat_timeline` | Create FCPXML at different resolution (9:16, 1:1, 4:5, 4:3, or custom) |
+| `reformat_timeline` | New resolution (9:16, 1:1, 4:5, 4:3, custom) |
 
 ### Silence Detection — 2 tools
 | Tool | Description |
 |------|-------------|
-| `detect_silence_candidates` | Flag potential silence via heuristics (gaps, ultra-short clips, name patterns) |
+| `detect_silence_candidates` | Flag potential silence via heuristics |
 | `remove_silence_candidates` | Delete or mark detected silence candidates |
 
 ### NLE Export — 2 tools
 | Tool | Description |
 |------|-------------|
-| `export_resolve_xml` | Simplified FCPXML v1.9 for DaVinci Resolve compatibility |
-| `export_fcp7_xml` | FCP7 XML (XMEML) for Premiere Pro / Resolve / Avid |
+| `export_resolve_xml` | FCPXML v1.9 for DaVinci Resolve |
+| `export_fcp7_xml` | XMEML for Premiere Pro / Resolve / Avid |
 
 ### Generation — 3 tools
 | Tool | Description |
 |------|-------------|
-| `auto_rough_cut` | Generate timeline from keywords, duration, pacing |
-| `generate_montage` | Create montages with pacing curves (accelerating/decelerating/pyramid) |
+| `auto_rough_cut` | Timeline from keywords, duration, pacing |
+| `generate_montage` | Montages with pacing curves (accelerating/decelerating/pyramid) |
 | `generate_ab_roll` | Documentary-style A/B roll alternating edits |
 
 ### Beat Sync — 2 tools
@@ -232,206 +219,94 @@ The server automatically discovers `.fcpxml` files in your projects directory (`
 ### Import — 2 tools
 | Tool | Description |
 |------|-------------|
-| `import_srt_markers` | Parse SRT/VTT subtitles into timeline markers |
-| `import_transcript_markers` | Parse timestamped text (YouTube chapters format) into markers |
+| `import_srt_markers` | SRT/VTT subtitles into timeline markers |
+| `import_transcript_markers` | Timestamped text (YouTube chapters) into markers |
+
+---
+
+## Architecture
+
+```
+fcp-mcp-server/           ~7k lines Python
+├── server.py              MCP entry point — 47 tools, 5 prompts, resource discovery
+├── fcpxml/
+│   ├── parser.py          FCPXML → Python (spine, connected clips, roles)
+│   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
+│   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
+│   ├── diff.py            Timeline comparison engine
+│   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
+│   └── models.py          TimeValue, Timecode, Clip, ConnectedClip, Timeline
+├── tests/                 337 tests across 8 files
+└── examples/
+    └── sample.fcpxml      9 clips, 24fps — test fixture
+```
+
+**Key design decisions:**
+- **Rational time arithmetic** — all times are fractions (`600/2400s`), never floats. Matches FCPXML's native format and eliminates rounding errors.
+- **Dispatch dict pattern** — `TOOL_HANDLERS` maps tool names to async handlers. No 1000-line if/elif chains.
+- **Non-destructive output** — modified files get `_modified`, `_chapters`, etc. suffixes. Originals are never overwritten.
+- **Path validation** — all 47 handlers validate inputs against traversal attacks, null bytes, symlinks, and a 100MB size limit.
 
 ---
 
 ## Usage Examples
 
-### Timeline Analysis
-
 ```
 "Analyze my latest FCP project"
-"List all clips shorter than 1 second"
-"Extract chapter markers for YouTube description"
-"Run a health check on my timeline"
-```
-
-### Batch Edits
-
-```
 "Add chapter markers at these timestamps: [list]"
-"Trim 2 seconds off the end of every interview clip"
-"Add a cross-dissolve between all clips"
-"Fix all flash frames by extending previous clips"
-```
-
-### Data Export
-
-```
 "Export an EDL for the colorist"
-"Generate a CSV of all clips with timecodes"
-"List all clips tagged 'interview' with durations"
-```
-
-### Automated Assembly
-
-```
 "Create a 3-minute rough cut using clips tagged 'broll'"
-"Generate a montage with accelerating pacing"
-"Build an A/B roll: interviews as main, broll as cutaways"
-```
-
-### Beat Sync
-
-```
-"Import beat markers from beats.json"
+"Run a health check on my timeline"
 "Snap all cuts to the nearest beat"
+"Fix all flash frames by extending previous clips"
+"Generate a montage with accelerating pacing"
+"Compare my current edit with yesterday's version"
+"Reformat my timeline for Instagram Reels (9:16)"
 ```
 
 ---
 
-## Project Structure
+## Testing
 
+```bash
+uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
+ruff check . --exclude docs/           # lint — must pass before committing
 ```
-fcp-mcp-server/
-├── server.py              # MCP server (47 tools, 5 prompts, resources)
-├── fcpxml/
-│   ├── __init__.py
-│   ├── parser.py          # Read FCPXML → Python (spine, connected clips, roles)
-│   ├── writer.py          # Write modifications (markers, trimming, reformatting, silence)
-│   ├── rough_cut.py       # Rough cut, montage, A/B roll generation
-│   ├── diff.py            # Timeline comparison engine
-│   ├── export.py          # DaVinci Resolve / XMEML export
-│   └── models.py          # Timeline, Clip, ConnectedClip, Marker, TimeValue, etc.
-├── tests/
-│   ├── test_models.py          # Model & TimeValue tests
-│   ├── test_parser.py          # Parser tests
-│   ├── test_writer.py          # Writer tests
-│   ├── test_speed_cutting.py   # Speed cutting & montage tests
-│   └── test_features_v05.py    # v0.5 features (connected clips, roles, diff, export)
-├── examples/
-│   └── sample.fcpxml      # Sample FCPXML for testing
-├── requirements.txt
-├── pyproject.toml
-└── README.md
-```
+
+337 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
 ## Requirements
 
 - **Python 3.10+**
-- **Final Cut Pro 10.4+** (for FCPXML 1.8+)
-- **Claude Desktop** (or any MCP-compatible client)
-- **mcp** package (`pip install mcp`)
-
----
-
-## Why This Exists
-
-After directing 350+ music videos, I got tired of repetitive editing tasks:
-- Counting cuts manually
-- Extracting chapter markers one by one
-- Finding flash frames by scrubbing through footage
-- Building rough cuts clip by clip
-
-These are batch operations that don't need visual feedback. Export the XML, let Claude handle it, import the result.
+- **Final Cut Pro 10.4+** (FCPXML 1.8+)
+- **Claude Desktop** or any MCP-compatible client
+- **Dependencies:** `mcp`, `lxml` (installed automatically)
 
 ---
 
 ## Releases
 
-### v0.5.0 — Multi-Track, Roles, Diff, Export (Latest)
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-- **Connected Clips:** Full multi-track support — parse, list, and add B-roll, titles, and audio on secondary lanes
-- **Compound Clips:** Parse and inspect `ref-clip` compound clips
-- **Roles Management:** List, assign, filter, and export audio/video roles for mixing workflows
-- **Timeline Diff:** Compare two FCPXMLs — detect added/removed/moved/trimmed clips, marker changes, format changes
-- **Social Media Reformat:** Reformat timelines to 9:16, 1:1, 4:5, 4:3, or custom resolutions
-- **Silence Detection:** Heuristic-based silence candidate detection (gaps, ultra-short clips, name patterns) with mark/delete modes
-- **DaVinci Resolve Export:** Simplified FCPXML v1.9 for Resolve compatibility
-- **XMEML Export:** FCP7 XML for Premiere Pro / Resolve / Avid cross-NLE workflows
-- 13 new tools → 47 total
-
-### v0.4.3 — Marker Type Consolidation
-
-- **Refactored:** Unified three marker type lookup patterns into `MarkerType.from_string()` and `MarkerType.xml_tag`
-- **Fixed:** `add_marker` and `list_markers` schemas now expose `"completed"` type
-- **Fixed:** Clip-level chapter markers are now parsed (were silently dropped)
-- **Fixed:** `FCPXMLWriter` now emits `posterOffset` on chapter markers
-- **Fixed:** Tightened TODO detection to match only `completed="0"` exactly
-
-### v0.4.2 — Marker Round-Trip Fix
-
-- **Fixed:** TODO and COMPLETED marker types now survive save/re-parse round-trips
-- **Fixed:** Parser distinguishes `completed="0"` (TODO) from `completed="1"` (COMPLETED)
-- **Fixed:** `list_markers` filter now supports "completed" marker type
-
-### v0.4.0 — Prompts, Resources & Refactor
-
-- **MCP Prompts:** 5 pre-built workflows (qc-check, youtube-chapters, rough-cut, timeline-summary, cleanup)
-- **MCP Resources:** Auto-discovery of FCPXML files in projects directory
-- **Refactored server:** Dispatch dict pattern replaces 1000-line if/elif chain
-- **Cleaned dependencies:** Removed unused packages (pydantic, timecode, click, opentimelineio)
-- **Better error handling:** FileNotFoundError caught separately with clear messages
-- **uv support:** Modern install instructions for Claude Desktop
-- **Entry point:** `fcp-mcp-server` console script via pyproject.toml
-- **SRT/VTT import:** `import_srt_markers` — parse subtitles into timeline markers
-- **Transcript import:** `import_transcript_markers` — YouTube chapter format to markers
-- 34 tools total
-
-### v0.3.0 — Batch Operations & Generation
-
-- **QC Tools:** `detect_flash_frames`, `detect_duplicates`, `detect_gaps`, `validate_timeline`
-- **Batch Fixes:** `fix_flash_frames`, `rapid_trim`, `fill_gaps`
-- **Generation:** `generate_montage` with pacing curves, `generate_ab_roll` for documentary-style edits
-- **Beat Sync:** `import_beat_markers`, `snap_to_beats`
-- Timeline health scoring (0-100%)
-- Flash frame severity levels (critical < 2 frames, warning < 6 frames)
-- 32 tools total
-
-### v0.2.1 — Library Clip Insertion
-
-- **New:** `list_library_clips` — See all source media available for insertion
-- **New:** `insert_clip` — Add library clips at any position with subclip support
-- 21 tools total
-
-### v0.2.0 — Timeline Editing
-
-- **Write tools:** `trim_clip`, `reorder_clips`, `add_transition`, `change_speed`, `delete_clips`, `split_clip`, `batch_add_markers`
-- **Generation:** `auto_rough_cut` — Generate rough cuts from keywords
-- 19 tools total
-
-### v0.1.0 — Initial Release
-
-- Core FCPXML parsing (v1.8 - v1.11)
-- Timeline analysis and clip listing
-- Marker extraction (chapters, TODOs, standard)
-- EDL/CSV export
-- 10 tools total
+**Latest: v0.5.1** — Multi-track connected clips, roles management, timeline diff, silence detection, DaVinci Resolve + FCP7 XMEML export. 13 new tools, 47 total.
 
 ---
 
 ## Roadmap
 
-- [x] Core FCPXML parsing
-- [x] Timeline analysis tools
-- [x] Marker extraction & insertion
-- [x] Clip trimming & reordering
-- [x] Transition insertion
-- [x] Speed changes
-- [x] Auto rough cut generation
-- [x] EDL/CSV export
-- [x] Library clip listing & insertion
-- [x] Flash frame detection & auto-fix
-- [x] Gap detection & filling
-- [x] Timeline validation with health scoring
-- [x] Montage generation with pacing curves
-- [x] A/B roll documentary-style editing
-- [x] Beat marker import & snap-to-beat
-- [x] MCP Prompts (pre-built workflows)
-- [x] MCP Resources (file auto-discovery)
-- [x] SRT/VTT subtitle import as markers
-- [x] Timestamped transcript import as markers
-- [x] Connected clips & compound clip parsing
-- [x] Audio/video roles management
-- [x] Multi-timeline comparison (diff)
-- [x] Social media reformat (9:16, 1:1, 4:5)
-- [x] Silence detection & auto-cleanup
-- [x] DaVinci Resolve XML export
-- [x] FCP7 XMEML export (Premiere Pro / Avid)
+- [x] Core FCPXML parsing (v1.8–1.11)
+- [x] Timeline analysis, markers, EDL/CSV export
+- [x] Clip editing (trim, reorder, split, speed, transitions)
+- [x] QC tools (flash frames, gaps, duplicates, health scoring)
+- [x] Generation (rough cuts, montages, A/B roll, beat sync)
+- [x] MCP Prompts + Resources (auto-discovery)
+- [x] Subtitle & transcript import as markers
+- [x] Multi-track (connected clips, compound clips, roles)
+- [x] Timeline diff + social media reformat
+- [x] Silence detection & cleanup
+- [x] Cross-NLE export (DaVinci Resolve, Premiere Pro, Avid)
 - [ ] Audio sync detection
 - [ ] Premiere Pro native XML support
 
@@ -441,14 +316,10 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 
 PRs welcome. If you're a video editor who codes (or a coder who edits), let's build this together.
 
----
-
 ## Credits
 
-Built by [@DareDev256](https://github.com/DareDev256) — Former music video director (350+ videos for Chief Keef, Migos, Masicka), now building tools for creators.
-
----
+Built by [@DareDev256](https://github.com/DareDev256) — former music video director (350+ videos), now building AI tools for creators.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
