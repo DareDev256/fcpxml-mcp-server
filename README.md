@@ -264,6 +264,8 @@ fcp-mcp-server/           ~7k lines Python
 "Reformat my timeline for Instagram Reels (9:16)"
 ```
 
+For multi-step workflow recipes (QC pipelines, beat-synced assembly, cross-NLE handoffs), see **[docs/WORKFLOWS.md](docs/WORKFLOWS.md)**.
+
 ---
 
 ## Testing
@@ -290,7 +292,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-**Latest: v0.5.1** — Multi-track connected clips, roles management, timeline diff, silence detection, DaVinci Resolve + FCP7 XMEML export. 13 new tools, 47 total.
+**Latest: v0.5.3** — Workflow recipes guide, multi-track connected clips, roles management, timeline diff, silence detection, DaVinci Resolve + FCP7 XMEML export. 47 tools.
 
 ---
 

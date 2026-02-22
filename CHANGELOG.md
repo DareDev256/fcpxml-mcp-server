@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-02-22
+
+### Added
+
+- **Workflow recipes guide** (`docs/WORKFLOWS.md`): 8 real-world multi-step workflow recipes — delivery QC pipeline, YouTube chapter export, beat-synced music video assembly, cross-NLE handoff, documentary A/B roll, social media reformat, timeline version comparison, silence cleanup
+- Each recipe documents the scenario, natural-language prompt, tool chain, and practical notes
+- Section on composing tools in AI agent workflows — how to describe multi-tool pipelines in a single prompt
+- README now links to workflows guide from Usage Examples section
+
 ## [0.5.2] - 2026-02-22
 
 ### Fixed
