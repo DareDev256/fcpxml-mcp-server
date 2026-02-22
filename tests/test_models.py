@@ -12,6 +12,7 @@ from fcpxml.models import (
     GapInfo,
     Keyword,
     Marker,
+    MarkerType,
     PacingConfig,
     Project,
     Timecode,
@@ -342,6 +343,39 @@ class TestValidationResult:
         assert "Warnings: 1" in s
         assert "Flash frames: 1" in s
         assert "Gaps: 1" in s
+
+
+class TestMarkerType:
+
+    @pytest.mark.parametrize("value,expected", [
+        ("todo", MarkerType.TODO),
+        ("TODO", MarkerType.TODO),
+        ("completed", MarkerType.COMPLETED),
+        ("COMPLETED", MarkerType.COMPLETED),
+        ("standard", MarkerType.STANDARD),
+        ("chapter", MarkerType.CHAPTER),
+    ])
+    def test_from_string_current_values(self, value, expected):
+        assert MarkerType.from_string(value) == expected
+
+    @pytest.mark.parametrize("alias,expected", [
+        ("todo-marker", MarkerType.TODO),
+        ("completed-marker", MarkerType.COMPLETED),
+        ("chapter-marker", MarkerType.CHAPTER),
+    ])
+    def test_from_string_legacy_aliases(self, alias, expected):
+        """Legacy spec values (e.g. 'todo-marker') resolve to current enum."""
+        assert MarkerType.from_string(alias) == expected
+
+    def test_from_string_invalid_raises(self):
+        with pytest.raises(ValueError, match="Invalid marker type"):
+            MarkerType.from_string("nonexistent")
+
+    def test_xml_tag_chapter_vs_marker(self):
+        assert MarkerType.CHAPTER.xml_tag == "chapter-marker"
+        assert MarkerType.TODO.xml_tag == "marker"
+        assert MarkerType.COMPLETED.xml_tag == "marker"
+        assert MarkerType.STANDARD.xml_tag == "marker"
 
 
 class TestPacingConfig:

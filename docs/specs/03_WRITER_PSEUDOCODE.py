@@ -18,9 +18,10 @@ import copy
 # ============================================================================
 
 class MarkerType(Enum):
-    STANDARD = "marker"
-    CHAPTER = "chapter-marker"
-    TODO = "todo-marker"
+    STANDARD = "standard"
+    TODO = "todo"
+    CHAPTER = "chapter"
+    COMPLETED = "completed"
 
 class MarkerColor(Enum):
     BLUE = 0

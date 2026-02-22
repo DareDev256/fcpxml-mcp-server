@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-337-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-348-brightgreen.svg)](#testing)
 
 ---
 
@@ -236,7 +236,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── diff.py            Timeline comparison engine
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   └── models.py          TimeValue, Timecode, Clip, ConnectedClip, Timeline
-├── tests/                 337 tests across 8 files
+├── tests/                 348 tests across 8 files
 └── examples/
     └── sample.fcpxml      9 clips, 24fps — test fixture
 ```
@@ -273,7 +273,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-337 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
+348 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
 
 ---
 

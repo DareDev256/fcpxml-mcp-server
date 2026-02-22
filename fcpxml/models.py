@@ -31,6 +31,13 @@ class MarkerType(Enum):
             MarkerType.from_string("completed")  -> MarkerType.COMPLETED
         """
         lowered = value.lower()
+        # Accept legacy aliases from older specs (e.g. "todo-marker" → TODO)
+        aliases = {
+            "todo-marker": "todo",
+            "completed-marker": "completed",
+            "chapter-marker": "chapter",
+        }
+        lowered = aliases.get(lowered, lowered)
         try:
             return cls(lowered)
         except ValueError:
