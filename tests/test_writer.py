@@ -272,6 +272,30 @@ def test_marker_type_roundtrip(temp_fcpxml, tmp_path):
     assert types['Done task'] == MarkerType.COMPLETED
 
 
+def test_marker_type_from_string_roundtrip(temp_fcpxml, tmp_path):
+    """MarkerType.from_string('todo') → write → parse must survive as TODO, not STANDARD."""
+    from fcpxml.models import MarkerType
+    from fcpxml.parser import FCPXMLParser
+
+    modifier = FCPXMLModifier(temp_fcpxml)
+    # Use from_string (the path batch_add_markers takes) instead of enum directly
+    modifier.add_marker('Broll_City', '00:00:00:06', 'Via string',
+                        MarkerType.from_string('todo'))
+    modifier.add_marker('Broll_City', '00:00:00:12', 'Via alias',
+                        MarkerType.from_string('todo-marker'))
+
+    output = str(tmp_path / 'from_string_rt.fcpxml')
+    modifier.save(output)
+
+    project = FCPXMLParser().parse_file(output)
+    all_markers = []
+    for clip in project.primary_timeline.clips:
+        all_markers.extend(clip.markers)
+    types = {m.name: m.marker_type for m in all_markers}
+    assert types['Via string'] == MarkerType.TODO
+    assert types['Via alias'] == MarkerType.TODO
+
+
 def test_add_marker_with_note(temp_fcpxml):
     """Add a marker with a note."""
     modifier = FCPXMLModifier(temp_fcpxml)

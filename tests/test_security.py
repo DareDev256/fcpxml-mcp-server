@@ -213,6 +213,31 @@ class TestCompletedAttributeValidation:
         m = self._parse_marker_xml("1 OR 1=1")
         assert m.marker_type == MarkerType.STANDARD
 
+    def test_completed_whitespace_padded_zero_falls_to_standard(self):
+        """Whitespace around '0' must not be treated as TODO — strict matching."""
+        m = self._parse_marker_xml(" 0 ")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_whitespace_padded_one_falls_to_standard(self):
+        """Whitespace around '1' must not be treated as COMPLETED — strict matching."""
+        m = self._parse_marker_xml(" 1 ")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_negative_one_falls_to_standard(self):
+        """Negative integers are not valid completed values."""
+        m = self._parse_marker_xml("-1")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_case_true_upper_falls_to_standard(self):
+        """Case variants of truthy strings are all rejected."""
+        m = self._parse_marker_xml("TRUE")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_case_false_falls_to_standard(self):
+        """Boolean 'false' string is not a valid completed value."""
+        m = self._parse_marker_xml("false")
+        assert m.marker_type == MarkerType.STANDARD
+
 
 # ============================================================================
 # Parser file size limit
