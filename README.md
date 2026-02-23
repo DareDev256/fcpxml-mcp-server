@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-348-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-377-brightgreen.svg)](#testing)
 
 ---
 

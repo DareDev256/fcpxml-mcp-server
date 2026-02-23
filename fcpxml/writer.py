@@ -21,6 +21,28 @@ from .models import (
     TimeValue,
 )
 
+# Maximum lengths for XML attribute values to prevent memory abuse
+_MAX_MARKER_NAME_LENGTH = 1024
+_MAX_NOTE_LENGTH = 4096
+
+
+def _sanitize_xml_value(value: str, max_length: int = _MAX_MARKER_NAME_LENGTH) -> str:
+    """Sanitize a string value before writing it into an XML attribute.
+
+    Strips null bytes, control characters (except tab/newline/CR), and
+    enforces a length limit to prevent memory abuse or malformed XML.
+    """
+    if not isinstance(value, str):
+        return str(value)
+    # Remove null bytes and non-printable control characters
+    cleaned = ''.join(
+        c for c in value
+        if c in ('\t', '\n', '\r') or ord(c) >= 32
+    )
+    if len(cleaned) > max_length:
+        cleaned = cleaned[:max_length]
+    return cleaned
+
 
 def write_fcpxml(root: ET.Element, filepath: str) -> str:
     """Format an ElementTree root as pretty-printed FCPXML and write to disk.
@@ -175,6 +197,9 @@ class FCPXMLModifier:
         if clip is None:
             raise ValueError(f"Clip not found: {clip_id}")
 
+        # Sanitize user-provided strings before writing to XML
+        name = _sanitize_xml_value(name, _MAX_MARKER_NAME_LENGTH)
+
         time_value = self._parse_time(timecode)
 
         # Determine XML tag based on marker type
@@ -198,7 +223,7 @@ class FCPXMLModifier:
 
         # Add note if specified (chapter-marker elements don't support notes)
         if note and marker_type != MarkerType.CHAPTER:
-            marker.set('note', note)
+            marker.set('note', _sanitize_xml_value(note, _MAX_NOTE_LENGTH))
 
         return marker
 
@@ -1643,7 +1668,7 @@ class FCPXMLWriter:
         elem = ET.SubElement(parent, tag,
             start=self._tc_to_rational(marker.start),
             duration=self._tc_to_rational(marker.duration) if marker.duration else "1/24s",
-            value=marker.name)
+            value=_sanitize_xml_value(marker.name))
         if marker.marker_type == MarkerType.CHAPTER:
             elem.set('posterOffset', '0s')
         elif marker.marker_type == MarkerType.TODO:
@@ -1651,7 +1676,7 @@ class FCPXMLWriter:
         elif marker.marker_type == MarkerType.COMPLETED:
             elem.set('completed', '1')
         if marker.note and marker.marker_type != MarkerType.CHAPTER:
-            elem.set('note', marker.note)
+            elem.set('note', _sanitize_xml_value(marker.note, _MAX_NOTE_LENGTH))
 
     def _add_keyword(self, parent, keyword):
         """Add a keyword element with optional start/duration range to a parent clip."""

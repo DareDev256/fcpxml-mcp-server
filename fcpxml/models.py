@@ -14,6 +14,10 @@ from typing import Any, Dict, List, Optional, Tuple
 # ENUMS
 # ============================================================================
 
+# Maximum length for marker type strings to prevent memory abuse
+_MAX_MARKER_TYPE_LENGTH = 64
+
+
 class MarkerType(Enum):
     """Types of markers in Final Cut Pro."""
     STANDARD = "standard"
@@ -25,12 +29,25 @@ class MarkerType(Enum):
     def from_string(cls, value: str) -> 'MarkerType':
         """Convert a string to MarkerType, accepting both enum names and values.
 
+        Includes input validation: rejects null bytes, control characters,
+        and excessively long strings to prevent injection and memory abuse.
+
         Examples:
             MarkerType.from_string("todo")      -> MarkerType.TODO
             MarkerType.from_string("TODO")       -> MarkerType.TODO
             MarkerType.from_string("completed")  -> MarkerType.COMPLETED
         """
-        lowered = value.lower()
+        if not isinstance(value, str):
+            raise TypeError(f"Expected str, got {type(value).__name__}")
+        if '\x00' in value or any(ord(c) < 32 and c not in ('\n', '\r', '\t') for c in value):
+            raise ValueError("Marker type contains invalid control characters")
+        if len(value) > _MAX_MARKER_TYPE_LENGTH:
+            raise ValueError(
+                f"Marker type exceeds maximum length ({_MAX_MARKER_TYPE_LENGTH} chars)"
+            )
+        lowered = value.strip().lower()
+        if not lowered:
+            raise ValueError("Marker type cannot be empty")
         # Accept legacy aliases from older specs (e.g. "todo-marker" → TODO)
         aliases = {
             "todo-marker": "todo",

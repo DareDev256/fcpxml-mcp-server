@@ -18,6 +18,9 @@ from .models import (
     Transition,
 )
 
+# Maximum FCPXML file size (50 MB) — prevents memory exhaustion from crafted files
+_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
+
 
 class FCPXMLParser:
     """Parser for Final Cut Pro FCPXML files. Supports versions 1.8 - 1.11."""
@@ -28,13 +31,25 @@ class FCPXMLParser:
         self.frame_rate: float = 24.0
 
     def parse_file(self, filepath: str) -> Project:
-        """Parse an FCPXML file and return a Project object."""
+        """Parse an FCPXML file and return a Project object.
+
+        Enforces a file size limit to prevent memory exhaustion from
+        maliciously large XML files.
+        """
         path = Path(filepath)
         if path.suffix == '.fcpxmld':
             fcpxml_path = path / 'Info.fcpxml'
             if not fcpxml_path.exists():
                 raise FileNotFoundError(f"Info.fcpxml not found in bundle: {filepath}")
             filepath = str(fcpxml_path)
+            path = Path(filepath)
+        file_size = path.stat().st_size
+        if file_size > _MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"FCPXML file exceeds maximum size "
+                f"({file_size / 1024 / 1024:.1f} MB > "
+                f"{_MAX_FILE_SIZE_BYTES / 1024 / 1024:.0f} MB limit)"
+            )
         tree = ET.parse(filepath)
         return self._parse_fcpxml(tree.getroot())
 
@@ -183,16 +198,27 @@ class FCPXMLParser:
         return clip
 
     def _parse_marker(self, elem: ET.Element) -> Optional[Marker]:
-        """Parse a marker element."""
+        """Parse a marker element.
+
+        Strictly validates the 'completed' attribute: only '0' and '1' are
+        accepted. Any other value (e.g. injected strings, SQL fragments) is
+        treated as a standard marker, preventing type confusion attacks.
+        """
+        completed_attr = elem.get('completed')
+        if completed_attr == '1':
+            marker_type = MarkerType.COMPLETED
+        elif completed_attr == '0':
+            marker_type = MarkerType.TODO
+        else:
+            # Any non-standard value (None, "", "true", injected strings)
+            # falls through to STANDARD — never trust malformed attributes
+            marker_type = MarkerType.STANDARD
+
         return Marker(
             name=elem.get('value', ''),
             start=Timecode.from_rational(elem.get('start', '0s'), self.frame_rate),
             duration=Timecode.from_rational(elem.get('duration', '1/24s'), self.frame_rate),
-            marker_type=(
-                MarkerType.COMPLETED if elem.get('completed') == '1'
-                else MarkerType.TODO if elem.get('completed') == '0'
-                else MarkerType.STANDARD
-            ),
+            marker_type=marker_type,
             note=elem.get('note', '')
         )
 
