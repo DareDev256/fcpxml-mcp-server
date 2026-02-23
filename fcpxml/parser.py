@@ -350,6 +350,11 @@ class FCPXMLParser:
             if marker:
                 connected.markers.append(marker)
 
+        for chapter_elem in elem.findall('chapter-marker'):
+            marker = self._parse_chapter_marker(chapter_elem)
+            if marker:
+                connected.markers.append(marker)
+
         for keyword_elem in elem.findall('keyword'):
             keyword = self._parse_keyword(keyword_elem)
             if keyword:

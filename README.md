@@ -275,7 +275,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-399 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
+400 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
@@ -292,7 +292,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-**Latest: v0.5.6** — Workflow recipes guide, multi-track connected clips, roles management, timeline diff, silence detection, DaVinci Resolve + FCP7 XMEML export. 47 tools.
+**Latest: v0.5.7** — Fixed chapter marker parsing on connected clips. Multi-track connected clips, roles management, timeline diff, silence detection, DaVinci Resolve + FCP7 XMEML export. 47 tools.
 
 ---
 

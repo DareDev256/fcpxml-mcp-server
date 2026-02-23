@@ -263,6 +263,50 @@ class TestConnectedClips:
         )
         assert cc.duration_seconds == 2.0
 
+    def test_chapter_markers_on_connected_clips(self):
+        """Chapter markers on connected clips must be parsed — not silently dropped."""
+        from fcpxml.models import MarkerType
+
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.11">
+    <resources>
+        <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+        <asset id="r2" name="Main" src="main.mov" start="0s" duration="240/24s"/>
+        <asset id="r3" name="Overlay" src="overlay.mov" start="0s" duration="120/24s"/>
+    </resources>
+    <library>
+        <event name="Test">
+            <project name="ChapterOnConnected">
+                <sequence format="r1" duration="240/24s">
+                    <spine>
+                        <asset-clip ref="r2" offset="0s" name="Main" start="0s" duration="240/24s">
+                            <asset-clip ref="r3" lane="1" offset="24/24s" name="Overlay"
+                                        start="0s" duration="120/24s">
+                                <chapter-marker start="0s" duration="1/24s" value="CH1"/>
+                                <marker start="48/24s" duration="1/24s" value="Note"/>
+                            </asset-clip>
+                        </asset-clip>
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>"""
+        path = _write_temp_fcpxml(xml)
+        try:
+            project = FCPXMLParser().parse_file(path)
+            tl = project.primary_timeline
+            overlay = [c for c in tl.connected_clips if c.name == "Overlay"]
+            assert len(overlay) == 1
+            markers = overlay[0].markers
+            assert len(markers) == 2
+            by_name = {m.name: m.marker_type for m in markers}
+            assert by_name["CH1"] == MarkerType.CHAPTER
+            assert by_name["Note"] == MarkerType.STANDARD
+        finally:
+            os.unlink(path)
+
     def test_compound_clip_model(self):
         cc = CompoundClip(
             name="Nested", ref_id="r5",
