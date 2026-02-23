@@ -397,6 +397,97 @@ def test_chapter_marker_no_note(writer, fps):
     assert ch.get("note") is None
 
 
+def test_todo_marker_completed_attr(writer, fps):
+    """TODO markers must emit completed='0' — the only way FCP recognises them as open tasks."""
+    clip = Clip(
+        name="Todo", start=Timecode(frames=0, frame_rate=fps),
+        duration=Timecode(frames=48, frame_rate=fps),
+        media_path="file:///media/todo.mov",
+        markers=[Marker(
+            name="Fix color", start=Timecode(frames=6, frame_rate=fps),
+            marker_type=MarkerType.TODO,
+        )],
+    )
+    tl = Timeline(name="T", duration=Timecode(frames=48, frame_rate=fps),
+                  frame_rate=fps, clips=[clip])
+    root = writer._build_fcpxml(Project(name="T", timelines=[tl]))
+    marker = root.find(".//asset-clip/marker")
+    assert marker is not None
+    assert marker.get("completed") == "0", "TODO marker must have completed='0'"
+    assert marker.get("value") == "Fix color"
+
+
+def test_completed_marker_completed_attr(writer, fps):
+    """COMPLETED markers must emit completed='1' to signal done state in FCP."""
+    clip = Clip(
+        name="Done", start=Timecode(frames=0, frame_rate=fps),
+        duration=Timecode(frames=48, frame_rate=fps),
+        media_path="file:///media/done.mov",
+        markers=[Marker(
+            name="Approved", start=Timecode(frames=6, frame_rate=fps),
+            marker_type=MarkerType.COMPLETED,
+        )],
+    )
+    tl = Timeline(name="D", duration=Timecode(frames=48, frame_rate=fps),
+                  frame_rate=fps, clips=[clip])
+    root = writer._build_fcpxml(Project(name="D", timelines=[tl]))
+    marker = root.find(".//asset-clip/marker")
+    assert marker is not None
+    assert marker.get("completed") == "1", "COMPLETED marker must have completed='1'"
+
+
+def test_standard_marker_no_completed_attr(writer, fps):
+    """STANDARD markers must NOT emit a completed attribute — it would confuse FCP."""
+    clip = Clip(
+        name="Std", start=Timecode(frames=0, frame_rate=fps),
+        duration=Timecode(frames=48, frame_rate=fps),
+        media_path="file:///media/std.mov",
+        markers=[Marker(
+            name="Note", start=Timecode(frames=6, frame_rate=fps),
+            marker_type=MarkerType.STANDARD,
+        )],
+    )
+    tl = Timeline(name="S", duration=Timecode(frames=48, frame_rate=fps),
+                  frame_rate=fps, clips=[clip])
+    root = writer._build_fcpxml(Project(name="S", timelines=[tl]))
+    marker = root.find(".//asset-clip/marker")
+    assert marker is not None
+    assert marker.get("completed") is None, "STANDARD marker must not have completed attr"
+
+
+def test_all_marker_types_on_one_clip(writer, fps):
+    """All four marker types on one clip — each gets correct tag and attributes."""
+    markers = [
+        Marker(name="Std", start=Timecode(frames=0, frame_rate=fps),
+               marker_type=MarkerType.STANDARD),
+        Marker(name="Task", start=Timecode(frames=6, frame_rate=fps),
+               marker_type=MarkerType.TODO),
+        Marker(name="Done", start=Timecode(frames=12, frame_rate=fps),
+               marker_type=MarkerType.COMPLETED),
+        Marker(name="Ch1", start=Timecode(frames=18, frame_rate=fps),
+               marker_type=MarkerType.CHAPTER),
+    ]
+    clip = Clip(
+        name="Multi", start=Timecode(frames=0, frame_rate=fps),
+        duration=Timecode(frames=48, frame_rate=fps),
+        media_path="file:///media/multi.mov", markers=markers,
+    )
+    tl = Timeline(name="A", duration=Timecode(frames=48, frame_rate=fps),
+                  frame_rate=fps, clips=[clip])
+    root = writer._build_fcpxml(Project(name="A", timelines=[tl]))
+    ac = root.find(".//asset-clip")
+    plain_markers = ac.findall("marker")
+    chapter_markers = ac.findall("chapter-marker")
+    # 3 <marker> elements (standard + todo + completed), 1 <chapter-marker>
+    assert len(plain_markers) == 3
+    assert len(chapter_markers) == 1
+    by_name = {m.get("value"): m for m in plain_markers}
+    assert by_name["Std"].get("completed") is None
+    assert by_name["Task"].get("completed") == "0"
+    assert by_name["Done"].get("completed") == "1"
+    assert chapter_markers[0].get("value") == "Ch1"
+
+
 def test_timeline_level_markers(writer, fps):
     """Timeline-level markers should be children of the sequence element."""
     clip = Clip(

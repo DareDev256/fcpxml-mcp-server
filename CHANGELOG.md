@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-02-23
+
+### Added
+
+- **TODO/COMPLETED marker tests for FCPXMLWriter**: 4 new tests covering the object-model-to-XML path (`_add_marker`) that was previously untested for task markers — catches regressions in rough cut and export generation
+- **Mixed-case `from_string` tests**: 6 parametrized cases ("Todo", "tOdO", "Completed", "cOMPLETED") proving case insensitivity
+- **Whitespace + legacy alias combo tests**: 3 cases ensuring " todo-marker " and similar inputs resolve correctly
+- **Enum value contract test**: Asserts `.value` properties stay lowercase — they're used as dict keys across the codebase
+- **Multi-marker-type parser test**: Verifies all four marker types coexist on one clip without cross-contamination
+- **STANDARD marker negative test**: Confirms plain `<marker>` without `completed` attr never becomes TODO
+
 ## [0.5.4] - 2026-02-23
 
 ### Security

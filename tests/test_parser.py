@@ -159,6 +159,33 @@ def test_completed_marker():
     assert m.marker_type == MarkerType.COMPLETED
 
 
+def test_multiple_marker_types_on_one_clip():
+    """All four marker types coexist on a single clip without cross-contamination."""
+    clip_xml = (
+        '<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+        '<marker start="6/24s" duration="1/24s" value="Note"/>'
+        '<marker start="12/24s" duration="1/24s" value="Task" completed="0"/>'
+        '<marker start="18/24s" duration="1/24s" value="Done" completed="1"/>'
+        '<chapter-marker start="24/24s" duration="1/24s" value="Ch1"/>'
+        '</asset-clip>'
+    )
+    clip = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0]
+    by_name = {m.name: m.marker_type for m in clip.markers}
+    assert by_name["Note"] == MarkerType.STANDARD
+    assert by_name["Task"] == MarkerType.TODO
+    assert by_name["Done"] == MarkerType.COMPLETED
+    assert by_name["Ch1"] == MarkerType.CHAPTER
+
+
+def test_marker_without_completed_is_standard():
+    """A plain <marker> with no completed attribute must parse as STANDARD, not TODO."""
+    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+                '<marker start="6/24s" duration="1/24s" value="Plain"/></asset-clip>')
+    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
+    assert m.marker_type == MarkerType.STANDARD
+    assert m.name == "Plain"
+
+
 def test_chapter_markers_on_sequence():
     # Chapter markers are children of sequence (parsed via findall .//chapter-marker)
     tl = FCPXMLParser().parse_file(str(SAMPLE)).primary_timeline

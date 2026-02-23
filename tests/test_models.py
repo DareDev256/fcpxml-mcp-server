@@ -367,6 +367,34 @@ class TestMarkerType:
         """Legacy spec values (e.g. 'todo-marker') resolve to current enum."""
         assert MarkerType.from_string(alias) == expected
 
+    @pytest.mark.parametrize("value,expected", [
+        ("Todo", MarkerType.TODO),
+        ("tOdO", MarkerType.TODO),
+        ("Completed", MarkerType.COMPLETED),
+        ("cOMPLETED", MarkerType.COMPLETED),
+        ("Standard", MarkerType.STANDARD),
+        ("CHAPTER", MarkerType.CHAPTER),
+    ])
+    def test_from_string_mixed_case(self, value, expected):
+        """Case should never matter — FCP specs are inconsistent about casing."""
+        assert MarkerType.from_string(value) == expected
+
+    @pytest.mark.parametrize("alias,expected", [
+        ("  todo-marker  ", MarkerType.TODO),
+        (" completed-marker ", MarkerType.COMPLETED),
+        ("\tchapter-marker\t", MarkerType.CHAPTER),
+    ])
+    def test_from_string_legacy_aliases_with_whitespace(self, alias, expected):
+        """Whitespace around legacy aliases must be stripped before matching."""
+        assert MarkerType.from_string(alias) == expected
+
+    def test_enum_values_are_lowercase(self):
+        """Enum .value must be lowercase strings — they're used as dict keys."""
+        assert MarkerType.TODO.value == "todo"
+        assert MarkerType.COMPLETED.value == "completed"
+        assert MarkerType.STANDARD.value == "standard"
+        assert MarkerType.CHAPTER.value == "chapter"
+
     def test_from_string_invalid_raises(self):
         with pytest.raises(ValueError, match="Invalid marker type"):
             MarkerType.from_string("nonexistent")

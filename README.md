@@ -236,7 +236,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── diff.py            Timeline comparison engine
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   └── models.py          TimeValue, Timecode, Clip, ConnectedClip, Timeline
-├── tests/                 348 tests across 8 files
+├── tests/                 393 tests across 8 files
 └── examples/
     └── sample.fcpxml      9 clips, 24fps — test fixture
 ```
@@ -275,7 +275,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-348 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
+393 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
