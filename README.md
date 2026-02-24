@@ -236,7 +236,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── diff.py            Timeline comparison engine
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   └── models.py          TimeValue, Timecode, Clip, ConnectedClip, Timeline
-├── tests/                 414 tests across 8 files
+├── tests/                 421 tests across 8 files
 └── examples/
     └── sample.fcpxml      9 clips, 24fps — test fixture
 ```

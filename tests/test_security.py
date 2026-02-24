@@ -56,9 +56,17 @@ class TestMarkerTypeInputValidation:
         with pytest.raises(ValueError, match="maximum length"):
             MarkerType.from_string("a" * 100)
 
-    def test_strips_whitespace(self):
-        """Leading/trailing whitespace is stripped before matching."""
+    def test_strips_whitespace_todo(self):
+        """Leading/trailing whitespace is stripped before matching for todo."""
         assert MarkerType.from_string("  todo  ") == MarkerType.TODO
+
+    def test_strips_whitespace_completed(self):
+        """Leading/trailing whitespace is stripped before matching for completed."""
+        assert MarkerType.from_string("  completed  ") == MarkerType.COMPLETED
+
+    def test_strips_whitespace_chapter(self):
+        """Leading/trailing whitespace is stripped before matching for chapter."""
+        assert MarkerType.from_string("  chapter  ") == MarkerType.CHAPTER
 
     def test_allows_tab_in_value(self):
         """Tabs are printable — should pass control char check but fail enum lookup."""

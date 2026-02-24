@@ -296,6 +296,41 @@ def test_marker_type_from_string_roundtrip(temp_fcpxml, tmp_path):
     assert types['Via alias'] == MarkerType.TODO
 
 
+def test_marker_completed_attr_no_whitespace(temp_fcpxml):
+    """Written completed attributes must be exact '0' or '1' — no whitespace padding."""
+    from fcpxml.models import MarkerType
+
+    modifier = FCPXMLModifier(temp_fcpxml)
+    todo = modifier.add_marker('Broll_City', '00:00:00:06', 'Strict0', MarkerType.TODO)
+    done = modifier.add_marker('Broll_City', '00:00:00:12', 'Strict1', MarkerType.COMPLETED)
+
+    assert todo.get('completed') == '0', "TODO marker must write exact '0'"
+    assert done.get('completed') == '1', "COMPLETED marker must write exact '1'"
+    # Verify no leading/trailing whitespace
+    assert todo.get('completed').strip() == todo.get('completed')
+    assert done.get('completed').strip() == done.get('completed')
+
+
+def test_from_string_whitespace_roundtrip(temp_fcpxml, tmp_path):
+    """from_string('  completed  ') must roundtrip as COMPLETED, not STANDARD."""
+    from fcpxml.models import MarkerType
+    from fcpxml.parser import FCPXMLParser
+
+    modifier = FCPXMLModifier(temp_fcpxml)
+    modifier.add_marker('Broll_City', '00:00:00:06', 'Padded type',
+                        MarkerType.from_string('  completed  '))
+
+    output = str(tmp_path / 'padded_type_rt.fcpxml')
+    modifier.save(output)
+
+    project = FCPXMLParser().parse_file(output)
+    all_markers = []
+    for clip in project.primary_timeline.clips:
+        all_markers.extend(clip.markers)
+    types = {m.name: m.marker_type for m in all_markers}
+    assert types['Padded type'] == MarkerType.COMPLETED
+
+
 def test_add_marker_with_note(temp_fcpxml):
     """Add a marker with a note."""
     modifier = FCPXMLModifier(temp_fcpxml)
