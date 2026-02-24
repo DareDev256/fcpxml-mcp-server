@@ -6,7 +6,8 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-438-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-438_across_10_suites-brightgreen.svg)](#testing)
+[![LOC](https://img.shields.io/badge/codebase-~7k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -15,6 +16,12 @@
 After directing 350+ music videos (Chief Keef, Migos, Masicka), I noticed the same editing bottlenecks on every project: counting cuts manually, extracting chapter markers one by one, hunting flash frames by scrubbing, building rough cuts clip by clip.
 
 These are batch operations that don't need visual feedback. Export the XML, let Claude handle the tedium, import the result. That's the entire philosophy.
+
+### Recent Highlights
+
+- **Hardened marker pipeline** — unified `build_marker_element()` builder, strict whitespace parsing, input sanitization against injection attacks, 50MB file size ceiling
+- **Cross-NLE export** — DaVinci Resolve (FCPXML v1.9) and Premiere Pro/Avid (XMEML v5) export paths
+- **438 tests** across 10 suites with security, round-trip, and edge-case coverage
 
 ---
 
@@ -230,22 +237,33 @@ Select these from Claude's prompt menu — they chain multiple tools together au
 fcp-mcp-server/           ~7k lines Python
 ├── server.py              MCP entry point — 47 tools, 5 prompts, resource discovery
 ├── fcpxml/
-│   ├── parser.py          FCPXML → Python (spine, connected clips, roles)
+│   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
+│   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
-│   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-│   └── models.py          TimeValue, Timecode, Clip, ConnectedClip, Timeline
-├── tests/                 438 tests across 9 files
+│   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
+├── tests/                 438 tests across 10 suites
+│   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
+│   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
+│   ├── test_writer.py     Clip editing, marker writing, speed changes
+│   ├── test_server.py     MCP tool handlers, dispatch, path validation
+│   ├── test_rough_cut.py  Rough cut generation, montage, A/B roll
+│   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
+│   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
+│   └── test_security.py   Input validation, XML sanitization, whitespace
+├── docs/
+│   └── WORKFLOWS.md       8 production workflow recipes
 └── examples/
     └── sample.fcpxml      9 clips, 24fps — test fixture
 ```
 
 **Key design decisions:**
-- **Rational time arithmetic** — all times are fractions (`600/2400s`), never floats. Matches FCPXML's native format and eliminates rounding errors.
+- **Rational time arithmetic** — all times are fractions (`600/2400s`), never floats. Matches FCPXML's native format and eliminates rounding errors across trim, split, and speed operations.
 - **Dispatch dict pattern** — `TOOL_HANDLERS` maps tool names to async handlers. No 1000-line if/elif chains.
 - **Non-destructive output** — modified files get `_modified`, `_chapters`, etc. suffixes. Originals are never overwritten.
-- **Path validation** — all 47 handlers validate inputs against traversal attacks, null bytes, symlinks, and a 100MB size limit.
+- **Unified marker pipeline** — `MarkerType` enum owns the full serialization contract: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. Single source of truth across parser + both writer paths.
+- **Security-first validation** — all 47 handlers validate inputs against path traversal, null bytes, symlinks, and a 100MB size limit. XML values are sanitized before writing. Marker inputs reject control characters and length abuse.
 
 ---
 
@@ -275,7 +293,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-414 tests covering models, parser, writer, server handlers, rough cut generation, connected clips, roles, diff, export, and backward compatibility.
+438 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening, connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
@@ -292,7 +310,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-**Latest: v0.5.8** — Consolidated marker serialization into `MarkerType` enum — single source of truth for parse/write. 47 tools.
+**Latest: v0.5.13** — Unified marker builder, strict whitespace parsing, 438 tests across 10 suites. 47 tools.
 
 ---
 

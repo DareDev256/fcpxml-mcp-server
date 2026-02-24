@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.13] - 2026-02-24
+
+### Changed
+
+- **README overhaul**: Fixed stale stats (414→438 tests, 9→10 suites), expanded architecture tree with per-file descriptions for all test suites, added LOC badge, documented unified marker pipeline and security-first validation as key design decisions, added "Recent Highlights" section showcasing marker hardening and cross-NLE export work, updated latest release pointer to v0.5.13
+
 ## [0.5.12] - 2026-02-24
 
 ### Added
