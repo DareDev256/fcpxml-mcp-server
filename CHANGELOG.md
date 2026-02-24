@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.12] - 2026-02-24
+
+### Added
+
+- **17 marker pipeline tests** (`test_marker_pipeline.py`): Direct unit tests for `build_marker_element` shared builder (8 tests), `batch_add_markers` auto_at_cuts and auto_at_intervals modes (4 tests), `_build_clip_index` duplicate-name last-one-wins behavior (2 tests), `write_fcpxml` output format validation (3 tests)
+- **Documented `auto_at_cuts` bug**: Test proves `batch_add_markers(auto_at_cuts=True)` fails with `ValueError` when spine contains duplicate clip names — the name-indexed clip dict loses earlier occurrences
+
 ## [0.5.11] - 2026-02-24
 
 ### Changed
