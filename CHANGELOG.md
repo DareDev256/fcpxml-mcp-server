@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.11] - 2026-02-24
+
+### Changed
+
+- **Unified marker element construction**: Extracted `build_marker_element()` as a single source of truth for creating marker/chapter-marker XML elements — eliminates duplicated tag selection, attribute setting, and note-guard logic between `FCPXMLModifier.add_marker()` and `FCPXMLWriter._add_marker()`
+- **Single-pass marker collection**: `_collect_markers` in the parser now iterates element children once using `MARKER_XML_TAGS` constant instead of calling `findall()` twice (once per tag)
+- **New `MARKER_XML_TAGS` constant**: Tuple of recognised marker element tags (`'marker'`, `'chapter-marker'`) exported from models for use across parser and writer modules
+
 ## [0.5.10] - 2026-02-24
 
 ### Added

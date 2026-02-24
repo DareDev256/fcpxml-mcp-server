@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from xml.dom import minidom
 
 from .models import (
+    Marker,
     MarkerColor,
     MarkerType,
     Project,
@@ -42,6 +43,32 @@ def _sanitize_xml_value(value: str, max_length: int = _MAX_MARKER_NAME_LENGTH) -
     if len(cleaned) > max_length:
         cleaned = cleaned[:max_length]
     return cleaned
+
+
+def build_marker_element(
+    parent: ET.Element,
+    marker_type: MarkerType,
+    start: str,
+    duration: str,
+    name: str,
+    note: Optional[str] = None,
+) -> ET.Element:
+    """Create a marker or chapter-marker XML element under *parent*.
+
+    Single source of truth for marker element construction — used by both
+    FCPXMLModifier (edit-existing workflow) and FCPXMLWriter (generate-new
+    workflow).  Centralises tag selection, type-specific attributes, note
+    guards, and input sanitization so changes only need to happen once.
+    """
+    elem = ET.SubElement(parent, marker_type.xml_tag)
+    elem.set('start', start)
+    elem.set('duration', duration)
+    elem.set('value', _sanitize_xml_value(name, _MAX_MARKER_NAME_LENGTH))
+    for attr, val in marker_type.xml_attrs.items():
+        elem.set(attr, val)
+    if note and marker_type != MarkerType.CHAPTER:
+        elem.set('note', _sanitize_xml_value(note, _MAX_NOTE_LENGTH))
+    return elem
 
 
 def write_fcpxml(root: ET.Element, filepath: str) -> str:
@@ -197,27 +224,16 @@ class FCPXMLModifier:
         if clip is None:
             raise ValueError(f"Clip not found: {clip_id}")
 
-        # Sanitize user-provided strings before writing to XML
-        name = _sanitize_xml_value(name, _MAX_MARKER_NAME_LENGTH)
-
         time_value = self._parse_time(timecode)
 
-        # Determine XML tag based on marker type
-        tag = marker_type.xml_tag
-
-        # Create marker element with type-specific attributes
-        marker = ET.SubElement(clip, tag)
-        marker.set('start', time_value.to_fcpxml())
-        marker.set('duration', f"1/{int(self.fps)}s")
-        marker.set('value', name)
-        for attr, val in marker_type.xml_attrs.items():
-            marker.set(attr, val)
-
-        # Add note if specified (chapter-marker elements don't support notes)
-        if note and marker_type != MarkerType.CHAPTER:
-            marker.set('note', _sanitize_xml_value(note, _MAX_NOTE_LENGTH))
-
-        return marker
+        return build_marker_element(
+            parent=clip,
+            marker_type=marker_type,
+            start=time_value.to_fcpxml(),
+            duration=f"1/{int(self.fps)}s",
+            name=name,
+            note=note,
+        )
 
     def add_marker_at_timeline(
         self,
@@ -1654,17 +1670,16 @@ class FCPXMLWriter:
         for keyword in clip.keywords:
             self._add_keyword(clip_elem, keyword)
 
-    def _add_marker(self, parent, marker):
+    def _add_marker(self, parent: ET.Element, marker: Marker):
         """Add a marker or chapter-marker element to a parent clip or sequence."""
-        tag = marker.marker_type.xml_tag
-        elem = ET.SubElement(parent, tag,
+        build_marker_element(
+            parent=parent,
+            marker_type=marker.marker_type,
             start=self._tc_to_rational(marker.start),
             duration=self._tc_to_rational(marker.duration) if marker.duration else "1/24s",
-            value=_sanitize_xml_value(marker.name))
-        for attr, val in marker.marker_type.xml_attrs.items():
-            elem.set(attr, val)
-        if marker.note and marker.marker_type != MarkerType.CHAPTER:
-            elem.set('note', _sanitize_xml_value(marker.note, _MAX_NOTE_LENGTH))
+            name=marker.name,
+            note=marker.note or None,
+        )
 
     def _add_keyword(self, parent, keyword):
         """Add a keyword element with optional start/duration range to a parent clip."""

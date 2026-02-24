@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .models import (
+    MARKER_XML_TAGS,
     Clip,
     ConnectedClip,
     Keyword,
@@ -197,17 +198,18 @@ class FCPXMLParser:
         )
 
     def _collect_markers(self, elem: ET.Element) -> list:
-        """Collect all markers (standard + chapter) from an element's children."""
-        markers = []
-        for child in elem.findall('marker'):
-            marker = self._parse_marker_element(child)
-            if marker:
-                markers.append(marker)
-        for child in elem.findall('chapter-marker'):
-            marker = self._parse_marker_element(child)
-            if marker:
-                markers.append(marker)
-        return markers
+        """Collect all markers (standard + chapter) from an element in a single pass.
+
+        Iterates children once, selecting recognised marker tags via
+        MARKER_XML_TAGS rather than making a separate findall per tag.
+        """
+        return [
+            marker
+            for child in elem
+            if child.tag in MARKER_XML_TAGS
+            for marker in [self._parse_marker_element(child)]
+            if marker is not None
+        ]
 
     def _parse_keyword(self, elem: ET.Element) -> Optional[Keyword]:
         """Parse a keyword element."""

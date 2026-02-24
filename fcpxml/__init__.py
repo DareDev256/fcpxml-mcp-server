@@ -12,6 +12,7 @@ This package provides tools to:
 from .diff import ClipDiff, MarkerDiff, TimelineDiff, compare_timelines
 from .export import DaVinciExporter
 from .models import (
+    MARKER_XML_TAGS,
     AudioClip,
     Clip,
     CompoundClip,
@@ -47,6 +48,7 @@ from .writer import (
     FCPXMLModifier,
     FCPXMLWriter,
     add_marker_to_file,
+    build_marker_element,
     modify_fcpxml,
     trim_clip_in_file,
     write_fcpxml,
@@ -59,9 +61,10 @@ __all__ = [
     # Version
     "__version__",
 
-    # Enums
+    # Enums & constants
     "MarkerType",
     "MarkerColor",
+    "MARKER_XML_TAGS",
     "TransitionType",
     "PacingStyle",
 
@@ -96,6 +99,7 @@ __all__ = [
     "add_marker_to_file",
     "trim_clip_in_file",
     "write_fcpxml",
+    "build_marker_element",
 
     # Rough Cut
     "RoughCutGenerator",

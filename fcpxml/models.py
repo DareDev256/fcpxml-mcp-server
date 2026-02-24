@@ -111,6 +111,11 @@ class MarkerType(Enum):
         return {}
 
 
+# Recognised marker XML tags — used by the parser for single-pass collection
+# and by the writer to validate element creation.
+MARKER_XML_TAGS = ('marker', 'chapter-marker')
+
+
 class MarkerColor(Enum):
     """Marker color options (FCP internal values)."""
     BLUE = 0
