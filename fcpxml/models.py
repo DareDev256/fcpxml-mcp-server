@@ -69,6 +69,17 @@ class MarkerType(Enum):
 
         Centralises the parse-side mapping so the parser doesn't need to
         know about completed-attribute semantics.
+
+        Rules (in priority order):
+          1. <chapter-marker> tag → CHAPTER (completed attr ignored)
+          2. completed='0' (exact) → TODO
+          3. completed='1' (exact) → COMPLETED
+          4. Everything else → STANDARD (including whitespace-padded,
+             absent, empty, or non-boolean completed values)
+
+        Matching is intentionally strict — no .strip(), no case folding.
+        This prevents whitespace-injected attributes like ' 0 ' from
+        being misclassified.
         """
         if elem.tag == 'chapter-marker':
             return cls.CHAPTER

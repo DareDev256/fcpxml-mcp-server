@@ -439,6 +439,34 @@ class TestMarkerTypeXmlContract:
         elem.set('completed', 'true')
         assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
 
+    def test_from_xml_element_whitespace_padded_zero_is_standard(self):
+        """Whitespace around '0' must NOT match TODO — strict exact matching."""
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        elem.set('completed', ' 0 ')
+        assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
+
+    def test_from_xml_element_whitespace_padded_one_is_standard(self):
+        """Whitespace around '1' must NOT match COMPLETED — strict exact matching."""
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        elem.set('completed', ' 1 ')
+        assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
+
+    def test_from_xml_element_empty_completed_is_standard(self):
+        """An empty completed='' attribute must fall to STANDARD, not TODO."""
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        elem.set('completed', '')
+        assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
+
+    def test_from_xml_element_chapter_ignores_completed(self):
+        """A chapter-marker tag takes priority over any completed attribute."""
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('chapter-marker')
+        elem.set('completed', '0')
+        assert MarkerType.from_xml_element(elem) == MarkerType.CHAPTER
+
     def test_xml_attrs_todo(self):
         assert MarkerType.TODO.xml_attrs == {'completed': '0'}
 

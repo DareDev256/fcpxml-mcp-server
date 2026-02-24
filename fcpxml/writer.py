@@ -186,7 +186,7 @@ class FCPXMLModifier:
             clip_id: Target clip identifier (name or ID)
             timecode: Position within clip (relative to clip start)
             name: Marker label
-            marker_type: standard, chapter, or todo
+            marker_type: STANDARD, TODO, COMPLETED, or CHAPTER
             color: Optional marker color
             note: Optional marker note
 
