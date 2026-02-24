@@ -406,6 +406,61 @@ class TestMarkerType:
         assert MarkerType.STANDARD.xml_tag == "marker"
 
 
+class TestMarkerTypeXmlContract:
+    """Tests for MarkerType.from_xml_element and xml_attrs — the unified
+    serialization contract that both parser and writer depend on."""
+
+    def test_from_xml_element_chapter(self):
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('chapter-marker')
+        assert MarkerType.from_xml_element(elem) == MarkerType.CHAPTER
+
+    def test_from_xml_element_todo(self):
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        elem.set('completed', '0')
+        assert MarkerType.from_xml_element(elem) == MarkerType.TODO
+
+    def test_from_xml_element_completed(self):
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        elem.set('completed', '1')
+        assert MarkerType.from_xml_element(elem) == MarkerType.COMPLETED
+
+    def test_from_xml_element_standard(self):
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
+
+    def test_from_xml_element_rejects_malformed_completed(self):
+        """Non-standard completed values (e.g. 'true') must fall to STANDARD."""
+        import xml.etree.ElementTree as ET
+        elem = ET.Element('marker')
+        elem.set('completed', 'true')
+        assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
+
+    def test_xml_attrs_todo(self):
+        assert MarkerType.TODO.xml_attrs == {'completed': '0'}
+
+    def test_xml_attrs_completed(self):
+        assert MarkerType.COMPLETED.xml_attrs == {'completed': '1'}
+
+    def test_xml_attrs_chapter(self):
+        assert MarkerType.CHAPTER.xml_attrs == {'posterOffset': '0s'}
+
+    def test_xml_attrs_standard_empty(self):
+        assert MarkerType.STANDARD.xml_attrs == {}
+
+    def test_roundtrip_symmetry(self):
+        """from_xml_element(write(type)) == type for all marker types."""
+        import xml.etree.ElementTree as ET
+        for mt in MarkerType:
+            elem = ET.Element(mt.xml_tag)
+            for attr, val in mt.xml_attrs.items():
+                elem.set(attr, val)
+            assert MarkerType.from_xml_element(elem) == mt
+
+
 class TestPacingConfig:
 
     def test_pacing_ranges(self):

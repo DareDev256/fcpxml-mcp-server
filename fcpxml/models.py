@@ -63,10 +63,41 @@ class MarkerType(Enum):
                 f"Valid types: {', '.join(m.value for m in cls)}"
             )
 
+    @classmethod
+    def from_xml_element(cls, elem) -> 'MarkerType':
+        """Determine MarkerType from an XML element's tag and attributes.
+
+        Centralises the parse-side mapping so the parser doesn't need to
+        know about completed-attribute semantics.
+        """
+        if elem.tag == 'chapter-marker':
+            return cls.CHAPTER
+        completed = elem.get('completed')
+        if completed == '1':
+            return cls.COMPLETED
+        if completed == '0':
+            return cls.TODO
+        return cls.STANDARD
+
     @property
     def xml_tag(self) -> str:
         """Return the FCPXML element tag for this marker type."""
         return 'chapter-marker' if self == MarkerType.CHAPTER else 'marker'
+
+    @property
+    def xml_attrs(self) -> dict:
+        """Return extra XML attributes this marker type requires when writing.
+
+        Centralises the write-side mapping so both FCPXMLModifier and
+        FCPXMLWriter use a single source of truth.
+        """
+        if self == MarkerType.CHAPTER:
+            return {'posterOffset': '0s'}
+        if self == MarkerType.TODO:
+            return {'completed': '0'}
+        if self == MarkerType.COMPLETED:
+            return {'completed': '1'}
+        return {}
 
 
 class MarkerColor(Enum):

@@ -129,15 +129,7 @@ class FCPXMLParser:
         if spine is not None:
             self._parse_spine(spine, timeline)
 
-        for marker_elem in sequence.findall('.//marker'):
-            marker = self._parse_marker(marker_elem)
-            if marker:
-                timeline.markers.append(marker)
-
-        for chapter_elem in sequence.findall('.//chapter-marker'):
-            marker = self._parse_chapter_marker(chapter_elem)
-            if marker:
-                timeline.markers.append(marker)
+        timeline.markers.extend(self._collect_markers(sequence))
 
         return timeline
 
@@ -180,15 +172,7 @@ class FCPXMLParser:
             video_role=elem.get('videoRole', ''),
         )
 
-        for marker_elem in elem.findall('marker'):
-            marker = self._parse_marker(marker_elem)
-            if marker:
-                clip.markers.append(marker)
-
-        for marker_elem in elem.findall('chapter-marker'):
-            marker = self._parse_chapter_marker(marker_elem)
-            if marker:
-                clip.markers.append(marker)
+        clip.markers.extend(self._collect_markers(elem))
 
         for keyword_elem in elem.findall('keyword'):
             keyword = self._parse_keyword(keyword_elem)
@@ -197,39 +181,33 @@ class FCPXMLParser:
 
         return clip
 
-    def _parse_marker(self, elem: ET.Element) -> Optional[Marker]:
-        """Parse a marker element.
+    def _parse_marker_element(self, elem: ET.Element) -> Optional[Marker]:
+        """Parse any marker element (<marker> or <chapter-marker>).
 
-        Strictly validates the 'completed' attribute: only '0' and '1' are
-        accepted. Any other value (e.g. injected strings, SQL fragments) is
-        treated as a standard marker, preventing type confusion attacks.
+        Type detection is delegated to MarkerType.from_xml_element which
+        owns the completed-attribute semantics. This means the parser
+        doesn't need separate methods for each tag.
         """
-        completed_attr = elem.get('completed')
-        if completed_attr == '1':
-            marker_type = MarkerType.COMPLETED
-        elif completed_attr == '0':
-            marker_type = MarkerType.TODO
-        else:
-            # Any non-standard value (None, "", "true", injected strings)
-            # falls through to STANDARD — never trust malformed attributes
-            marker_type = MarkerType.STANDARD
-
         return Marker(
             name=elem.get('value', ''),
             start=Timecode.from_rational(elem.get('start', '0s'), self.frame_rate),
             duration=Timecode.from_rational(elem.get('duration', '1/24s'), self.frame_rate),
-            marker_type=marker_type,
+            marker_type=MarkerType.from_xml_element(elem),
             note=elem.get('note', '')
         )
 
-    def _parse_chapter_marker(self, elem: ET.Element) -> Optional[Marker]:
-        """Parse a chapter marker element."""
-        return Marker(
-            name=elem.get('value', ''),
-            start=Timecode.from_rational(elem.get('start', '0s'), self.frame_rate),
-            duration=Timecode.from_rational(elem.get('duration', '1/24s'), self.frame_rate),
-            marker_type=MarkerType.CHAPTER
-        )
+    def _collect_markers(self, elem: ET.Element) -> list:
+        """Collect all markers (standard + chapter) from an element's children."""
+        markers = []
+        for child in elem.findall('marker'):
+            marker = self._parse_marker_element(child)
+            if marker:
+                markers.append(marker)
+        for child in elem.findall('chapter-marker'):
+            marker = self._parse_marker_element(child)
+            if marker:
+                markers.append(marker)
+        return markers
 
     def _parse_keyword(self, elem: ET.Element) -> Optional[Keyword]:
         """Parse a keyword element."""
@@ -345,15 +323,7 @@ class FCPXMLParser:
             ref_id=ref, parent_clip_name=parent_name,
         )
 
-        for marker_elem in elem.findall('marker'):
-            marker = self._parse_marker(marker_elem)
-            if marker:
-                connected.markers.append(marker)
-
-        for chapter_elem in elem.findall('chapter-marker'):
-            marker = self._parse_chapter_marker(chapter_elem)
-            if marker:
-                connected.markers.append(marker)
+        connected.markers.extend(self._collect_markers(elem))
 
         for keyword_elem in elem.findall('keyword'):
             keyword = self._parse_keyword(keyword_elem)

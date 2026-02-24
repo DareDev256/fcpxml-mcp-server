@@ -205,21 +205,13 @@ class FCPXMLModifier:
         # Determine XML tag based on marker type
         tag = marker_type.xml_tag
 
-        # Create marker element
+        # Create marker element with type-specific attributes
         marker = ET.SubElement(clip, tag)
         marker.set('start', time_value.to_fcpxml())
         marker.set('duration', f"1/{int(self.fps)}s")
         marker.set('value', name)
-
-        # Add poster offset for chapter markers
-        if marker_type == MarkerType.CHAPTER:
-            marker.set('posterOffset', '0s')
-
-        # Add completed attribute for todo/completed markers
-        if marker_type == MarkerType.TODO:
-            marker.set('completed', '0')
-        elif marker_type == MarkerType.COMPLETED:
-            marker.set('completed', '1')
+        for attr, val in marker_type.xml_attrs.items():
+            marker.set(attr, val)
 
         # Add note if specified (chapter-marker elements don't support notes)
         if note and marker_type != MarkerType.CHAPTER:
@@ -1669,12 +1661,8 @@ class FCPXMLWriter:
             start=self._tc_to_rational(marker.start),
             duration=self._tc_to_rational(marker.duration) if marker.duration else "1/24s",
             value=_sanitize_xml_value(marker.name))
-        if marker.marker_type == MarkerType.CHAPTER:
-            elem.set('posterOffset', '0s')
-        elif marker.marker_type == MarkerType.TODO:
-            elem.set('completed', '0')
-        elif marker.marker_type == MarkerType.COMPLETED:
-            elem.set('completed', '1')
+        for attr, val in marker.marker_type.xml_attrs.items():
+            elem.set(attr, val)
         if marker.note and marker.marker_type != MarkerType.CHAPTER:
             elem.set('note', _sanitize_xml_value(marker.note, _MAX_NOTE_LENGTH))
 
