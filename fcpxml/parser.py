@@ -18,6 +18,7 @@ from .models import (
     Timeline,
     Transition,
 )
+from .safe_xml import safe_fromstring, safe_parse
 
 # Maximum FCPXML file size (50 MB) — prevents memory exhaustion from crafted files
 _MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
@@ -54,12 +55,12 @@ class FCPXMLParser:
                 f"({file_size / 1024 / 1024:.1f} MB > "
                 f"{_MAX_FILE_SIZE_BYTES / 1024 / 1024:.0f} MB limit)"
             )
-        tree = ET.parse(filepath)
+        tree = safe_parse(filepath)
         return self._parse_fcpxml(tree.getroot())
 
     def parse_string(self, xml_string: str) -> Project:
         """Parse FCPXML from a string."""
-        return self._parse_fcpxml(ET.fromstring(xml_string))
+        return self._parse_fcpxml(safe_fromstring(xml_string))
 
     def _parse_fcpxml(self, root: ET.Element) -> Project:
         """Parse the root fcpxml element."""

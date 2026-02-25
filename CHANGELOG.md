@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.16] - 2026-02-25
+
+### Security
+
+- **Defused XML parsing against XXE and billion laughs**: All 5 XML parse sites (parser, writer, export, rough_cut) now use `defusedxml` via centralized `fcpxml/safe_xml.py` module — blocks external entity injection, entity expansion bombs, and remote DTD parameter entities. Added `defusedxml>=0.7.1` as a dependency. 10 new security tests covering billion laughs, XXE file read, and DTD entity attacks across both `safe_parse` and `safe_fromstring` entry points (52 total security tests, 454 total).
+
 ## [0.5.15] - 2026-02-25
 
 ### Changed

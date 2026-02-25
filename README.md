@@ -22,7 +22,7 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 - **Hardened marker pipeline** — unified `build_marker_element()` builder, strict whitespace parsing, input sanitization against injection attacks, 50MB file size ceiling
 - **Named tag constants** — `CLIP_TAGS`, `SPINE_ELEMENT_TAGS` eliminate 13 inline tag-tuple literals, ensuring consistent clip-type matching across all operations
 - **Cross-NLE export** — DaVinci Resolve (FCPXML v1.9) and Premiere Pro/Avid (XMEML v5) export paths
-- **444 tests** across 10 suites with security, round-trip, and edge-case coverage
+- **454 tests** across 10 suites with security, round-trip, and edge-case coverage
 
 ---
 
@@ -252,7 +252,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── test_rough_cut.py  Rough cut generation, montage, A/B roll
 │   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
 │   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
-│   └── test_security.py   Input validation, XML sanitization, whitespace
+│   └── test_security.py   Input validation, XML sanitization, XXE protection
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
 └── examples/
@@ -264,7 +264,7 @@ fcp-mcp-server/           ~7k lines Python
 - **Dispatch dict pattern** — `TOOL_HANDLERS` maps tool names to async handlers. No 1000-line if/elif chains.
 - **Non-destructive output** — modified files get `_modified`, `_chapters`, etc. suffixes. Originals are never overwritten.
 - **Unified marker pipeline** — `MarkerType` enum owns the full serialization contract: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. Single source of truth across parser + both writer paths.
-- **Security-first validation** — all 47 handlers validate inputs against path traversal, null bytes, symlinks, and a 100MB size limit. XML values are sanitized before writing. Marker inputs reject control characters and length abuse.
+- **Security-first validation** — all 47 handlers validate inputs against path traversal, null bytes, symlinks, and a 100MB size limit. XML values are sanitized before writing. Marker inputs reject control characters and length abuse. All XML parsing uses `defusedxml` to block XXE, billion laughs, and entity expansion attacks.
 
 ---
 
@@ -294,7 +294,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-444 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening, connected clips, roles, diff, export, and backward compatibility.
+454 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening (XXE, entity expansion, input validation), connected clips, roles, diff, export, and backward compatibility.
 
 ---
 

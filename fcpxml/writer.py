@@ -122,7 +122,8 @@ class FCPXMLModifier:
     def __init__(self, fcpxml_path: str):
         """Load an existing FCPXML file for modification."""
         self.path = Path(fcpxml_path)
-        self.tree = ET.parse(fcpxml_path)
+        from .safe_xml import safe_parse
+        self.tree = safe_parse(fcpxml_path)
         self.root = self.tree.getroot()
         self.fps = self._detect_fps()
         self._build_resource_index()

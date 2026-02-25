@@ -45,7 +45,8 @@ class DaVinciExporter:
             source_path: Path to the source FCPXML file
         """
         self.source_path = source_path
-        self.tree = ET.parse(source_path)
+        from .safe_xml import safe_parse
+        self.tree = safe_parse(source_path)
         self.root = self.tree.getroot()
         self.parser = FCPXMLParser()
         self.project = self.parser.parse_file(source_path)

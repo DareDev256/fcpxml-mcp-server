@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fcp-mcp-server"
-version = "0.5.15"
+version = "0.5.16"
 description = "MCP server for Final Cut Pro XML. 47 tools for timeline analysis, batch editing, QC, generation, multi-track support, and NLE export via Claude."
 readme = "README.md"
 license = {text = "MIT"}
@@ -27,6 +27,7 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0",
     "lxml>=4.9.0",
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]

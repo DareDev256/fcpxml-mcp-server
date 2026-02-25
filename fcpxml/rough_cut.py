@@ -44,7 +44,8 @@ class RoughCutGenerator:
     def __init__(self, source_fcpxml: str):
         """Load source FCPXML for clip selection."""
         self.source_path = Path(source_fcpxml)
-        self.tree = ET.parse(source_fcpxml)
+        from .safe_xml import safe_parse
+        self.tree = safe_parse(source_fcpxml)
         self.root = self.tree.getroot()
         self.fps = self._detect_fps()
         self._index_clips()
