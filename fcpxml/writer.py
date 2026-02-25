@@ -26,6 +26,13 @@ from .models import (
 _MAX_MARKER_NAME_LENGTH = 1024
 _MAX_NOTE_LENGTH = 4096
 
+# Named constants for clip-tag sets used across operations.
+# Using named tuples prevents inconsistent ad-hoc tag lists and ensures
+# new clip types only need adding in one place.
+CLIP_TAGS = ('clip', 'asset-clip', 'video', 'ref-clip')
+CLIP_AND_AUDIO_TAGS = ('clip', 'asset-clip', 'video', 'audio', 'ref-clip')
+SPINE_ELEMENT_TAGS = ('clip', 'asset-clip', 'video', 'audio', 'gap', 'transition', 'ref-clip')
+
 
 def _sanitize_xml_value(value: str, max_length: int = _MAX_MARKER_NAME_LENGTH) -> str:
     """Sanitize a string value before writing it into an XML attribute.
@@ -180,10 +187,6 @@ class FCPXMLModifier:
             raise ValueError("No spine found in FCPXML")
         return spine
 
-    def _time_to_fcpxml(self, time_value: TimeValue) -> str:
-        """Convert TimeValue to FCPXML string."""
-        return time_value.to_fcpxml()
-
     def _parse_time(self, tc: str) -> TimeValue:
         """Parse a timecode string to TimeValue."""
         return TimeValue.from_timecode(tc, self.fps)
@@ -300,7 +303,7 @@ class FCPXMLModifier:
         if auto_at_cuts:
             spine = self._get_spine()
             for i, clip in enumerate(spine.findall('*')):
-                if clip.tag in ('clip', 'asset-clip', 'video'):
+                if clip.tag in CLIP_TAGS:
                     offset = clip.get('offset', '0s')
                     marker = self.add_marker_at_timeline(
                         offset, f"Cut {i+1}", MarkerType.STANDARD
@@ -419,7 +422,7 @@ class FCPXMLModifier:
                 found_clip = True
                 continue
 
-            if found_clip and child.tag in ('clip', 'asset-clip', 'video', 'audio', 'gap', 'ref-clip'):
+            if found_clip and child.tag in SPINE_ELEMENT_TAGS:
                 current_offset = self._parse_time(child.get('offset', '0s'))
                 new_offset = current_offset + delta
                 child.set('offset', new_offset.to_fcpxml())
@@ -528,7 +531,7 @@ class FCPXMLModifier:
         current_offset = TimeValue.zero()
 
         for child in spine:
-            if child.tag in ('clip', 'asset-clip', 'video', 'audio', 'gap', 'transition', 'ref-clip'):
+            if child.tag in SPINE_ELEMENT_TAGS:
                 child.set('offset', current_offset.to_fcpxml())
                 duration_str = child.get('duration', '0s')
                 duration = self._parse_time(duration_str)
@@ -794,7 +797,7 @@ class FCPXMLModifier:
                 spine.remove(clip)
                 # Shift subsequent clips
                 for child in list(spine)[clip_index:]:
-                    if child.tag in ('clip', 'asset-clip', 'video', 'audio', 'gap', 'ref-clip', 'transition'):
+                    if child.tag in SPINE_ELEMENT_TAGS:
                         child_offset = self._parse_time(child.get('offset', '0s'))
                         new_offset = child_offset - clip_duration
                         child.set('offset', new_offset.to_fcpxml())
@@ -843,7 +846,7 @@ class FCPXMLModifier:
         # Collect flash frames first (can't modify while iterating)
         flash_frames = []
         for i, clip in enumerate(spine_children):
-            if clip.tag not in ('clip', 'asset-clip', 'video', 'ref-clip'):
+            if clip.tag not in CLIP_TAGS:
                 continue
             duration = self._parse_time(clip.get('duration', '0s'))
             duration_frames = duration.to_frames(self.fps)
@@ -886,7 +889,7 @@ class FCPXMLModifier:
                 # Find previous non-gap clip
                 prev_clip = None
                 for j in range(clip_index - 1, -1, -1):
-                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                    if spine_list[j].tag in CLIP_TAGS:
                         prev_clip = spine_list[j]
                         break
 
@@ -902,7 +905,7 @@ class FCPXMLModifier:
                 # Find next non-gap clip
                 next_clip = None
                 for j in range(clip_index + 1, len(spine_list)):
-                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                    if spine_list[j].tag in CLIP_TAGS:
                         next_clip = spine_list[j]
                         break
 
@@ -957,7 +960,7 @@ class FCPXMLModifier:
         self._parse_time(min_duration) if min_duration else None
 
         for clip in list(spine):
-            if clip.tag not in ('clip', 'asset-clip', 'video', 'ref-clip'):
+            if clip.tag not in CLIP_TAGS:
                 continue
 
             clip_name = clip.get('name') or clip.get('id') or 'Unknown'
@@ -1067,7 +1070,7 @@ class FCPXMLModifier:
                 # Find previous clip
                 prev_clip = None
                 for j in range(gap_index - 1, -1, -1):
-                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                    if spine_list[j].tag in CLIP_TAGS:
                         prev_clip = spine_list[j]
                         break
 
@@ -1083,7 +1086,7 @@ class FCPXMLModifier:
                 # Find next clip
                 next_clip = None
                 for j in range(gap_index + 1, len(spine_list)):
-                    if spine_list[j].tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+                    if spine_list[j].tag in CLIP_TAGS:
                         next_clip = spine_list[j]
                         break
 
@@ -1271,7 +1274,7 @@ class FCPXMLModifier:
         # Ripple subsequent clips if needed
         if ripple and insert_index < len(spine_children):
             for child in list(spine)[insert_index + 1:]:
-                if child.tag in ('clip', 'asset-clip', 'video', 'audio', 'gap', 'ref-clip', 'transition'):
+                if child.tag in SPINE_ELEMENT_TAGS:
                     current_offset = self._parse_time(child.get('offset', '0s'))
                     new_offset = current_offset + clip_duration
                     child.set('offset', new_offset.to_fcpxml())
@@ -1439,7 +1442,7 @@ class FCPXMLModifier:
 
         # First pass: collect durations for anomaly detection
         for child in spine:
-            if child.tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+            if child.tag in CLIP_TAGS:
                 dur = self._parse_time(child.get('duration', '0s'))
                 durations.append(dur.to_seconds())
 
@@ -1466,7 +1469,7 @@ class FCPXMLModifier:
                     'clip_name': None,
                     'clip_index': None,
                 })
-            elif tag in ('clip', 'asset-clip', 'video', 'ref-clip'):
+            elif tag in CLIP_TAGS:
                 name = child.get('name', '').lower()
 
                 # Name pattern match
@@ -1539,13 +1542,14 @@ class FCPXMLModifier:
                 for child in spine:
                     offset_str = child.get('offset', '0s')
                     tc = TimeValue.from_timecode(offset_str, self.fps).to_timecode(self.fps)
-                    if tc == c['start_timecode'] and child.tag in (
-                        'clip', 'asset-clip', 'video', 'ref-clip'
-                    ):
-                        marker = ET.SubElement(child, 'marker')
-                        marker.set('start', child.get('start', '0s'))
-                        marker.set('duration', '1/24s')
-                        marker.set('value', f"SILENCE: {c['reason']}")
+                    if tc == c['start_timecode'] and child.tag in CLIP_TAGS:
+                        build_marker_element(
+                            parent=child,
+                            marker_type=MarkerType.STANDARD,
+                            start=child.get('start', '0s'),
+                            duration=f"1/{int(self.fps)}s",
+                            name=f"SILENCE: {c['reason']}",
+                        )
                         actions.append({
                             'action': 'marked',
                             'clip_name': c.get('clip_name', 'gap'),

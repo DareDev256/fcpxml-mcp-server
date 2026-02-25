@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.15] - 2026-02-25
+
+### Changed
+
+- **Extracted clip-tag constants**: Replaced 13 inline tag-tuple literals across `writer.py` with three named module-level constants (`CLIP_TAGS`, `CLIP_AND_AUDIO_TAGS`, `SPINE_ELEMENT_TAGS`) — eliminates inconsistent tag sets and makes adding new clip types a single-line change
+- **Extracted parser clip-tag constant**: Deduplicated `clip_tags` local variable in `_parse_connected_clips` and `_parse_gap_connected_clips` into `_CONNECTED_CLIP_TAGS` module constant
+- **Fixed silence marker bypass**: `remove_silence_candidates(mode="mark")` now uses `build_marker_element()` instead of raw `ET.SubElement` — gains input sanitization, fps-aware duration, and correct FCPXML attribute contract
+- **Removed dead code**: Deleted unused `_time_to_fcpxml()` wrapper method from `FCPXMLModifier`
+
 ## [0.5.14] - 2026-02-25
 
 ### Fixed

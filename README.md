@@ -20,6 +20,7 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 ### Recent Highlights
 
 - **Hardened marker pipeline** — unified `build_marker_element()` builder, strict whitespace parsing, input sanitization against injection attacks, 50MB file size ceiling
+- **Named tag constants** — `CLIP_TAGS`, `SPINE_ELEMENT_TAGS` eliminate 13 inline tag-tuple literals, ensuring consistent clip-type matching across all operations
 - **Cross-NLE export** — DaVinci Resolve (FCPXML v1.9) and Premiere Pro/Avid (XMEML v5) export paths
 - **444 tests** across 10 suites with security, round-trip, and edge-case coverage
 

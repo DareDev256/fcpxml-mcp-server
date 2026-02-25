@@ -22,6 +22,9 @@ from .models import (
 # Maximum FCPXML file size (50 MB) — prevents memory exhaustion from crafted files
 _MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 
+# Tags that represent connected clip elements (includes 'title' for text overlays)
+_CONNECTED_CLIP_TAGS = ('asset-clip', 'clip', 'video', 'audio', 'title', 'ref-clip')
+
 
 class FCPXMLParser:
     """Parser for Final Cut Pro FCPXML files. Supports versions 1.8 - 1.11."""
@@ -265,7 +268,7 @@ class FCPXMLParser:
     def _parse_connected_clips(self, parent_elem: ET.Element,
                                 parent_clip: Clip, timeline: Timeline):
         """Parse connected clips attached to a primary storyline clip."""
-        clip_tags = ('asset-clip', 'clip', 'video', 'audio', 'title', 'ref-clip')
+        clip_tags = _CONNECTED_CLIP_TAGS
         for child in parent_elem:
             lane = child.get('lane')
             if lane is not None and child.tag in clip_tags:
@@ -287,7 +290,7 @@ class FCPXMLParser:
     def _parse_gap_connected_clips(self, gap_elem: ET.Element,
                                     gap_offset: int, timeline: Timeline):
         """Parse connected clips attached to gap elements."""
-        clip_tags = ('asset-clip', 'clip', 'video', 'audio', 'title', 'ref-clip')
+        clip_tags = _CONNECTED_CLIP_TAGS
         for child in gap_elem:
             lane = child.get('lane')
             if lane is not None and child.tag in clip_tags:
