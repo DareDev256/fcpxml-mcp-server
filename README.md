@@ -285,6 +285,8 @@ fcp-mcp-server/           ~7k lines Python
 
 For multi-step workflow recipes (QC pipelines, beat-synced assembly, cross-NLE handoffs), see **[docs/WORKFLOWS.md](docs/WORKFLOWS.md)**.
 
+For how this server composes with other MCP servers (GitNexus, filesystem, memory), see **[docs/MCP_ECOSYSTEM.md](docs/MCP_ECOSYSTEM.md)**.
+
 ---
 
 ## Testing
@@ -311,7 +313,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-**Latest: v0.5.14** — Adversarial edge-case hardening for completed-attribute parsing, 444 tests across 10 suites. 47 tools.
+**Latest: v0.5.17** — MCP ecosystem documentation, XXE hardening, 454 tests across 10 suites. 47 tools.
 
 ---
 
