@@ -145,104 +145,82 @@ Select these from Claude's prompt menu — they chain multiple tools together au
 
 ## All 47 Tools
 
-### Analysis — 11 tools
-| Tool | Description |
-|------|-------------|
-| `list_projects` | Find all FCPXML files in a directory |
-| `analyze_timeline` | Stats on duration, resolution, pacing |
-| `list_clips` | All clips with timecodes, durations, keywords |
-| `list_library_clips` | Source clips available in the library |
-| `list_markers` | Markers with timestamps (YouTube chapter format) |
-| `find_short_cuts` | Potential flash frames (< threshold) |
-| `find_long_clips` | Clips that might need trimming |
-| `list_keywords` | All keywords/tags from project |
-| `export_edl` | EDL for color/audio handoffs |
-| `export_csv` | Timeline data to CSV |
-| `analyze_pacing` | Pacing metrics with suggestions |
+| Category | Count | What It Does |
+|----------|------:|--------------|
+| **Analysis** | 11 | Stats, clips, markers, keywords, EDL/CSV, pacing |
+| **Multi-Track** | 3 | Connected clips, compound clips, secondary lanes |
+| **Roles** | 4 | List, assign, filter, export stems |
+| **QC & Validation** | 4 | Flash frames, duplicates, gaps, health score |
+| **Editing** | 9 | Markers, trim, reorder, transitions, speed, split |
+| **Batch Fixes** | 3 | Auto-fix flash frames, rapid trim, fill gaps |
+| **Comparison** | 1 | Diff two timelines — added/removed/moved/trimmed |
+| **Reformat** | 1 | Aspect ratio conversion (9:16, 1:1, 4:5, custom) |
+| **Silence** | 2 | Detect and remove silence candidates |
+| **NLE Export** | 2 | DaVinci Resolve v1.9, FCP7 XMEML v5 |
+| **Generation** | 3 | Rough cuts, montages, A/B roll |
+| **Beat Sync** | 2 | Import beat markers, snap cuts to beats |
+| **Import** | 2 | SRT/VTT subtitles, YouTube chapters → markers |
 
-### Multi-Track & Connected Clips — 3 tools
-| Tool | Description |
-|------|-------------|
-| `list_connected_clips` | B-roll, titles, audio on secondary lanes |
-| `add_connected_clip` | Attach a clip at a specified lane |
-| `list_compound_clips` | Inspect ref-clip compound clips |
+<details>
+<summary><strong>Full tool reference (click to expand)</strong></summary>
 
-### Roles — 4 tools
-| Tool | Description |
-|------|-------------|
-| `list_roles` | Audio/video roles with clip counts |
-| `assign_role` | Set role on a clip |
-| `filter_by_role` | Clips matching a specific role |
-| `export_role_stems` | Clip list grouped by role for mixing |
+#### Analysis — 11 tools
+`list_projects` · `analyze_timeline` · `list_clips` · `list_library_clips` · `list_markers` · `find_short_cuts` · `find_long_clips` · `list_keywords` · `export_edl` · `export_csv` · `analyze_pacing`
 
-### QC & Validation — 4 tools
-| Tool | Description |
-|------|-------------|
-| `detect_flash_frames` | Ultra-short clips with severity levels |
-| `detect_duplicates` | Clips using same source media |
-| `detect_gaps` | Unintentional gaps in timeline |
-| `validate_timeline` | Health check with score (0-100%) |
+#### Multi-Track — 3 tools
+`list_connected_clips` · `add_connected_clip` · `list_compound_clips`
 
-### Editing — 9 tools
-| Tool | Description |
-|------|-------------|
-| `add_marker` | Single marker at a timecode |
-| `batch_add_markers` | Multiple markers, or auto-generate at cuts/intervals |
-| `insert_clip` | Library clip onto timeline at any position |
-| `trim_clip` | Adjust in/out points with optional ripple |
-| `reorder_clips` | Move clips to new positions |
-| `add_transition` | Cross-dissolve, fade, wipe between clips |
-| `change_speed` | Slow motion or speed ramps |
-| `delete_clips` | Remove clips with optional ripple |
-| `split_clip` | Split at specified timecodes |
+#### Roles — 4 tools
+`list_roles` · `assign_role` · `filter_by_role` · `export_role_stems`
 
-### Batch Fixes — 3 tools
-| Tool | Description |
-|------|-------------|
-| `fix_flash_frames` | Auto-fix by extending neighbors or deleting |
-| `rapid_trim` | Batch trim clips to max duration |
-| `fill_gaps` | Close gaps by extending adjacent clips |
+#### QC & Validation — 4 tools
+`detect_flash_frames` · `detect_duplicates` · `detect_gaps` · `validate_timeline`
 
-### Timeline Comparison — 1 tool
-| Tool | Description |
-|------|-------------|
-| `diff_timelines` | Compare two FCPXMLs — added/removed/moved/trimmed clips |
+#### Editing — 9 tools
+`add_marker` · `batch_add_markers` · `insert_clip` · `trim_clip` · `reorder_clips` · `add_transition` · `change_speed` · `delete_clips` · `split_clip`
 
-### Reformat — 1 tool
-| Tool | Description |
-|------|-------------|
-| `reformat_timeline` | New resolution (9:16, 1:1, 4:5, 4:3, custom) |
+#### Batch Fixes — 3 tools
+`fix_flash_frames` · `rapid_trim` · `fill_gaps`
 
-### Silence Detection — 2 tools
-| Tool | Description |
-|------|-------------|
-| `detect_silence_candidates` | Flag potential silence via heuristics |
-| `remove_silence_candidates` | Delete or mark detected silence candidates |
+#### Comparison · Reformat · Silence
+`diff_timelines` · `reformat_timeline` · `detect_silence_candidates` · `remove_silence_candidates`
 
-### NLE Export — 2 tools
-| Tool | Description |
-|------|-------------|
-| `export_resolve_xml` | FCPXML v1.9 for DaVinci Resolve |
-| `export_fcp7_xml` | XMEML for Premiere Pro / Resolve / Avid |
+#### NLE Export — 2 tools
+`export_resolve_xml` (DaVinci Resolve FCPXML v1.9) · `export_fcp7_xml` (Premiere Pro / Resolve / Avid XMEML v5)
 
-### Generation — 3 tools
-| Tool | Description |
-|------|-------------|
-| `auto_rough_cut` | Timeline from keywords, duration, pacing |
-| `generate_montage` | Montages with pacing curves (accelerating/decelerating/pyramid) |
-| `generate_ab_roll` | Documentary-style A/B roll alternating edits |
+#### Generation — 3 tools
+`auto_rough_cut` · `generate_montage` · `generate_ab_roll`
 
-### Beat Sync — 2 tools
-| Tool | Description |
-|------|-------------|
-| `import_beat_markers` | Import beat markers from JSON audio analysis |
-| `snap_to_beats` | Align cuts to nearest beat markers |
+#### Beat Sync — 2 tools
+`import_beat_markers` · `snap_to_beats`
 
-### Import — 2 tools
-| Tool | Description |
-|------|-------------|
-| `import_srt_markers` | SRT/VTT subtitles into timeline markers |
-| `import_transcript_markers` | Timestamped text (YouTube chapters) into markers |
+#### Import — 2 tools
+`import_srt_markers` · `import_transcript_markers`
+
+</details>
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `FCP_PROJECTS_DIR` | No | `~/Movies` | Root directory for FCPXML file discovery via `list_projects` |
+| `OPENAI_BASE_URL` | No | — | Route LLM calls through any OpenAI-compatible proxy (LiteLLM, OpenRouter, Ollama, vLLM) |
+
+---
+
+## Compatibility
+
+| Component | Supported Versions |
+|-----------|--------------------|
+| FCPXML format | v1.8 – v1.11 |
+| Final Cut Pro | 10.4+ |
+| Python | 3.10, 3.11, 3.12 |
+| MCP protocol | 1.0 |
+| **Export targets** | |
+| → DaVinci Resolve | FCPXML v1.9 |
+| → Premiere Pro / Avid | FCP7 XMEML v5 |
 
 ---
 
@@ -310,10 +288,9 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 ## Requirements
 
-- **Python 3.10+**
-- **Final Cut Pro 10.4+** (FCPXML 1.8+)
-- **Claude Desktop** or any MCP-compatible client
-- **Dependencies:** `mcp`, `lxml`, `defusedxml` (installed automatically)
+- **Python 3.10+** · **Final Cut Pro 10.4+** (FCPXML 1.8+) · **Claude Desktop** or any MCP client
+- **Dependencies** (auto-installed): `mcp`, `lxml`, `defusedxml`
+- See [Compatibility](#compatibility) for full version matrix
 
 ---
 

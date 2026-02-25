@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.19] - 2026-02-25
+
+### Changed
+
+- **README tool tables → scannable summary grid**: Replaced 7 verbose tool tables (~95 lines) with a compact 13-row category overview + collapsible `<details>` full reference — readers see all 47 tools' shape in 15 lines, drill into specifics on demand
+- **Added Environment Variables section**: Documents `FCP_PROJECTS_DIR` and `OPENAI_BASE_URL` with defaults and descriptions — eliminates first-run friction
+- **Added Compatibility matrix**: FCPXML versions, FCP versions, Python versions, MCP protocol, and export target formats in one scannable table
+- **Requirements section**: Condensed to single line with cross-reference to compatibility matrix
+
 ## [0.5.18] - 2026-02-25
 
 ### Changed
