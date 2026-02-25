@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.18] - 2026-02-25
+
+### Changed
+
+- **README portfolio overhaul**: Added "See It In Action" conversation demo showing real tool output flow, new "Design Principles" table distilling the 5 core engineering decisions, consolidated "Documentation" section replacing scattered links, removed redundant "Releases" section (CHANGELOG link in docs table), fixed stale test badge (444→454), added `defusedxml` to requirements list, tightened tagline and section headings throughout
+
 ## [0.5.17] - 2026-02-25
 
 ### Added

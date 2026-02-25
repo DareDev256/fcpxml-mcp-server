@@ -1,12 +1,12 @@
 # FCPXML MCP
 
-**47 tools for Final Cut Pro timelines — analysis, batch editing, QC, generation, and cross-NLE export — driven by Claude.**
+**The bridge between Final Cut Pro and AI. 47 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-444_across_10_suites-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-454_across_10_suites-brightgreen.svg)](#testing)
 [![LOC](https://img.shields.io/badge/codebase-~7k_LOC-informational.svg)](#architecture)
 
 ---
@@ -17,20 +17,36 @@ After directing 350+ music videos (Chief Keef, Migos, Masicka), I noticed the sa
 
 These are batch operations that don't need visual feedback. Export the XML, let Claude handle the tedium, import the result. That's the entire philosophy.
 
-### Recent Highlights
+---
 
-- **Hardened marker pipeline** — unified `build_marker_element()` builder, strict whitespace parsing, input sanitization against injection attacks, 50MB file size ceiling
-- **Named tag constants** — `CLIP_TAGS`, `SPINE_ELEMENT_TAGS` eliminate 13 inline tag-tuple literals, ensuring consistent clip-type matching across all operations
-- **Cross-NLE export** — DaVinci Resolve (FCPXML v1.9) and Premiere Pro/Avid (XMEML v5) export paths
-- **454 tests** across 10 suites with security, round-trip, and edge-case coverage
+## See It In Action
+
+```
+You:    "Run a health check on my wedding edit"
+
+Claude: ✓ Analyzed WeddingFinal.fcpxml
+        ├─ 247 clips · 42:18 total · 24fps · 1920×1080
+        ├─ 3 flash frames detected (clips 44, 112, 198)
+        ├─ 2 unintentional gaps at 12:04 and 31:47
+        ├─ 14 duplicate source clips
+        └─ Health score: 72/100
+
+You:    "Fix the flash frames and gaps, then add chapter markers from
+         this transcript"
+
+Claude: ✓ Extended adjacent clips to cover 3 flash frames
+        ✓ Filled 2 gaps by extending previous clips
+        ✓ Added 18 chapter markers from transcript
+        → Saved: WeddingFinal_modified.fcpxml
+```
+
+Import the modified XML back into Final Cut Pro. Every change is non-destructive — your original file is never touched.
 
 ---
 
 ## How It Works
 
 ```
-                    FCPXML MCP Server
-                    ─────────────────
   ┌──────────┐      ┌──────────────────────────────┐      ┌──────────┐
   │ Final Cut│      │  parser.py   → Python objects │      │ Final Cut│
   │   Pro    │─XML─>│  writer.py   → Modify & save  │─XML─>│   Pro    │
@@ -42,17 +58,15 @@ These are batch operations that don't need visual feedback. Export the XML, let 
                      Claude Desktop / MCP client
 ```
 
-1. **Export from FCP**: `File → Export XML...`
-2. **Run MCP tools**: Analyze, modify, generate via Claude
-3. **Import back**: `File → Import → XML`
-
-This is a roundtrip workflow. Each edit cycle is an export-and-import.
+1. **Export from FCP** — `File → Export XML...`
+2. **Ask Claude** — analyze, edit, generate, QC, export
+3. **Import back** — `File → Import → XML`
 
 ### What This Is NOT
 
-- **Not a plugin** that runs inside Final Cut Pro
-- **Not real-time editing** — you work with the XML between exports
-- **Not a replacement** for creative decisions that need visual feedback
+- **Not a plugin** — it doesn't run inside Final Cut Pro
+- **Not real-time** — you work with the XML between exports
+- **Not for creative calls** — color, framing, motion still need your eyes
 
 ---
 
@@ -259,33 +273,27 @@ fcp-mcp-server/           ~7k lines Python
     └── sample.fcpxml      9 clips, 24fps — test fixture
 ```
 
-**Key design decisions:**
-- **Rational time arithmetic** — all times are fractions (`600/2400s`), never floats. Matches FCPXML's native format and eliminates rounding errors across trim, split, and speed operations.
-- **Dispatch dict pattern** — `TOOL_HANDLERS` maps tool names to async handlers. No 1000-line if/elif chains.
-- **Non-destructive output** — modified files get `_modified`, `_chapters`, etc. suffixes. Originals are never overwritten.
-- **Unified marker pipeline** — `MarkerType` enum owns the full serialization contract: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. Single source of truth across parser + both writer paths.
-- **Security-first validation** — all 47 handlers validate inputs against path traversal, null bytes, symlinks, and a 100MB size limit. XML values are sanitized before writing. Marker inputs reject control characters and length abuse. All XML parsing uses `defusedxml` to block XXE, billion laughs, and entity expansion attacks.
+---
+
+## Design Principles
+
+| Principle | Implementation |
+|-----------|---------------|
+| **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
+| **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
+| **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing |
+| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion) |
+| **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
 
-## Usage Examples
+## Documentation
 
-```
-"Analyze my latest FCP project"
-"Add chapter markers at these timestamps: [list]"
-"Export an EDL for the colorist"
-"Create a 3-minute rough cut using clips tagged 'broll'"
-"Run a health check on my timeline"
-"Snap all cuts to the nearest beat"
-"Fix all flash frames by extending previous clips"
-"Generate a montage with accelerating pacing"
-"Compare my current edit with yesterday's version"
-"Reformat my timeline for Instagram Reels (9:16)"
-```
-
-For multi-step workflow recipes (QC pipelines, beat-synced assembly, cross-NLE handoffs), see **[docs/WORKFLOWS.md](docs/WORKFLOWS.md)**.
-
-For how this server composes with other MCP servers (GitNexus, filesystem, memory), see **[docs/MCP_ECOSYSTEM.md](docs/MCP_ECOSYSTEM.md)**.
+| Guide | What's Inside |
+|-------|---------------|
+| **[WORKFLOWS.md](docs/WORKFLOWS.md)** | 8 production recipes — QC pipelines, beat-synced assembly, cross-NLE handoffs, documentary A/B roll |
+| **[MCP_ECOSYSTEM.md](docs/MCP_ECOSYSTEM.md)** | How this server composes with GitNexus, filesystem, and memory MCP servers |
+| **[CHANGELOG.md](CHANGELOG.md)** | Full version history from v0.1.0 to present |
 
 ---
 
@@ -305,15 +313,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 - **Python 3.10+**
 - **Final Cut Pro 10.4+** (FCPXML 1.8+)
 - **Claude Desktop** or any MCP-compatible client
-- **Dependencies:** `mcp`, `lxml` (installed automatically)
-
----
-
-## Releases
-
-See [CHANGELOG.md](CHANGELOG.md) for full version history.
-
-**Latest: v0.5.17** — MCP ecosystem documentation, XXE hardening, 454 tests across 10 suites. 47 tools.
+- **Dependencies:** `mcp`, `lxml`, `defusedxml` (installed automatically)
 
 ---
 
