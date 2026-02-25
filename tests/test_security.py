@@ -246,6 +246,36 @@ class TestCompletedAttributeValidation:
         m = self._parse_marker_xml("false")
         assert m.marker_type == MarkerType.STANDARD
 
+    def test_completed_whitespace_only_falls_to_standard(self):
+        """Pure whitespace completed='   ' must not match any boolean value."""
+        m = self._parse_marker_xml("   ")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_tab_padded_zero_falls_to_standard(self):
+        """Tab characters around '0' bypass strip() — strict match rejects."""
+        m = self._parse_marker_xml("\t0\t")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_tab_padded_one_falls_to_standard(self):
+        """Tab characters around '1' bypass strip() — strict match rejects."""
+        m = self._parse_marker_xml("\t1\t")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_zero_with_leading_zero_falls_to_standard(self):
+        """'00' is not '0' — strict exact-match only."""
+        m = self._parse_marker_xml("00")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_unicode_digit_zero_falls_to_standard(self):
+        """Unicode fullwidth digit '\uff10' looks like 0 but isn't ASCII '0'."""
+        m = self._parse_marker_xml("\uff10")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_unicode_digit_one_falls_to_standard(self):
+        """Unicode fullwidth digit '\uff11' looks like 1 but isn't ASCII '1'."""
+        m = self._parse_marker_xml("\uff11")
+        assert m.marker_type == MarkerType.STANDARD
+
 
 # ============================================================================
 # Parser file size limit

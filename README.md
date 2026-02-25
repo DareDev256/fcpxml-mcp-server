@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-438_across_10_suites-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-444_across_10_suites-brightgreen.svg)](#testing)
 [![LOC](https://img.shields.io/badge/codebase-~7k_LOC-informational.svg)](#architecture)
 
 ---
@@ -21,7 +21,7 @@ These are batch operations that don't need visual feedback. Export the XML, let 
 
 - **Hardened marker pipeline** — unified `build_marker_element()` builder, strict whitespace parsing, input sanitization against injection attacks, 50MB file size ceiling
 - **Cross-NLE export** — DaVinci Resolve (FCPXML v1.9) and Premiere Pro/Avid (XMEML v5) export paths
-- **438 tests** across 10 suites with security, round-trip, and edge-case coverage
+- **444 tests** across 10 suites with security, round-trip, and edge-case coverage
 
 ---
 
@@ -243,7 +243,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 438 tests across 10 suites
+├── tests/                 444 tests across 10 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -293,7 +293,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-438 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening, connected clips, roles, diff, export, and backward compatibility.
+444 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening, connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
@@ -310,7 +310,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-**Latest: v0.5.13** — Unified marker builder, strict whitespace parsing, 438 tests across 10 suites. 47 tools.
+**Latest: v0.5.14** — Adversarial edge-case hardening for completed-attribute parsing, 444 tests across 10 suites. 47 tools.
 
 ---
 

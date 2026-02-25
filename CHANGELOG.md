@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.14] - 2026-02-25
+
+### Fixed
+
+- **Completed-attribute strict matching**: Added 7 adversarial edge-case tests for `MarkerType.from_xml_element` — whitespace-only `completed`, tab-padded values, leading-zero `'00'`, and Unicode fullwidth digit lookalikes (`０`, `１`). Confirms strict exact-match rejects all non-canonical inputs as STANDARD.
+
 ## [0.5.13] - 2026-02-24
 
 ### Changed
