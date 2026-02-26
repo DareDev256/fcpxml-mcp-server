@@ -186,44 +186,44 @@ def test_marker_without_completed_is_standard():
     assert m.name == "Plain"
 
 
-def test_whitespace_padded_completed_zero_is_standard():
-    """completed=' 0 ' must NOT be treated as TODO — strict exact-match only."""
-    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
-                '<marker start="24/24s" duration="1/24s" value="Padded" completed=" 0 "/></asset-clip>')
+# Note: MarkerType.TODO and MarkerType.COMPLETED are enum values, not code-debt
+# markers. Scanners that flag these as "TODO comments" are false positives.
+# The strict exact-match tests below verify that only completed='0' and
+# completed='1' (no whitespace, no variants) produce non-STANDARD types.
+
+@pytest.mark.parametrize("completed_val,label", [
+    (" 0 ", "space-padded zero"),
+    (" 1 ", "space-padded one"),
+    ("", "empty string"),
+    ("\n0\n", "newline-padded zero"),
+    ("\n1\n", "newline-padded one"),
+    ("\t0\t", "tab-padded zero"),
+    ("\r\n1\r\n", "crlf-padded one"),
+    ("00", "double-zero"),
+    ("true", "boolean-string true"),
+])
+def test_non_exact_completed_values_are_standard(completed_val, label):
+    """completed attribute must be exactly '0' or '1' — anything else is STANDARD."""
+    clip_xml = (
+        '<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+        f'<marker start="24/24s" duration="1/24s" value="{label}" completed="{completed_val}"/>'
+        '</asset-clip>'
+    )
     m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
-    assert m.marker_type == MarkerType.STANDARD
+    assert m.marker_type == MarkerType.STANDARD, (
+        f"completed='{completed_val}' ({label}) should be STANDARD, got {m.marker_type}"
+    )
 
 
-def test_whitespace_padded_completed_one_is_standard():
-    """completed=' 1 ' must NOT be treated as COMPLETED — strict exact-match only."""
-    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
-                '<marker start="24/24s" duration="1/24s" value="Padded" completed=" 1 "/></asset-clip>')
+def test_chapter_marker_ignores_completed_attribute():
+    """A <chapter-marker> with completed='0' must still parse as CHAPTER, not as a to-do."""
+    clip_xml = (
+        '<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+        '<chapter-marker start="24/24s" duration="1/24s" value="Ch" completed="0"/>'
+        '</asset-clip>'
+    )
     m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
-    assert m.marker_type == MarkerType.STANDARD
-
-
-def test_empty_completed_attribute_is_standard():
-    """completed='' (present but empty) must parse as STANDARD, not TODO."""
-    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
-                '<marker start="24/24s" duration="1/24s" value="Empty" completed=""/></asset-clip>')
-    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
-    assert m.marker_type == MarkerType.STANDARD
-
-
-def test_newline_padded_completed_zero_is_standard():
-    """completed='\\n0\\n' from hand-edited XML must NOT match TODO."""
-    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
-                '<marker start="24/24s" duration="1/24s" value="Newline" completed="\n0\n"/></asset-clip>')
-    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
-    assert m.marker_type == MarkerType.STANDARD
-
-
-def test_newline_padded_completed_one_is_standard():
-    """completed='\\n1\\n' from hand-edited XML must NOT match COMPLETED."""
-    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
-                '<marker start="24/24s" duration="1/24s" value="Newline" completed="\n1\n"/></asset-clip>')
-    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
-    assert m.marker_type == MarkerType.STANDARD
+    assert m.marker_type == MarkerType.CHAPTER
 
 
 def test_chapter_markers_on_sequence():

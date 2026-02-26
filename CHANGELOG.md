@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.24] - 2026-02-26
+
+### Fixed
+
+- **Completed-attribute false-positive codeDebt**: Consolidated 5 individual edge-case tests into a single `@pytest.mark.parametrize` test with 9 cases (space-padded, newline-padded, tab-padded, CRLF-padded, empty, double-zero, boolean-string). Added integration test for `chapter-marker` with `completed` attribute through the parser. Added inline annotations explaining that `MarkerType.TODO` references are enum values, not TODO comments — prevents future codeDebt scanner false positives.
+
 ## [0.5.23] - 2026-02-26
 
 ### Added
