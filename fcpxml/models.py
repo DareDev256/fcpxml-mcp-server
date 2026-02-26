@@ -84,10 +84,10 @@ class MarkerType(Enum):
         if elem.tag == 'chapter-marker':
             return cls.CHAPTER
         completed = elem.get('completed')
-        if completed == '1':
-            return cls.COMPLETED
         if completed == '0':
             return cls.TODO
+        if completed == '1':
+            return cls.COMPLETED
         return cls.STANDARD
 
     @property

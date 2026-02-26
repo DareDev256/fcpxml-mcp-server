@@ -330,6 +330,26 @@ class TestCompletedAttributeValidation:
         m = self._parse_marker_xml("\uff11")
         assert m.marker_type == MarkerType.STANDARD
 
+    def test_completed_newline_padded_zero_falls_to_standard(self):
+        """Newline around '0' from hand-edited XML must not match TODO."""
+        m = self._parse_marker_xml("\n0\n")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_newline_padded_one_falls_to_standard(self):
+        """Newline around '1' from hand-edited XML must not match COMPLETED."""
+        m = self._parse_marker_xml("\n1\n")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_crlf_padded_zero_falls_to_standard(self):
+        r"""CRLF (\r\n) around '0' from Windows-edited XML must not match."""
+        m = self._parse_marker_xml("\r\n0\r\n")
+        assert m.marker_type == MarkerType.STANDARD
+
+    def test_completed_mixed_whitespace_one_falls_to_standard(self):
+        """Mixed whitespace (space+tab+newline) around '1' must not match."""
+        m = self._parse_marker_xml(" \t\n1\n\t ")
+        assert m.marker_type == MarkerType.STANDARD
+
 
 # ============================================================================
 # Parser file size limit

@@ -210,6 +210,22 @@ def test_empty_completed_attribute_is_standard():
     assert m.marker_type == MarkerType.STANDARD
 
 
+def test_newline_padded_completed_zero_is_standard():
+    """completed='\\n0\\n' from hand-edited XML must NOT match TODO."""
+    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+                '<marker start="24/24s" duration="1/24s" value="Newline" completed="\n0\n"/></asset-clip>')
+    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
+    assert m.marker_type == MarkerType.STANDARD
+
+
+def test_newline_padded_completed_one_is_standard():
+    """completed='\\n1\\n' from hand-edited XML must NOT match COMPLETED."""
+    clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
+                '<marker start="24/24s" duration="1/24s" value="Newline" completed="\n1\n"/></asset-clip>')
+    m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
+    assert m.marker_type == MarkerType.STANDARD
+
+
 def test_chapter_markers_on_sequence():
     # Chapter markers are children of sequence (parsed via findall .//chapter-marker)
     tl = FCPXMLParser().parse_file(str(SAMPLE)).primary_timeline

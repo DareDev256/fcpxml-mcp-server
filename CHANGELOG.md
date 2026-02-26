@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.21] - 2026-02-25
+
+### Fixed
+
+- **Completed-attribute priority order**: `MarkerType.from_xml_element()` now checks `completed='0'` (TODO) before `completed='1'` (COMPLETED), matching the documented priority order — eliminates a docstring/code mismatch that was a maintenance footgun across 8 releases of iteration on this logic
+
+### Added
+
+- 6 new edge-case tests for newline/CRLF-padded `completed` attribute values (`"\n0\n"`, `"\n1\n"`, `"\r\n0\r\n"`, mixed whitespace) — covers hand-edited and Windows-generated FCPXML where whitespace can leak into attribute values. Tests added at both parser level (`test_parser.py`) and security level (`test_security.py`) for defense-in-depth
+
 ## [0.5.20] - 2026-02-25
 
 ### Security
