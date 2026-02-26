@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.22] - 2026-02-26
+
+### Changed
+
+- **README "What Claude Actually Sees" section**: New section showing raw FCPXML → parsed Python data model transformation side-by-side — gives developers the instant "aha" for how rational-time parsing works and why float-free math matters
+- **Fixed stale test stats**: Body text updated from 474 → 480 tests, added roundtrip test suite to architecture tree, split test badge into tests + suites for clarity
+- **Security principle tightened**: Design principles table now mentions role sanitization and marker string sanitization explicitly
+
 ## [0.5.21] - 2026-02-25
 
 ### Fixed

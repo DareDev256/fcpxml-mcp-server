@@ -6,8 +6,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-480_across_10_suites-brightgreen.svg)](#testing)
-[![LOC](https://img.shields.io/badge/codebase-~7k_LOC-informational.svg)](#architecture)
+[![Tests](https://img.shields.io/badge/tests-480_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-10-blue.svg)](#testing)
+[![Source](https://img.shields.io/badge/source-~7k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -41,6 +42,35 @@ Claude: ✓ Extended adjacent clips to cover 3 flash frames
 ```
 
 Import the modified XML back into Final Cut Pro. Every change is non-destructive — your original file is never touched.
+
+---
+
+## What Claude Actually Sees
+
+This is the magic trick. When you export XML from Final Cut Pro, your timeline becomes structured data that Claude can reason about:
+
+```xml
+<!-- What FCP exports -->
+<asset-clip ref="r2" offset="342/24s" name="Interview_A"
+            start="120s" duration="720/24s" format="r1">
+    <marker start="48/24s" duration="1/24s" value="Key quote"/>
+    <keyword start="0s" duration="720/24s" value="Interview"/>
+</asset-clip>
+```
+
+```python
+# What Claude works with (after parsing)
+Clip(
+    name="Interview_A",
+    offset=TimeValue(342, 24),   # timeline position: 14.25s
+    start=TimeValue(120, 1),     # source in-point: 2:00
+    duration=TimeValue(720, 24), # 30 seconds
+    markers=[Marker(value="Key quote", start=TimeValue(48, 24))],
+    keywords=["Interview"]
+)
+```
+
+Every time value stays as a rational fraction — `720/24s`, not `30.0` — so trim, split, and speed operations have **zero rounding error** across any frame rate.
 
 ---
 
@@ -244,6 +274,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── test_rough_cut.py  Rough cut generation, montage, A/B roll
 │   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
 │   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
+│   ├── test_pipeline_roundtrip.py  Write→parse symmetry at multiple frame rates
 │   └── test_security.py   Input validation, XML sanitization, XXE protection
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
@@ -260,7 +291,7 @@ fcp-mcp-server/           ~7k lines Python
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing |
-| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion). All string attributes sanitized before XML write |
+| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100 MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion). Marker strings sanitized before write. Role values stripped of control characters |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -282,7 +313,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-474 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening (XXE, entity expansion, input validation, path traversal, directory injection, role sanitization), connected clips, roles, diff, export, and backward compatibility.
+480 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, input validation, path traversal, directory injection, role sanitization), connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
