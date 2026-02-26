@@ -101,6 +101,27 @@ def _validate_output_path(output_path: str) -> str:
     return str(resolved)
 
 
+def _validate_directory(directory: str) -> str:
+    """Validate a user-provided directory path against traversal and injection.
+
+    Resolves symlinks, blocks null bytes, and verifies the path is a real
+    directory. Used by handlers that accept directory arguments (e.g.,
+    list_projects) to prevent filesystem enumeration attacks.
+
+    Raises:
+        ValueError: For invalid paths (null bytes, not a directory).
+    """
+    if '\x00' in directory:
+        raise ValueError("Invalid directory path: null byte detected")
+
+    resolved = Path(directory).resolve()
+
+    if not resolved.is_dir():
+        raise ValueError(f"Not a valid directory: {directory}")
+
+    return str(resolved)
+
+
 # ============================================================================
 # UTILITIES
 # ============================================================================
@@ -1179,10 +1200,8 @@ async def list_tools() -> list[Tool]:
 
 async def handle_list_projects(arguments: dict) -> Sequence[TextContent]:
     directory = arguments.get("directory", PROJECTS_DIR)
-    resolved_dir = Path(directory).resolve()
-    if not resolved_dir.is_dir():
-        return [TextContent(type="text", text=f"Not a valid directory: {directory}")]
-    files = find_fcpxml_files(str(resolved_dir))
+    resolved_dir = _validate_directory(directory)
+    files = find_fcpxml_files(resolved_dir)
     if not files:
         return [TextContent(type="text", text=f"No FCPXML files found in {directory}")]
     return [TextContent(type="text", text=f"Found {len(files)} FCPXML file(s):\n" + "\n".join(f"  - {f}" for f in files))]

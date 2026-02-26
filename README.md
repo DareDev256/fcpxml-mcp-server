@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-454_across_10_suites-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-474_across_10_suites-brightgreen.svg)](#testing)
 [![LOC](https://img.shields.io/badge/codebase-~7k_LOC-informational.svg)](#architecture)
 
 ---
@@ -260,7 +260,7 @@ fcp-mcp-server/           ~7k lines Python
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing |
-| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion) |
+| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion). All string attributes sanitized before XML write |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -282,7 +282,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-454 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening (XXE, entity expansion, input validation), connected clips, roles, diff, export, and backward compatibility.
+474 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline, security hardening (XXE, entity expansion, input validation, path traversal, directory injection, role sanitization), connected clips, roles, diff, export, and backward compatibility.
 
 ---
 

@@ -7,7 +7,13 @@ Covers:
 - XML value sanitization (null bytes, control chars, length limits)
 - Parser file size limits
 - Marker completed-attribute strict validation
+- File path and directory validation (traversal, null bytes, extensions)
+- Role string sanitization in writer
 """
+
+import sys
+import types
+from unittest.mock import MagicMock
 
 import pytest
 from defusedxml import DTDForbidden, EntitiesForbidden
@@ -20,6 +26,51 @@ from fcpxml.writer import (
     FCPXMLModifier,
     _sanitize_xml_value,
 )
+
+# ---------------------------------------------------------------------------
+# Shim the `mcp` package so server.py can be imported without the real SDK
+# ---------------------------------------------------------------------------
+if "mcp" not in sys.modules or "mcp.server" not in sys.modules:
+    mcp = types.ModuleType("mcp")
+    mcp_server = types.ModuleType("mcp.server")
+    mcp_server_stdio = types.ModuleType("mcp.server.stdio")
+    mcp_types = types.ModuleType("mcp.types")
+
+    class _FakeServer:
+        def __init__(self, *a, **kw):
+            pass
+        def call_tool(self): return lambda fn: fn
+        def list_tools(self): return lambda fn: fn
+        def list_resources(self): return lambda fn: fn
+        def read_resource(self): return lambda fn: fn
+        def list_prompts(self): return lambda fn: fn
+        def get_prompt(self): return lambda fn: fn
+
+    mcp_server.Server = _FakeServer
+
+    class _FakeCtx:
+        def __init__(self, *a): pass
+        async def __aenter__(self): return (MagicMock(), MagicMock())
+        async def __aexit__(self, *a): pass
+
+    mcp_server_stdio.stdio_server = _FakeCtx
+
+    class TextContent:
+        def __init__(self, *, type: str, text: str):
+            self.type = type
+            self.text = text
+
+    for name in ("GetPromptResult", "Prompt", "PromptArgument",
+                 "PromptMessage", "Resource", "Tool"):
+        setattr(mcp_types, name, MagicMock)
+    mcp_types.TextContent = TextContent
+
+    sys.modules.setdefault("mcp", mcp)
+    sys.modules.setdefault("mcp.server", mcp_server)
+    sys.modules.setdefault("mcp.server.stdio", mcp_server_stdio)
+    sys.modules.setdefault("mcp.types", mcp_types)
+
+from server import _validate_directory, _validate_filepath, _validate_output_path  # noqa: E402
 
 # ============================================================================
 # MarkerType.from_string hardening
@@ -434,3 +485,163 @@ class TestXXEProtection:
         parser = FCPXMLParser()
         project = parser.parse_string(xml)
         assert project.name == "Safe"
+
+
+# ============================================================================
+# File path validation (_validate_filepath)
+# ============================================================================
+
+class TestFilePathValidation:
+
+    def test_null_byte_in_filepath_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="null byte"):
+            _validate_filepath("test\x00.fcpxml")
+
+    def test_nonexistent_file_raises_fnf(self):
+        with pytest.raises(FileNotFoundError):
+            _validate_filepath("/nonexistent/path/file.fcpxml", ('.fcpxml',))
+
+    def test_wrong_extension_rejected(self, tmp_path):
+        bad = tmp_path / "evil.exe"
+        bad.write_text("data")
+        with pytest.raises(ValueError, match="Invalid file type"):
+            _validate_filepath(str(bad), ('.fcpxml', '.fcpxmld'))
+
+    def test_directory_rejected_as_file(self, tmp_path):
+        with pytest.raises(ValueError, match="Not a regular file"):
+            _validate_filepath(str(tmp_path), ('.fcpxml',))
+
+    def test_oversized_file_rejected(self, tmp_path):
+        big = tmp_path / "big.fcpxml"
+        with open(big, 'wb') as f:
+            f.seek(101 * 1024 * 1024)
+            f.write(b'\x00')
+        with pytest.raises(ValueError, match="too large"):
+            _validate_filepath(str(big), ('.fcpxml',))
+
+    def test_valid_file_accepted(self, tmp_path):
+        ok = tmp_path / "test.fcpxml"
+        ok.write_text("<fcpxml/>")
+        result = _validate_filepath(str(ok), ('.fcpxml',))
+        assert result == str(ok.resolve())
+
+    def test_symlink_traversal_resolved(self, tmp_path):
+        """Symlinks are resolved before validation — no bypassing via links."""
+        real = tmp_path / "real.fcpxml"
+        real.write_text("<fcpxml/>")
+        link = tmp_path / "link.fcpxml"
+        link.symlink_to(real)
+        result = _validate_filepath(str(link), ('.fcpxml',))
+        assert result == str(real.resolve())
+
+
+# ============================================================================
+# Output path validation (_validate_output_path)
+# ============================================================================
+
+class TestOutputPathValidation:
+
+    def test_null_byte_in_output_rejected(self):
+        with pytest.raises(ValueError, match="null byte"):
+            _validate_output_path("/tmp/out\x00put.fcpxml")
+
+    def test_missing_parent_dir_rejected(self):
+        with pytest.raises(ValueError, match="does not exist"):
+            _validate_output_path("/nonexistent/dir/file.fcpxml")
+
+    def test_valid_output_accepted(self, tmp_path):
+        result = _validate_output_path(str(tmp_path / "out.fcpxml"))
+        assert "out.fcpxml" in result
+
+
+# ============================================================================
+# Directory validation (_validate_directory)
+# ============================================================================
+
+class TestDirectoryValidation:
+
+    def test_null_byte_in_directory_rejected(self):
+        with pytest.raises(ValueError, match="null byte"):
+            _validate_directory("/tmp\x00/evil")
+
+    def test_nonexistent_directory_rejected(self):
+        with pytest.raises(ValueError, match="Not a valid directory"):
+            _validate_directory("/nonexistent/path/nowhere")
+
+    def test_file_rejected_as_directory(self, tmp_path):
+        f = tmp_path / "notadir.txt"
+        f.write_text("data")
+        with pytest.raises(ValueError, match="Not a valid directory"):
+            _validate_directory(str(f))
+
+    def test_valid_directory_accepted(self, tmp_path):
+        result = _validate_directory(str(tmp_path))
+        assert result == str(tmp_path.resolve())
+
+    def test_symlink_directory_resolved(self, tmp_path):
+        """Symlinked directories resolve to real path."""
+        real_dir = tmp_path / "real"
+        real_dir.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real_dir)
+        result = _validate_directory(str(link))
+        assert result == str(real_dir.resolve())
+
+
+# ============================================================================
+# Role string sanitization in writer
+# ============================================================================
+
+class TestRoleSanitization:
+
+    @pytest.fixture
+    def sample_fcpxml(self, tmp_path):
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.11">
+    <resources>
+        <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+        <asset id="r2" name="TestClip" src="test.mov" start="0s" duration="240/24s"/>
+    </resources>
+    <library>
+        <event name="Test">
+            <project name="Test">
+                <sequence format="r1" duration="240/24s">
+                    <spine>
+                        <asset-clip ref="r2" offset="0s" name="TestClip"
+                                    start="0s" duration="240/24s" format="r1"/>
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>"""
+        p = tmp_path / "role_test.fcpxml"
+        p.write_text(xml)
+        return str(p)
+
+    def test_null_bytes_stripped_from_audio_role(self, sample_fcpxml):
+        modifier = FCPXMLModifier(sample_fcpxml)
+        clip = modifier.assign_role("TestClip", audio_role="dialogue\x00.evil")
+        assert "\x00" not in clip.get("audioRole", "")
+        assert clip.get("audioRole") == "dialogue.evil"
+
+    def test_control_chars_stripped_from_video_role(self, sample_fcpxml):
+        modifier = FCPXMLModifier(sample_fcpxml)
+        clip = modifier.assign_role("TestClip", video_role="video\x01\x02role")
+        assert clip.get("videoRole") == "videorole"
+
+    def test_oversized_role_truncated(self, sample_fcpxml):
+        modifier = FCPXMLModifier(sample_fcpxml)
+        clip = modifier.assign_role("TestClip", audio_role="A" * 500)
+        assert len(clip.get("audioRole", "")) == 256
+
+    def test_normal_role_passes_through(self, sample_fcpxml):
+        modifier = FCPXMLModifier(sample_fcpxml)
+        clip = modifier.assign_role("TestClip", audio_role="dialogue.D-1")
+        assert clip.get("audioRole") == "dialogue.D-1"
+
+    def test_unicode_role_preserved(self, sample_fcpxml):
+        modifier = FCPXMLModifier(sample_fcpxml)
+        clip = modifier.assign_role("TestClip", audio_role="ダイアログ")
+        assert clip.get("audioRole") == "ダイアログ"

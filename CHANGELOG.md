@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.20] - 2026-02-25
+
+### Security
+
+- **Role string sanitization**: `assign_role()` now sanitizes `audioRole`/`videoRole` values through `_sanitize_xml_value()`, stripping null bytes and control characters that could corrupt FCPXML output
+- **Directory validation**: New `_validate_directory()` helper blocks null byte injection in `handle_list_projects` directory arguments, matching the protection already applied to file path handlers
+- **Supply chain reduction**: Removed unused `lxml` dependency — it was declared in `pyproject.toml` but never imported, adding unnecessary attack surface
+
+### Added
+
+- 20 new security tests: file path validation (7), output path validation (3), directory validation (5), role string sanitization (5)
+
 ## [0.5.19] - 2026-02-25
 
 ### Changed

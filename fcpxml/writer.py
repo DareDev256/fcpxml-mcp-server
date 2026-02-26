@@ -1370,9 +1370,9 @@ class FCPXMLModifier:
             raise ValueError(f"Clip not found: {clip_id}")
 
         if audio_role is not None:
-            clip.set('audioRole', audio_role)
+            clip.set('audioRole', _sanitize_xml_value(audio_role, 256))
         if video_role is not None:
-            clip.set('videoRole', video_role)
+            clip.set('videoRole', _sanitize_xml_value(video_role, 256))
 
         return clip
 
