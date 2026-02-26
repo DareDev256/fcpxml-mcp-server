@@ -346,7 +346,7 @@ fcp-mcp-server/           ~7k lines Python
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing |
-| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100 MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion). Marker strings sanitized before write. Role values stripped of control characters |
+| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100 MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion). Marker strings sanitized before write. Role values stripped of control characters. Output paths sandbox-enforced via `anchor_dir`. Directory listing confined to `FCP_PROJECTS_DIR` when set. Output suffixes sanitized against path-component injection |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -368,7 +368,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-485 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, input validation, path traversal, directory injection, role sanitization), connected clips, roles, diff, export, and backward compatibility.
+499 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, input validation, path traversal, sandbox boundaries, suffix injection, directory confinement, role sanitization), connected clips, roles, diff, export, and backward compatibility.
 
 ---
 

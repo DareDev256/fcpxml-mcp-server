@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.25] - 2026-02-26
+
+### Security
+
+- **Sandbox boundary enforcement on output paths**: `_validate_output_path()` now accepts an `anchor_dir` parameter that restricts resolved output to descendants of the anchor — prevents LLM-injected tool calls from writing FCPXML to arbitrary filesystem locations (e.g. `/etc/cron.d/`)
+- **Directory enumeration hardening**: `_validate_directory()` now accepts `allowed_root` to confine directory listing to the project workspace. Active when `FCP_PROJECTS_DIR` env var is explicitly set
+- **Suffix injection prevention**: `generate_output_path()` now sanitizes the suffix parameter, stripping path separators and special characters that could inject traversal sequences
+- 15 new security tests covering anchor escape, traversal via `../`, deeply nested paths, root-exact-match, and suffix injection edge cases (499 total)
+
 ## [0.5.24] - 2026-02-26
 
 ### Fixed

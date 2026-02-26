@@ -70,7 +70,12 @@ if "mcp" not in sys.modules or "mcp.server" not in sys.modules:
     sys.modules.setdefault("mcp.server.stdio", mcp_server_stdio)
     sys.modules.setdefault("mcp.types", mcp_types)
 
-from server import _validate_directory, _validate_filepath, _validate_output_path  # noqa: E402
+from server import (  # noqa: E402
+    _validate_directory,
+    _validate_filepath,
+    _validate_output_path,
+    generate_output_path,
+)
 
 # ============================================================================
 # MarkerType.from_string hardening
@@ -573,6 +578,45 @@ class TestOutputPathValidation:
         result = _validate_output_path(str(tmp_path / "out.fcpxml"))
         assert "out.fcpxml" in result
 
+    def test_anchor_dir_allows_child(self, tmp_path):
+        """Output inside anchor_dir is accepted."""
+        result = _validate_output_path(
+            str(tmp_path / "out.fcpxml"), anchor_dir=str(tmp_path)
+        )
+        assert "out.fcpxml" in result
+
+    def test_anchor_dir_blocks_escape(self, tmp_path):
+        """Output outside anchor_dir is rejected — prevents sandbox escape."""
+        safe = tmp_path / "safe"
+        safe.mkdir()
+        with pytest.raises(ValueError, match="escapes allowed directory"):
+            _validate_output_path(
+                str(tmp_path / "out.fcpxml"), anchor_dir=str(safe)
+            )
+
+    def test_anchor_dir_blocks_traversal(self, tmp_path):
+        """Explicit ../ traversal past anchor is caught after resolve."""
+        safe = tmp_path / "safe"
+        safe.mkdir()
+        with pytest.raises(ValueError, match="escapes allowed directory"):
+            _validate_output_path(
+                str(safe / ".." / "escaped.fcpxml"), anchor_dir=str(safe)
+            )
+
+    def test_anchor_dir_allows_nested(self, tmp_path):
+        """Deeply nested output under anchor is fine."""
+        deep = tmp_path / "a" / "b" / "c"
+        deep.mkdir(parents=True)
+        result = _validate_output_path(
+            str(deep / "out.fcpxml"), anchor_dir=str(tmp_path)
+        )
+        assert "out.fcpxml" in result
+
+    def test_no_anchor_dir_is_permissive(self, tmp_path):
+        """Without anchor_dir, any valid parent is accepted (backward compat)."""
+        result = _validate_output_path(str(tmp_path / "anywhere.fcpxml"))
+        assert "anywhere.fcpxml" in result
+
 
 # ============================================================================
 # Directory validation (_validate_directory)
@@ -606,6 +650,64 @@ class TestDirectoryValidation:
         link.symlink_to(real_dir)
         result = _validate_directory(str(link))
         assert result == str(real_dir.resolve())
+
+    def test_allowed_root_accepts_descendant(self, tmp_path):
+        """Subdirectory under allowed_root is accepted."""
+        child = tmp_path / "projects"
+        child.mkdir()
+        result = _validate_directory(str(child), allowed_root=str(tmp_path))
+        assert result == str(child.resolve())
+
+    def test_allowed_root_accepts_exact_match(self, tmp_path):
+        """Root itself is a valid descendant."""
+        result = _validate_directory(str(tmp_path), allowed_root=str(tmp_path))
+        assert result == str(tmp_path.resolve())
+
+    def test_allowed_root_blocks_escape(self, tmp_path):
+        """Directory outside allowed_root is rejected."""
+        safe = tmp_path / "safe"
+        safe.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        with pytest.raises(ValueError, match="escapes allowed root"):
+            _validate_directory(str(outside), allowed_root=str(safe))
+
+    def test_allowed_root_blocks_traversal(self, tmp_path):
+        """../ traversal past allowed_root is caught."""
+        safe = tmp_path / "safe"
+        safe.mkdir()
+        with pytest.raises(ValueError, match="escapes allowed root"):
+            _validate_directory(str(safe / ".."), allowed_root=str(safe))
+
+
+# ============================================================================
+# Output suffix injection (generate_output_path)
+# ============================================================================
+
+class TestGenerateOutputPathSanitization:
+
+    def test_normal_suffix_preserved(self, tmp_path):
+        result = generate_output_path(str(tmp_path / "clip.fcpxml"), "_trimmed")
+        assert result.endswith("clip_trimmed.fcpxml")
+
+    def test_path_separator_stripped_from_suffix(self, tmp_path):
+        """A suffix containing / cannot inject path components."""
+        result = generate_output_path(str(tmp_path / "clip.fcpxml"), "/../../../etc/cron")
+        assert "/../" not in result
+        assert "etc" in result  # Characters survive but separators don't
+
+    def test_null_byte_stripped_from_suffix(self, tmp_path):
+        result = generate_output_path(str(tmp_path / "clip.fcpxml"), "_mod\x00ified")
+        assert "\x00" not in result
+
+    def test_empty_suffix_gets_default(self, tmp_path):
+        """If sanitization strips everything, fallback to _modified."""
+        result = generate_output_path(str(tmp_path / "clip.fcpxml"), "///")
+        assert "_modified" in result
+
+    def test_dots_and_hyphens_preserved(self, tmp_path):
+        result = generate_output_path(str(tmp_path / "clip.fcpxml"), "_v2.1-final")
+        assert "clip_v2.1-final.fcpxml" in result
 
 
 # ============================================================================

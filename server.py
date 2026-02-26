@@ -45,6 +45,8 @@ from fcpxml.writer import FCPXMLModifier
 
 server = Server("fcp-mcp-server")
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
+# When set explicitly via env var, enforce sandbox boundaries on list_projects.
+_SANDBOX_ENABLED = "FCP_PROJECTS_DIR" in os.environ
 
 # Maximum file size for parsing (100 MB).
 MAX_FILE_SIZE = 100 * 1024 * 1024
@@ -88,8 +90,23 @@ def _validate_filepath(filepath: str, allowed_extensions: tuple[str, ...] | None
     return str(resolved)
 
 
-def _validate_output_path(output_path: str) -> str:
-    """Validate an output path: resolve traversal, block null bytes, ensure parent exists."""
+def _validate_output_path(output_path: str, *, anchor_dir: str | None = None) -> str:
+    """Validate an output path with optional sandbox enforcement.
+
+    Resolves traversal, blocks null bytes, ensures parent exists, and — when
+    *anchor_dir* is provided — verifies the resolved output lives under that
+    directory.  This prevents LLM-generated tool calls from writing to
+    arbitrary filesystem locations (e.g. ``/etc/cron.d/backdoor``).
+
+    Args:
+        output_path: The raw output path to validate.
+        anchor_dir: If set, the resolved output must be a child of this
+            directory.  Typically the parent directory of the input file so
+            outputs stay co-located with their sources.
+
+    Raises:
+        ValueError: For null bytes, missing parent, or sandbox escape.
+    """
     if '\x00' in output_path:
         raise ValueError("Invalid output path: null byte detected")
 
@@ -98,18 +115,29 @@ def _validate_output_path(output_path: str) -> str:
     if not resolved.parent.exists():
         raise ValueError(f"Output directory does not exist: {resolved.parent}")
 
+    if anchor_dir is not None:
+        anchor = Path(anchor_dir).resolve()
+        try:
+            resolved.relative_to(anchor)
+        except ValueError:
+            raise ValueError(
+                f"Output path escapes allowed directory: "
+                f"{resolved} is not under {anchor}"
+            )
+
     return str(resolved)
 
 
-def _validate_directory(directory: str) -> str:
+def _validate_directory(directory: str, *, allowed_root: str | None = None) -> str:
     """Validate a user-provided directory path against traversal and injection.
 
     Resolves symlinks, blocks null bytes, and verifies the path is a real
-    directory. Used by handlers that accept directory arguments (e.g.,
-    list_projects) to prevent filesystem enumeration attacks.
+    directory. When *allowed_root* is given, the resolved path must be a
+    descendant of (or equal to) that root — preventing filesystem enumeration
+    beyond the project workspace.
 
     Raises:
-        ValueError: For invalid paths (null bytes, not a directory).
+        ValueError: For invalid paths (null bytes, not a directory, sandbox escape).
     """
     if '\x00' in directory:
         raise ValueError("Invalid directory path: null byte detected")
@@ -118,6 +146,16 @@ def _validate_directory(directory: str) -> str:
 
     if not resolved.is_dir():
         raise ValueError(f"Not a valid directory: {directory}")
+
+    if allowed_root is not None:
+        root = Path(allowed_root).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            raise ValueError(
+                f"Directory escapes allowed root: "
+                f"{resolved} is not under {root}"
+            )
 
     return str(resolved)
 
@@ -157,9 +195,17 @@ def _fmt_suggestions(suggestions: list[str]) -> str:
 
 
 def generate_output_path(input_path: str, suffix: str = "_modified") -> str:
-    """Generate output path from input path."""
+    """Generate output path from input path.
+
+    The suffix is sanitized to prevent path-component injection — only
+    alphanumeric, hyphen, underscore, and dot characters survive.
+    """
+    # Strip anything that could inject path separators or traversal sequences
+    clean_suffix = re.sub(r'[^a-zA-Z0-9._-]', '', suffix)
+    if not clean_suffix:
+        clean_suffix = "_modified"
     p = Path(input_path)
-    return str(p.parent / f"{p.stem}{suffix}{p.suffix}")
+    return str(p.parent / f"{p.stem}{clean_suffix}{p.suffix}")
 
 
 def _parse_project(filepath: str):
@@ -1200,7 +1246,9 @@ async def list_tools() -> list[Tool]:
 
 async def handle_list_projects(arguments: dict) -> Sequence[TextContent]:
     directory = arguments.get("directory", PROJECTS_DIR)
-    resolved_dir = _validate_directory(directory)
+    resolved_dir = _validate_directory(
+        directory, allowed_root=PROJECTS_DIR if _SANDBOX_ENABLED else None
+    )
     files = find_fcpxml_files(resolved_dir)
     if not files:
         return [TextContent(type="text", text=f"No FCPXML files found in {directory}")]
