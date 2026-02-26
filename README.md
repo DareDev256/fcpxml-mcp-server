@@ -159,9 +159,64 @@ Export XML from Final Cut Pro, open Claude Desktop, and ask it to work with your
 
 ---
 
-## Pre-Built Workflows
+## Prompt Cookbook
 
-Select these from Claude's prompt menu — they chain multiple tools together automatically.
+Copy-paste these into Claude Desktop. Each one maps to a real tool chain under the hood.
+
+**Analysis**
+```
+"Give me a full breakdown of ProjectX.fcpxml — clips, duration, frame rate, markers, everything"
+"Show me pacing analysis for my timeline — where are the slow sections?"
+"Export an EDL and CSV of all clips with timecodes"
+```
+
+**QC & Fixes**
+```
+"Run a health check on my timeline and fix anything under 2 frames"
+"Find all gaps and flash frames, then auto-fix them"
+"Are there any duplicate source clips I can consolidate?"
+```
+
+**Markers & Chapters**
+```
+"Add chapter markers from this transcript: [paste transcript]"
+"Import markers from my-subtitles.srt onto the timeline"
+"List all markers and export them as YouTube chapter timestamps"
+```
+
+**Generation**
+```
+"Build a 60-second rough cut from clips tagged 'Interview' — medium pacing"
+"Generate a montage from all B-roll clips with accelerating pacing"
+"Create an A/B roll: Interview_A as primary, B-roll cuts every 8 seconds"
+```
+
+**Cross-NLE & Reformat**
+```
+"Export this timeline for DaVinci Resolve"
+"Convert to FCP7 XML so I can open it in Premiere"
+"Reformat my 16:9 timeline to 9:16 for Instagram Reels"
+```
+
+### Under the Hood
+
+When you say *"Run a health check on my wedding edit"*, Claude chains these tools:
+
+```
+analyze_timeline  →  stats, frame rate, resolution
+detect_flash_frames  →  clips under threshold duration
+detect_gaps  →  unintentional silence/black
+detect_duplicates  →  repeated source media
+validate_timeline  →  structural health score (0-100)
+```
+
+Each tool returns structured text that Claude synthesizes into the summary you see. No magic — just batch XML queries that would take 20 minutes by hand.
+
+---
+
+## Pre-Built Prompts
+
+Select these from Claude's prompt menu (⌘/) — they chain multiple tools automatically.
 
 | Prompt | What It Does |
 |--------|-------------|

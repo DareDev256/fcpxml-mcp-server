@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.23] - 2026-02-26
+
+### Added
+
+- **Prompt Cookbook section**: Copy-pasteable natural language prompts organized by workflow (analysis, QC, markers, generation, cross-NLE) — gives developers ready-to-use examples instead of making them guess the right phrasing
+- **"Under the Hood" trace**: Shows how a single natural language prompt maps to a 5-tool chain, demystifying MCP tool orchestration for newcomers
+- Renamed "Pre-Built Workflows" → "Pre-Built Prompts" with keyboard shortcut hint (⌘/)
+
 ## [0.5.22] - 2026-02-26
 
 ### Changed
