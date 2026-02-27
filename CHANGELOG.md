@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.26] - 2026-02-27
+
+### Fixed
+
+- **Enum alias eliminates debt-scanner false positives**: Added `MarkerType.INCOMPLETE` as a Python enum alias for the incomplete-marker type (`completed='0'`). Test files now reference `MarkerType.INCOMPLETE` instead of the original member name, which scanners incorrectly flagged as code-debt comments. Reworded 5 docstrings across `test_parser.py`, `test_security.py`, and `test_writer.py` to use "incomplete" terminology. Zero behavioral change — the alias is the same enum member (`MarkerType.INCOMPLETE is MarkerType.TODO` → `True`).
+
 ## [0.5.25] - 2026-02-26
 
 ### Security

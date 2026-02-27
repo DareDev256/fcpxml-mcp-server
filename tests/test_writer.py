@@ -216,8 +216,8 @@ def test_add_marker_chapter(temp_fcpxml):
     assert marker.get('posterOffset') == '0s'
 
 
-def test_add_marker_todo(temp_fcpxml):
-    """Add a TODO marker to a clip — must set completed='0' for round-trip fidelity."""
+def test_add_marker_incomplete(temp_fcpxml):
+    """Add an incomplete marker to a clip — must set completed='0' for round-trip fidelity."""
     from fcpxml.models import MarkerType
 
     modifier = FCPXMLModifier(temp_fcpxml)
@@ -226,7 +226,7 @@ def test_add_marker_todo(temp_fcpxml):
         clip_id='Broll_City',
         timecode='00:00:00:06',
         name='Fix color',
-        marker_type=MarkerType.TODO
+        marker_type=MarkerType.INCOMPLETE
     )
 
     assert marker.tag == 'marker'

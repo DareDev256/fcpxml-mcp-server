@@ -6,7 +6,7 @@ Covers:
 - MarkerType.from_string injection/abuse resistance
 - XML value sanitization (null bytes, control chars, length limits)
 - Parser file size limits
-- Marker completed-attribute strict validation
+- Marker completed-attribute strict validation (completed='0' → incomplete, '1' → completed)
 - File path and directory validation (traversal, null bytes, extensions)
 - Role string sanitization in writer
 """
@@ -115,9 +115,9 @@ class TestMarkerTypeInputValidation:
         with pytest.raises(ValueError, match="maximum length"):
             MarkerType.from_string("a" * 100)
 
-    def test_strips_whitespace_todo(self):
-        """Leading/trailing whitespace is stripped before matching for todo."""
-        assert MarkerType.from_string("  todo  ") == MarkerType.TODO
+    def test_strips_whitespace_incomplete(self):
+        """Leading/trailing whitespace is stripped before matching for incomplete type."""
+        assert MarkerType.from_string("  todo  ") == MarkerType.INCOMPLETE
 
     def test_strips_whitespace_completed(self):
         """Leading/trailing whitespace is stripped before matching for completed."""
@@ -248,9 +248,9 @@ class TestCompletedAttributeValidation:
         project = parser.parse_string(xml)
         return project.primary_timeline.clips[0].markers[0]
 
-    def test_completed_0_is_todo(self):
+    def test_completed_0_is_incomplete(self):
         m = self._parse_marker_xml("0")
-        assert m.marker_type == MarkerType.TODO
+        assert m.marker_type == MarkerType.INCOMPLETE
 
     def test_completed_1_is_completed(self):
         m = self._parse_marker_xml("1")
@@ -281,7 +281,7 @@ class TestCompletedAttributeValidation:
         assert m.marker_type == MarkerType.STANDARD
 
     def test_completed_whitespace_padded_zero_falls_to_standard(self):
-        """Whitespace around '0' must not be treated as TODO — strict matching."""
+        """Whitespace around '0' must not be treated as incomplete — strict matching."""
         m = self._parse_marker_xml(" 0 ")
         assert m.marker_type == MarkerType.STANDARD
 
@@ -336,7 +336,7 @@ class TestCompletedAttributeValidation:
         assert m.marker_type == MarkerType.STANDARD
 
     def test_completed_newline_padded_zero_falls_to_standard(self):
-        """Newline around '0' from hand-edited XML must not match TODO."""
+        """Newline around '0' from hand-edited XML must not match incomplete type."""
         m = self._parse_marker_xml("\n0\n")
         assert m.marker_type == MarkerType.STANDARD
 

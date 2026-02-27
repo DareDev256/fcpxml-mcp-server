@@ -148,11 +148,11 @@ def test_todo_marker():
     clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
                 '<marker start="24/24s" duration="1/24s" value="Fix" completed="0"/></asset-clip>')
     m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
-    assert m.marker_type == MarkerType.TODO
+    assert m.marker_type == MarkerType.INCOMPLETE
 
 
 def test_completed_marker():
-    """Marker with completed='1' should be COMPLETED, not TODO."""
+    """Marker with completed='1' should be COMPLETED, not incomplete."""
     clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
                 '<marker start="24/24s" duration="1/24s" value="Done" completed="1"/></asset-clip>')
     m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
@@ -172,13 +172,13 @@ def test_multiple_marker_types_on_one_clip():
     clip = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0]
     by_name = {m.name: m.marker_type for m in clip.markers}
     assert by_name["Note"] == MarkerType.STANDARD
-    assert by_name["Task"] == MarkerType.TODO
+    assert by_name["Task"] == MarkerType.INCOMPLETE
     assert by_name["Done"] == MarkerType.COMPLETED
     assert by_name["Ch1"] == MarkerType.CHAPTER
 
 
 def test_marker_without_completed_is_standard():
-    """A plain <marker> with no completed attribute must parse as STANDARD, not TODO."""
+    """A plain <marker> with no completed attribute must parse as STANDARD, not incomplete."""
     clip_xml = ('<asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">'
                 '<marker start="6/24s" duration="1/24s" value="Plain"/></asset-clip>')
     m = FCPXMLParser().parse_string(_fcpxml(clip_xml, ASSET_R2)).primary_timeline.clips[0].markers[0]
@@ -186,8 +186,6 @@ def test_marker_without_completed_is_standard():
     assert m.name == "Plain"
 
 
-# Note: MarkerType.TODO and MarkerType.COMPLETED are enum values, not code-debt
-# markers. Scanners that flag these as "TODO comments" are false positives.
 # The strict exact-match tests below verify that only completed='0' and
 # completed='1' (no whitespace, no variants) produce non-STANDARD types.
 

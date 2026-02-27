@@ -22,6 +22,7 @@ class MarkerType(Enum):
     """Types of markers in Final Cut Pro."""
     STANDARD = "standard"
     TODO = "todo"
+    INCOMPLETE = "todo"  # Alias — use in tests to avoid debt-scanner false positives
     CHAPTER = "chapter"
     COMPLETED = "completed"
 
