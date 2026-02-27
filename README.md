@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-485_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-499_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-10-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~7k_LOC-informational.svg)](#architecture)
 
@@ -321,7 +321,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 485 tests across 10 suites
+├── tests/                 499 tests across 10 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -339,6 +339,25 @@ fcp-mcp-server/           ~7k lines Python
 
 ---
 
+## Security
+
+Every tool handler is hardened against adversarial input — critical for MCP servers where prompts may be LLM-generated, not human-typed.
+
+| Layer | Protection |
+|-------|------------|
+| **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
+| **Output sandbox** | `_validate_output_path(anchor_dir=...)` restricts writes to descendants of the source file's directory |
+| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set — prevents workspace enumeration |
+| **XML parsing** | `defusedxml` blocks XXE, billion laughs, entity expansion, remote DTD attacks |
+| **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
+| **Role values** | Stripped of control characters before XML attribute assignment |
+| **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
+| **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
+
+52+ security-specific tests across `test_security.py` and inline hardening tests in other suites.
+
+---
+
 ## Design Principles
 
 | Principle | Implementation |
@@ -346,7 +365,7 @@ fcp-mcp-server/           ~7k lines Python
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing |
-| **Security-first** | All 47 handlers validate against path traversal, null bytes, symlinks, 100 MB limit. XML parsing uses `defusedxml` (XXE, billion laughs, entity expansion). Marker strings sanitized before write. Role values stripped of control characters. Output paths sandbox-enforced via `anchor_dir`. Directory listing confined to `FCP_PROJECTS_DIR` when set. Output suffixes sanitized against path-component injection |
+| **Security-first** | 8-layer defense-in-depth across all 47 handlers — see [Security](#security) for the full matrix |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -368,14 +387,14 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-499 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, input validation, path traversal, sandbox boundaries, suffix injection, directory confinement, role sanitization), connected clips, roles, diff, export, and backward compatibility.
+499 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, and backward compatibility.
 
 ---
 
 ## Requirements
 
 - **Python 3.10+** · **Final Cut Pro 10.4+** (FCPXML 1.8+) · **Claude Desktop** or any MCP client
-- **Dependencies** (auto-installed): `mcp`, `lxml`, `defusedxml`
+- **Dependencies** (auto-installed): `mcp`, `defusedxml`
 - See [Compatibility](#compatibility) for full version matrix
 
 ---

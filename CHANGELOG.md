@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.27] - 2026-02-27
+
+### Changed
+
+- **README security showcase**: Added dedicated Security section with 8-layer defense matrix table — surfaces the substantial hardening work (6+ releases, 52+ security tests) that was previously buried in a single Design Principles bullet
+- **Fixed stale test stats**: Badge and architecture tree updated 485 → 499 tests
+- **Removed ghost `lxml` dependency**: Requirements section listed `lxml` as auto-installed but it was removed from `pyproject.toml` in v0.5.20 — new readers no longer see a dependency that doesn't exist
+- **Design Principles tightened**: Security row now cross-references the Security section instead of duplicating the full list inline
+
 ## [0.5.26] - 2026-02-27
 
 ### Fixed
