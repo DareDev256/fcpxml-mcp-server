@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.28] - 2026-03-02
+
+### Fixed
+
+- **DTD child element ordering**: Added `_dtd_insert()` helper to `writer.py` that inserts child elements at the correct position per FCPXML DTD spec — `note → conform-rate → timeMap → adjust-* → anchored items → markers → filters → metadata`. Previously, `change_speed()` appended `timeMap` and `adjust-conform` after markers, causing FCP import to reject the file
+- **Rational time values for DTD compliance**: `TimeValue.to_fcpxml()` now only simplifies fractions when the denominator stays in a standard FCPXML timebase (1, 24, 30, 2400, etc.). Previously reduced `6400/2400` to `8/3` which FCP rejected. Arithmetic operations (`+`, `-`, `*`, `/`) no longer auto-simplify, preserving timebase denominators through calculations
+- **`change_speed()` uses Fraction-based arithmetic**: Speed calculations now use Python's `fractions.Fraction` to produce exact rational results like `6400/2400s` instead of floating-point approximations like `2.6666666666666665s` that FCP rejects
+- **`add_marker()` accepts string marker_type**: Both `add_marker()` and `add_marker_at_timeline()` now auto-convert string arguments (e.g. `'chapter'`) to `MarkerType` enum via `MarkerType.from_string()`, matching how MCP tool handlers pass arguments
+
+### Added
+
+- 2 new DTD ordering tests: `test_change_speed_dtd_order` and `test_marker_after_adjust_elements` (501 total)
+
 ## [0.5.27] - 2026-02-27
 
 ### Changed
