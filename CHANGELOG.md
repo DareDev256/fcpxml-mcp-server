@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.29] - 2026-03-03
+
+### Fixed
+
+- **Transition effect resources**: Transitions now include a proper `<effect>` resource in `<resources>` with FCP's built-in Cross Dissolve UUID (`4731E73A-8DAC-4113-9A30-AE85B1761265`, extracted from FCP's `Filters.bundle`), and each `<transition>` contains `<filter-video ref="...">` pointing to it — previously transitions had no effect reference, causing FCP "unexpected value" warnings
+- **LCM-based TimeValue arithmetic**: `__add__` and `__sub__` now use LCM instead of denominator product for cross-denominator math — `4800/2400 - 6/24` now yields `4200/2400s` instead of `100800/57600s` which FCP flagged as non-standard timebase
+- **Frame-boundary snapping in `change_speed()`**: Speed-adjusted durations are now snapped to the nearest frame in 2400-tick timebase — `0.67x` speed now produces `7200/2400s` (clean 72 frames) instead of `480000/160800s` (non-frame-aligned) that FCP rejected as "not on an edit frame boundary"
+
+### Discovered
+
+- **Still image assets crash FCP via FCPXML**: PNG/JPEG assets referenced directly in FCPXML cause FCP to crash in `addAssetClip:toObject:parentFormatID:` regardless of format attributes, dimension matching, or element structure (`<asset-clip>` vs `<clip><video>`). **Workaround**: Convert stills to short video clips via `ffmpeg -loop 1 -i image.png -c:v libx264 -t 2 -pix_fmt yuv420p -r 24 output.mov` before referencing in FCPXML. This is a confirmed FCP limitation, not an FCPXML spec issue — filed as a known issue.
+
 ## [0.5.28] - 2026-03-02
 
 ### Fixed

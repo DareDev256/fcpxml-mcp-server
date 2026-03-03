@@ -417,6 +417,15 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 ---
 
+## Known Issues
+
+| Issue | Impact | Workaround |
+|-------|--------|------------|
+| **Still images crash FCP** | PNG/JPEG assets referenced directly in FCPXML crash Final Cut Pro on import (`addAssetClip` null pointer). Confirmed across multiple format configurations, dimension matching, and element types. | Convert stills to short MOVs before referencing: `ffmpeg -loop 1 -i image.png -c:v libx264 -t 2 -pix_fmt yuv420p -r 24 output.mov`. This is an FCP limitation, not an FCPXML spec issue. |
+| **Non-standard timebases** | FCP rejects time values with denominators outside its standard set (e.g. `100800/57600s`). Cross-denominator arithmetic previously produced these. | Fixed in v0.5.29 — TimeValue arithmetic now uses LCM, and speed changes snap to frame boundaries in 2400-tick timebase. |
+
+---
+
 ## Contributing
 
 PRs welcome. If you're a video editor who codes (or a coder who edits), let's build this together.
