@@ -69,7 +69,7 @@ class TestTimeValueConversions:
     def test_to_fcpxml(self):
         assert TimeValue(3, 1).to_fcpxml() == "3s"
         assert TimeValue(90, 30).to_fcpxml() == "3s"  # simplifies
-        assert TimeValue(75, 30).to_fcpxml() == "5/2s"
+        assert TimeValue(75, 30).to_fcpxml() == "75/30s"  # keeps standard timebase denom
 
     def test_to_seconds(self):
         assert TimeValue(72, 24).to_seconds() == pytest.approx(3.0)

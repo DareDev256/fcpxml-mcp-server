@@ -709,8 +709,18 @@ class FCPXMLModifier:
             raise ValueError(f"Clip not found: {clip_id}")
 
         current_duration = self._parse_time(clip.get('duration', '0s'))
-        new_duration_seconds = current_duration.to_seconds() / speed
-        source_duration = current_duration.to_seconds()
+
+        # Use rational arithmetic to avoid floating-point time values.
+        # FCPXML requires rational fractions with a consistent timebase,
+        # not decimal floats like "2.6666666666666665s".
+        denom = current_duration.denominator if current_duration.denominator > 0 else int(self.fps)
+        source_num = current_duration.numerator
+        # new_duration = current_duration / speed (rational)
+        # Multiply denominator by speed to avoid floats
+        from fractions import Fraction
+        speed_frac = Fraction(speed).limit_denominator(1000)
+        new_num = source_num * speed_frac.denominator
+        new_denom = denom * speed_frac.numerator
 
         # Create timeMap for speed change (DTD-ordered insertion)
         timemap = ET.Element('timeMap')
@@ -722,15 +732,14 @@ class FCPXMLModifier:
         tp1.set('value', '0s')
         tp1.set('interp', 'linear')
 
-        # End keyframe
+        # End keyframe — use rational time, not floats
         tp2 = ET.SubElement(timemap, 'timept')
-        tp2.set('time', f"{new_duration_seconds}s")
-        tp2.set('value', f"{source_duration}s")
+        tp2.set('time', f"{new_num}/{new_denom}s")
+        tp2.set('value', f"{source_num}/{denom}s")
         tp2.set('interp', 'linear')
 
-        # Update clip duration
-        new_duration = TimeValue.from_seconds(new_duration_seconds, self.fps)
-        clip.set('duration', new_duration.to_fcpxml())
+        # Update clip duration (rational, not simplified to arbitrary denominator)
+        clip.set('duration', f"{new_num}/{new_denom}s")
 
         # Add conform-rate (DTD-ordered insertion)
         conform = ET.Element('conform-rate')

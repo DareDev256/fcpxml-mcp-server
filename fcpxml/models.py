@@ -174,6 +174,15 @@ class ValidationIssueType(Enum):
 # TIME VALUE - Rational Time Representation
 # ============================================================================
 
+# Standard FCPXML timebase denominators that FCP's DTD validator accepts.
+# TimeValue.to_fcpxml() only simplifies fractions when the result uses one
+# of these denominators, preventing values like "8/3s" that FCP rejects.
+_FCPXML_STANDARD_TIMEBASES = frozenset({
+    1, 24, 25, 30, 48, 50, 60, 90, 96, 100, 120,
+    240, 600, 2400, 4800, 9600, 48000,
+})
+
+
 @dataclass
 class TimeValue:
     """
@@ -255,11 +264,21 @@ class TimeValue:
         return cls(0, 1)
 
     def to_fcpxml(self) -> str:
-        """Convert to FCPXML time string (e.g., "90/30s")."""
+        """Convert to FCPXML time string (e.g., "90/30s").
+
+        Only simplifies when the denominator reduces to 1 (whole seconds)
+        or stays a standard FCPXML timebase. Avoids producing denominators
+        like 3, 7, etc. that FCP's DTD validator may reject.
+        """
         simplified = self.simplify()
         if simplified.denominator == 1:
             return f"{simplified.numerator}s"
-        return f"{simplified.numerator}/{simplified.denominator}s"
+        # Keep original denominator if simplification produces a non-standard
+        # denominator (not a multiple of common timebases: 24, 30, 25, 2400)
+        if simplified.denominator in _FCPXML_STANDARD_TIMEBASES:
+            return f"{simplified.numerator}/{simplified.denominator}s"
+        # Fall back to unsimplified form
+        return f"{self.numerator}/{self.denominator}s"
 
     def to_seconds(self) -> float:
         """Convert to decimal seconds."""
@@ -296,22 +315,26 @@ class TimeValue:
         )
 
     def __add__(self, other: 'TimeValue') -> 'TimeValue':
+        if self.denominator == other.denominator:
+            return TimeValue(self.numerator + other.numerator, self.denominator)
         new_denom = self.denominator * other.denominator
         new_num = (self.numerator * other.denominator) + (other.numerator * self.denominator)
-        return TimeValue(new_num, new_denom).simplify()
+        return TimeValue(new_num, new_denom)
 
     def __sub__(self, other: 'TimeValue') -> 'TimeValue':
+        if self.denominator == other.denominator:
+            return TimeValue(self.numerator - other.numerator, self.denominator)
         new_denom = self.denominator * other.denominator
         new_num = (self.numerator * other.denominator) - (other.numerator * self.denominator)
-        return TimeValue(new_num, new_denom).simplify()
+        return TimeValue(new_num, new_denom)
 
     def __mul__(self, scalar: float) -> 'TimeValue':
         new_num = int(self.numerator * scalar)
-        return TimeValue(new_num, self.denominator).simplify()
+        return TimeValue(new_num, self.denominator)
 
     def __truediv__(self, scalar: float) -> 'TimeValue':
         new_denom = int(self.denominator * scalar)
-        return TimeValue(self.numerator, new_denom).simplify()
+        return TimeValue(self.numerator, new_denom)
 
     def __lt__(self, other: 'TimeValue') -> bool:
         return self.to_seconds() < other.to_seconds()
