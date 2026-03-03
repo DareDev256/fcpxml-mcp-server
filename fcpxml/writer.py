@@ -256,7 +256,7 @@ class FCPXMLModifier:
         clip_id: str,
         timecode: str,
         name: str,
-        marker_type: MarkerType = MarkerType.STANDARD,
+        marker_type: "MarkerType | str" = MarkerType.STANDARD,
         color: Optional[MarkerColor] = None,
         note: Optional[str] = None
     ) -> ET.Element:
@@ -267,7 +267,7 @@ class FCPXMLModifier:
             clip_id: Target clip identifier (name or ID)
             timecode: Position within clip (relative to clip start)
             name: Marker label
-            marker_type: STANDARD, TODO, COMPLETED, or CHAPTER
+            marker_type: STANDARD, TODO, COMPLETED, or CHAPTER (enum or string)
             color: Optional marker color
             note: Optional marker note
 
@@ -277,6 +277,9 @@ class FCPXMLModifier:
         clip = self.clips.get(clip_id)
         if clip is None:
             raise ValueError(f"Clip not found: {clip_id}")
+
+        if isinstance(marker_type, str):
+            marker_type = MarkerType.from_string(marker_type)
 
         time_value = self._parse_time(timecode)
 
@@ -293,11 +296,13 @@ class FCPXMLModifier:
         self,
         timecode: str,
         name: str,
-        marker_type: MarkerType = MarkerType.STANDARD,
+        marker_type: "MarkerType | str" = MarkerType.STANDARD,
         color: Optional[MarkerColor] = None,
         note: Optional[str] = None
     ) -> ET.Element:
         """Add a marker at a timeline position (finds the containing clip)."""
+        if isinstance(marker_type, str):
+            marker_type = MarkerType.from_string(marker_type)
         time_value = self._parse_time(timecode)
         target_seconds = time_value.to_seconds()
 
