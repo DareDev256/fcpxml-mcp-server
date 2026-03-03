@@ -588,7 +588,7 @@ def test_add_transition_at_end(temp_fcpxml):
     assert transition.tag == 'transition'
     assert transition.get('name') == 'Cross Dissolve'
     assert transition.get('duration') is not None
-    assert transition.find('filter-video') is not None
+    assert transition.find('filter-video') is None  # no filter-video without effect ref
     assert len(list(modifier._get_spine())) == initial_count + 1
 
 

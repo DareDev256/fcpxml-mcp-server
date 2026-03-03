@@ -659,9 +659,6 @@ class FCPXMLModifier:
             transition.set('offset', trans_offset.to_fcpxml())
             transition.set('duration', trans_duration.to_fcpxml())
 
-            filter_video = ET.SubElement(transition, 'filter-video')
-            filter_video.set('name', effect_name)
-
             spine.insert(clip_index + 1, transition)
             transitions_added.append(transition)
 
@@ -674,9 +671,6 @@ class FCPXMLModifier:
             transition.set('name', effect_name)
             transition.set('offset', trans_offset.to_fcpxml())
             transition.set('duration', trans_duration.to_fcpxml())
-
-            filter_video = ET.SubElement(transition, 'filter-video')
-            filter_video.set('name', effect_name)
 
             spine.insert(clip_index, transition)
             transitions_added.append(transition)
