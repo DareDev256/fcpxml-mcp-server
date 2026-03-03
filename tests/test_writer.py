@@ -530,6 +530,45 @@ def test_change_speed_invalid_clip(temp_fcpxml):
 
 
 # ============================================================
+# DTD Element Ordering Tests
+# ============================================================
+
+def test_change_speed_dtd_order(temp_fcpxml):
+    """timeMap and conform-rate must precede markers in DTD order."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    # First add a marker, then change speed — timeMap must end up before markers
+    modifier.add_marker(clip_id='Broll_City', timecode='00:00:04:00', name='test')
+    modifier.change_speed(clip_id='Broll_City', speed=2.0)
+
+    clip = modifier.clips['Broll_City']
+    children = list(clip)
+    tags = [c.tag for c in children]
+
+    # timeMap must come before any marker/chapter-marker
+    if 'timeMap' in tags and 'marker' in tags:
+        assert tags.index('timeMap') < tags.index('marker'), \
+            f"timeMap must precede marker in DTD order, got: {tags}"
+    if 'conform-rate' in tags and 'marker' in tags:
+        assert tags.index('conform-rate') < tags.index('marker'), \
+            f"conform-rate must precede marker in DTD order, got: {tags}"
+
+
+def test_marker_after_adjust_elements(temp_fcpxml):
+    """Markers added after adjust elements must maintain DTD order."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    modifier.change_speed(clip_id='Broll_City', speed=0.5)
+    modifier.add_marker(clip_id='Broll_City', timecode='00:00:04:00', name='after-speed')
+
+    clip = modifier.clips['Broll_City']
+    children = list(clip)
+    tags = [c.tag for c in children]
+
+    if 'timeMap' in tags and 'marker' in tags:
+        assert tags.index('timeMap') < tags.index('marker'), \
+            f"timeMap must precede marker, got: {tags}"
+
+
+# ============================================================
 # Add Transition Tests
 # ============================================================
 

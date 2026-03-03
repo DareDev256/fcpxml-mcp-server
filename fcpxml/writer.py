@@ -52,6 +52,55 @@ def _sanitize_xml_value(value: str, max_length: int = _MAX_MARKER_NAME_LENGTH) -
     return cleaned
 
 
+# FCPXML DTD child element ordering for asset-clip / clip elements.
+# Elements MUST appear in this order for DTD validation.
+# See: https://developer.apple.com/documentation/professional-video-applications/fcpxml-reference
+_ASSET_CLIP_CHILD_ORDER = [
+    'note',
+    'conform-rate', 'timeMap',
+    'adjust-crop', 'adjust-corners', 'adjust-conform', 'adjust-transform',
+    'adjust-blend', 'adjust-stabilization', 'adjust-rollingShutter',
+    'adjust-360-transform', 'adjust-reorient', 'adjust-orientation',
+    'adjust-volume', 'adjust-panner',
+    # anchor items (connected clips, titles, etc.)
+    'audio', 'video', 'clip', 'title', 'caption',
+    'mc-clip', 'ref-clip', 'sync-clip', 'asset-clip', 'audition', 'spine',
+    # marker items
+    'marker', 'chapter-marker', 'rating', 'keyword', 'analysis-marker',
+    # trailing
+    'audio-channel-source',
+    'filter-video', 'filter-video-mask',
+    'filter-audio',
+    'metadata',
+]
+
+# Build a priority lookup: tag → index for fast comparison
+_CHILD_ORDER_INDEX = {tag: i for i, tag in enumerate(_ASSET_CLIP_CHILD_ORDER)}
+
+
+def _dtd_insert(parent: ET.Element, child: ET.Element) -> ET.Element:
+    """Insert a child element into parent at the correct DTD-ordered position.
+
+    Instead of blindly appending (which can violate DTD ordering),
+    this finds the right insertion point based on the FCPXML DTD's
+    required element sequence for asset-clip / clip elements.
+
+    Unknown tags are appended at the end.
+    """
+    child_priority = _CHILD_ORDER_INDEX.get(child.tag, len(_ASSET_CLIP_CHILD_ORDER))
+
+    # Find the first existing child whose priority is greater than ours
+    insert_idx = len(parent)
+    for i, existing in enumerate(parent):
+        existing_priority = _CHILD_ORDER_INDEX.get(existing.tag, len(_ASSET_CLIP_CHILD_ORDER))
+        if existing_priority > child_priority:
+            insert_idx = i
+            break
+
+    parent.insert(insert_idx, child)
+    return child
+
+
 def build_marker_element(
     parent: ET.Element,
     marker_type: MarkerType,
@@ -67,7 +116,7 @@ def build_marker_element(
     workflow).  Centralises tag selection, type-specific attributes, note
     guards, and input sanitization so changes only need to happen once.
     """
-    elem = ET.SubElement(parent, marker_type.xml_tag)
+    elem = ET.Element(marker_type.xml_tag)
     elem.set('start', start)
     elem.set('duration', duration)
     elem.set('value', _sanitize_xml_value(name, _MAX_MARKER_NAME_LENGTH))
@@ -75,6 +124,7 @@ def build_marker_element(
         elem.set(attr, val)
     if note and marker_type != MarkerType.CHAPTER:
         elem.set('note', _sanitize_xml_value(note, _MAX_NOTE_LENGTH))
+    _dtd_insert(parent, elem)
     return elem
 
 
@@ -657,8 +707,9 @@ class FCPXMLModifier:
         new_duration_seconds = current_duration.to_seconds() / speed
         source_duration = current_duration.to_seconds()
 
-        # Create timeMap for speed change
-        timemap = ET.SubElement(clip, 'timeMap')
+        # Create timeMap for speed change (DTD-ordered insertion)
+        timemap = ET.Element('timeMap')
+        _dtd_insert(clip, timemap)
 
         # Start keyframe
         tp1 = ET.SubElement(timemap, 'timept')
@@ -676,10 +727,11 @@ class FCPXMLModifier:
         new_duration = TimeValue.from_seconds(new_duration_seconds, self.fps)
         clip.set('duration', new_duration.to_fcpxml())
 
-        # Add conform-rate
-        conform = ET.SubElement(clip, 'conform-rate')
+        # Add conform-rate (DTD-ordered insertion)
+        conform = ET.Element('conform-rate')
         conform.set('scaleEnabled', '1')
         conform.set('srcFrameRate', str(int(self.fps)))
+        _dtd_insert(clip, conform)
 
         return clip
 
