@@ -317,15 +317,19 @@ class TimeValue:
     def __add__(self, other: 'TimeValue') -> 'TimeValue':
         if self.denominator == other.denominator:
             return TimeValue(self.numerator + other.numerator, self.denominator)
-        new_denom = self.denominator * other.denominator
-        new_num = (self.numerator * other.denominator) + (other.numerator * self.denominator)
+        g = gcd(self.denominator, other.denominator)
+        new_denom = self.denominator // g * other.denominator
+        new_num = (self.numerator * (new_denom // self.denominator)
+                   + other.numerator * (new_denom // other.denominator))
         return TimeValue(new_num, new_denom)
 
     def __sub__(self, other: 'TimeValue') -> 'TimeValue':
         if self.denominator == other.denominator:
             return TimeValue(self.numerator - other.numerator, self.denominator)
-        new_denom = self.denominator * other.denominator
-        new_num = (self.numerator * other.denominator) - (other.numerator * self.denominator)
+        g = gcd(self.denominator, other.denominator)
+        new_denom = self.denominator // g * other.denominator
+        new_num = (self.numerator * (new_denom // self.denominator)
+                   - other.numerator * (new_denom // other.denominator))
         return TimeValue(new_num, new_denom)
 
     def __mul__(self, scalar: float) -> 'TimeValue':
