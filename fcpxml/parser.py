@@ -105,7 +105,8 @@ class FCPXMLParser:
             asset_id = asset.get('id', '')
             self.resources[asset_id] = {
                 'id': asset_id, 'name': asset.get('name', ''),
-                'src': asset.get('src', ''), 'start': asset.get('start', '0s'),
+                'src': asset.get('src', '') or (asset.find('media-rep').get('src', '') if asset.find('media-rep') is not None else ''),
+                'start': asset.get('start', '0s'),
                 'duration': asset.get('duration', '0s'),
                 'hasVideo': asset.get('hasVideo', '1') == '1',
                 'hasAudio': asset.get('hasAudio', '1') == '1',

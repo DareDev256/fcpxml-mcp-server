@@ -198,7 +198,7 @@ class FCPXMLModifier:
             self.resources[asset_id] = {
                 'id': asset_id,
                 'name': asset.get('name', ''),
-                'src': asset.get('src', ''),
+                'src': asset.get('src', '') or (asset.find('media-rep').get('src', '') if asset.find('media-rep') is not None else ''),
                 'start': asset.get('start', '0s'),
                 'duration': asset.get('duration', '0s'),
                 'element': asset
