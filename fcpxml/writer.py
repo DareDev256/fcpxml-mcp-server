@@ -634,15 +634,41 @@ class FCPXMLModifier:
         if clip_index is None:
             raise ValueError(f"Clip not in primary storyline: {clip_id}")
 
-        effect_map = {
-            'cross-dissolve': 'Cross Dissolve',
-            'fade-to-black': 'Fade to Color',
-            'fade-from-black': 'Fade from Color',
-            'dip-to-color': 'Dip to Color',
-            'wipe': 'Wipe',
-            'slide': 'Slide'
+        # Effect name and FCP built-in effect UID lookup
+        effect_info = {
+            'cross-dissolve': ('Cross Dissolve', '4731E73A-8DAC-4113-9A30-AE85B1761265'),
+            'fade-to-black': ('Fade to Color', ''),
+            'fade-from-black': ('Fade from Color', ''),
+            'dip-to-color': ('Dip to Color', ''),
+            'wipe': ('Wipe', ''),
+            'slide': ('Slide', ''),
         }
-        effect_name = effect_map.get(transition_type, 'Cross Dissolve')
+        effect_name, effect_uid = effect_info.get(
+            transition_type, ('Cross Dissolve', '4731E73A-8DAC-4113-9A30-AE85B1761265')
+        )
+
+        # Ensure effect resource exists in <resources>
+        effect_ref_id = None
+        if effect_uid:
+            root = self.tree.getroot()
+            resources = root.find('.//resources')
+            if resources is not None:
+                for eff in resources.findall('effect'):
+                    if eff.get('uid') == effect_uid:
+                        effect_ref_id = eff.get('id')
+                        break
+                if effect_ref_id is None:
+                    # Generate a unique resource id
+                    existing_ids = {el.get('id', '') for el in resources}
+                    effect_ref_id = 'r_dissolve'
+                    counter = 2
+                    while effect_ref_id in existing_ids:
+                        effect_ref_id = f'r_dissolve{counter}'
+                        counter += 1
+                    eff_el = ET.SubElement(resources, 'effect')
+                    eff_el.set('id', effect_ref_id)
+                    eff_el.set('name', effect_name)
+                    eff_el.set('uid', effect_uid)
 
         transitions_added = []
 
@@ -650,7 +676,7 @@ class FCPXMLModifier:
             clip_offset = self._parse_time(clip.get('offset', '0s'))
             clip_dur = self._parse_time(clip.get('duration', '0s'))
 
-            # Transition starts before clip end
+            # Transition centered on edit point
             half_dur = trans_duration * 0.5
             trans_offset = clip_offset + clip_dur - half_dur
 
@@ -658,6 +684,11 @@ class FCPXMLModifier:
             transition.set('name', effect_name)
             transition.set('offset', trans_offset.to_fcpxml())
             transition.set('duration', trans_duration.to_fcpxml())
+
+            if effect_ref_id:
+                fv = ET.SubElement(transition, 'filter-video')
+                fv.set('ref', effect_ref_id)
+                fv.set('name', effect_name)
 
             spine.insert(clip_index + 1, transition)
             transitions_added.append(transition)
@@ -671,6 +702,11 @@ class FCPXMLModifier:
             transition.set('name', effect_name)
             transition.set('offset', trans_offset.to_fcpxml())
             transition.set('duration', trans_duration.to_fcpxml())
+
+            if effect_ref_id:
+                fv = ET.SubElement(transition, 'filter-video')
+                fv.set('ref', effect_ref_id)
+                fv.set('name', effect_name)
 
             spine.insert(clip_index, transition)
             transitions_added.append(transition)
@@ -709,12 +745,19 @@ class FCPXMLModifier:
         # not decimal floats like "2.6666666666666665s".
         denom = current_duration.denominator if current_duration.denominator > 0 else int(self.fps)
         source_num = current_duration.numerator
-        # new_duration = current_duration / speed (rational)
-        # Multiply denominator by speed to avoid floats
         from fractions import Fraction
         speed_frac = Fraction(speed).limit_denominator(1000)
-        new_num = source_num * speed_frac.denominator
-        new_denom = denom * speed_frac.numerator
+        raw_num = source_num * speed_frac.denominator
+        raw_denom = denom * speed_frac.numerator
+
+        # Snap to frame boundary in a standard timebase (2400 ticks/sec).
+        # Each frame at Nfps = 2400/N ticks (e.g. 24fps → 100 ticks/frame).
+        fps_int = int(self.fps) if self.fps else 24
+        ticks_per_frame = 2400 // fps_int
+        dur_ticks = round(raw_num / raw_denom * 2400)
+        dur_ticks = round(dur_ticks / ticks_per_frame) * ticks_per_frame
+        new_num = dur_ticks
+        new_denom = 2400
 
         # Create timeMap for speed change (DTD-ordered insertion)
         timemap = ET.Element('timeMap')
