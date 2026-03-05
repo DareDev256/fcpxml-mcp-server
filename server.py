@@ -2,7 +2,7 @@
 """
 FCPXML MCP Server — Batch operations and analysis for Final Cut Pro XML files.
 
-Provides 47 tools, MCP resources for file discovery, and pre-built prompt
+Provides 53 tools, MCP resources for file discovery, and pre-built prompt
 workflows for common editing tasks.
 
 Author: DareDev256 (https://github.com/DareDev256)
@@ -41,7 +41,8 @@ from fcpxml.models import (
 )
 from fcpxml.parser import FCPXMLParser
 from fcpxml.rough_cut import RoughCutGenerator
-from fcpxml.writer import FCPXMLModifier
+from fcpxml.templates import ClipSpec, apply_template, list_templates
+from fcpxml.writer import FCPXMLModifier, list_effects
 
 server = Server("fcp-mcp-server")
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
@@ -1233,6 +1234,84 @@ async def list_tools() -> list[Tool]:
                     "output_path": {"type": "string", "description": "Output path (default: adds _fcp7.xml suffix)"},
                 },
                 "required": ["filepath"]
+            }
+        ),
+
+        # ===== v0.6.0 TOOLS =====
+        Tool(
+            name="list_effects",
+            description="List all available FCP transition effects with slugs and UUIDs",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            }
+        ),
+        Tool(
+            name="add_audio",
+            description="Add an audio clip or music bed to the timeline",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "parent_clip_id": {"type": "string", "description": "Clip to attach audio to (omit for music bed spanning full timeline)"},
+                    "asset_id": {"type": "string", "description": "Existing asset reference ID"},
+                    "src": {"type": "string", "description": "Path to audio file (creates new asset)"},
+                    "offset": {"type": "string", "description": "Position relative to parent clip start", "default": "0s"},
+                    "duration": {"type": "string", "description": "Duration of audio clip"},
+                    "role": {"type": "string", "description": "Audio role (dialogue, music, effects, etc.)", "default": "dialogue"},
+                    "lane": {"type": "integer", "description": "Lane number (negative = below)", "default": -1},
+                    "output_path": {"type": "string", "description": "Output path"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="create_compound_clip",
+            description="Group spine clips into a compound clip",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "clip_ids": {"type": "array", "items": {"type": "string"}, "description": "Clip IDs to group"},
+                    "name": {"type": "string", "description": "Name for the compound clip", "default": "Compound Clip"},
+                    "output_path": {"type": "string", "description": "Output path"},
+                },
+                "required": ["filepath", "clip_ids"]
+            }
+        ),
+        Tool(
+            name="flatten_compound_clip",
+            description="Flatten a compound clip back into individual clips in the spine",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "ref_clip_id": {"type": "string", "description": "ID of the ref-clip to flatten"},
+                    "output_path": {"type": "string", "description": "Output path"},
+                },
+                "required": ["filepath", "ref_clip_id"]
+            }
+        ),
+        Tool(
+            name="list_templates",
+            description="List available timeline templates with slot definitions",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            }
+        ),
+        Tool(
+            name="apply_template",
+            description="Fill a timeline template with clips and generate FCPXML",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "template_name": {"type": "string", "description": "Template name (intro_outro, lower_thirds, music_video)"},
+                    "clips": {"type": "object", "description": "Map of slot_name -> {src, name, duration} or {asset_id, name, duration}"},
+                    "output_path": {"type": "string", "description": "Output FCPXML path"},
+                    "fps": {"type": "number", "description": "Frame rate", "default": 24},
+                },
+                "required": ["template_name", "clips", "output_path"]
             }
         ),
     ]
@@ -2688,6 +2767,120 @@ async def handle_export_fcp7_xml(arguments: dict) -> Sequence[TextContent]:
     ))]
 
 
+# ----- v0.6.0 HANDLERS -----
+
+async def handle_list_effects(arguments: dict) -> Sequence[TextContent]:
+    effects = list_effects()
+    lines = ["# Available FCP Transition Effects\n"]
+    for eff in effects:
+        lines.append(f"- **{eff['slug']}**: {eff['name']} (`{eff['uuid']}`)")
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def handle_add_audio(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_audio")
+    )
+    modifier = FCPXMLModifier(filepath)
+
+    parent_clip_id = arguments.get("parent_clip_id")
+    if parent_clip_id:
+        modifier.add_audio_clip(
+            parent_clip_id=parent_clip_id,
+            asset_id=arguments.get("asset_id"),
+            offset=arguments.get("offset", "0s"),
+            duration=arguments.get("duration"),
+            role=arguments.get("role", "dialogue"),
+            lane=arguments.get("lane", -1),
+            src=arguments.get("src"),
+        )
+        action = f"Added audio clip to '{parent_clip_id}'"
+    else:
+        modifier.add_music_bed(
+            asset_id=arguments.get("asset_id"),
+            duration=arguments.get("duration"),
+            role=arguments.get("role", "music"),
+            src=arguments.get("src"),
+        )
+        action = "Added music bed spanning full timeline"
+
+    modifier.save(output_path)
+    return [TextContent(type="text", text=f"{action}\nSaved to: `{output_path}`")]
+
+
+async def handle_create_compound_clip(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_compound")
+    )
+    modifier = FCPXMLModifier(filepath)
+    clip_ids = arguments["clip_ids"]
+    name = arguments.get("name", "Compound Clip")
+    modifier.create_compound_clip(clip_ids, name)
+    modifier.save(output_path)
+    return [TextContent(type="text", text=(
+        f"Created compound clip '{name}' from {len(clip_ids)} clips.\n"
+        f"Saved to: `{output_path}`"
+    ))]
+
+
+async def handle_flatten_compound_clip(arguments: dict) -> Sequence[TextContent]:
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, "_flattened")
+    )
+    modifier = FCPXMLModifier(filepath)
+    ref_clip_id = arguments["ref_clip_id"]
+    extracted = modifier.flatten_compound_clip(ref_clip_id)
+    modifier.save(output_path)
+    return [TextContent(type="text", text=(
+        f"Flattened compound clip '{ref_clip_id}' into {len(extracted)} clips.\n"
+        f"Saved to: `{output_path}`"
+    ))]
+
+
+async def handle_list_templates(arguments: dict) -> Sequence[TextContent]:
+    templates = list_templates()
+    lines = ["# Available Timeline Templates\n"]
+    for tmpl in templates:
+        lines.append(f"## {tmpl['name']}")
+        lines.append(f"{tmpl['description']}\n")
+        lines.append("| Slot | Type | Default Duration | Lane | Required |")
+        lines.append("|------|------|-----------------|------|----------|")
+        for s in tmpl['slots']:
+            lines.append(
+                f"| {s['name']} | {s['slot_type']} | {s['default_duration']}s "
+                f"| {s['lane']} | {'Yes' if s['required'] else 'No'} |"
+            )
+        lines.append("")
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def handle_apply_template(arguments: dict) -> Sequence[TextContent]:
+    template_name = arguments["template_name"]
+    clips_raw = arguments["clips"]
+    output_path = _validate_output_path(arguments["output_path"])
+    fps = arguments.get("fps", 24)
+
+    # Convert raw clips dict to ClipSpec objects
+    clips_map = {}
+    for slot_name, spec_data in clips_raw.items():
+        if isinstance(spec_data, dict):
+            clips_map[slot_name] = ClipSpec(
+                asset_id=spec_data.get("asset_id"),
+                src=spec_data.get("src"),
+                name=spec_data.get("name", slot_name),
+                duration=spec_data.get("duration"),
+            )
+
+    result_path = apply_template(template_name, clips_map, output_path, fps)
+    return [TextContent(type="text", text=(
+        f"Applied template '{template_name}' with {len(clips_map)} clips.\n"
+        f"Saved to: `{result_path}`"
+    ))]
+
+
 # ============================================================================
 # TOOL DISPATCH
 # ============================================================================
@@ -2753,6 +2946,13 @@ TOOL_HANDLERS = {
     # NLE Export (v0.5.0)
     "export_resolve_xml": handle_export_resolve_xml,
     "export_fcp7_xml": handle_export_fcp7_xml,
+    # v0.6.0
+    "list_effects": handle_list_effects,
+    "add_audio": handle_add_audio,
+    "create_compound_clip": handle_create_compound_clip,
+    "flatten_compound_clip": handle_flatten_compound_clip,
+    "list_templates": handle_list_templates,
+    "apply_template": handle_apply_template,
 }
 
 

@@ -20,7 +20,7 @@ from .models import (
     SegmentSpec,
     TimeValue,
 )
-from .writer import write_fcpxml
+from .writer import _create_asset_element, write_fcpxml
 
 
 class RoughCutGenerator:
@@ -358,11 +358,28 @@ class RoughCutGenerator:
             format_id = fmt_id
             break
 
-        # Copy needed assets
+        # Copy needed assets — use media-rep form for new assets
         used_refs = set(c.get('ref') for c in clips if c.get('ref'))
         for ref in used_refs:
             if ref in self.resources:
-                resources.append(self.resources[ref])
+                orig = self.resources[ref]
+                # Extract src from either attribute or media-rep child
+                src = orig.get('src', '')
+                if not src:
+                    mr = orig.find('media-rep')
+                    if mr is not None:
+                        src = mr.get('src', '')
+                _create_asset_element(
+                    resources,
+                    asset_id=orig.get('id', ref),
+                    name=orig.get('name', ''),
+                    src=src,
+                    duration=orig.get('duration', '0s'),
+                    start=orig.get('start', '0s'),
+                    has_video=orig.get('hasVideo', '1'),
+                    has_audio=orig.get('hasAudio', '1'),
+                    uid=orig.get('uid'),
+                )
 
         # Create library structure
         library = ET.SubElement(root, 'library',

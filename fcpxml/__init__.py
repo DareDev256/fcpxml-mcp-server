@@ -44,17 +44,28 @@ from .rough_cut import (
     generate_rough_cut,
     generate_segmented_rough_cut,
 )
+from .templates import (
+    BUILTIN_TEMPLATES,
+    ClipSpec,
+    Template,
+    TemplateSlot,
+    apply_template,
+    list_templates,
+)
 from .writer import (
+    FCP_EFFECTS,
     FCPXMLModifier,
     FCPXMLWriter,
     add_marker_to_file,
     build_marker_element,
+    list_effects,
     modify_fcpxml,
     trim_clip_in_file,
+    validate_fcpxml,
     write_fcpxml,
 )
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __author__ = "DareDev256"
 
 __all__ = [
@@ -100,6 +111,17 @@ __all__ = [
     "trim_clip_in_file",
     "write_fcpxml",
     "build_marker_element",
+    "validate_fcpxml",
+    "FCP_EFFECTS",
+    "list_effects",
+
+    # Templates (v0.6.0)
+    "Template",
+    "TemplateSlot",
+    "ClipSpec",
+    "BUILTIN_TEMPLATES",
+    "list_templates",
+    "apply_template",
 
     # Rough Cut
     "RoughCutGenerator",

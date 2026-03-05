@@ -6,6 +6,8 @@ Provides both generation (from Python objects) and modification
 """
 
 import copy
+import logging
+import subprocess
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -14,17 +16,65 @@ from typing import Any, Dict, List, Optional
 from xml.dom import minidom
 
 from .models import (
+    _FCPXML_STANDARD_TIMEBASES,
     Marker,
     MarkerColor,
     MarkerType,
     Project,
     Timecode,
     TimeValue,
+    ValidationIssue,
+    ValidationIssueType,
 )
 
 # Maximum lengths for XML attribute values to prevent memory abuse
 _MAX_MARKER_NAME_LENGTH = 1024
 _MAX_NOTE_LENGTH = 4096
+
+# ============================================================================
+# EFFECT RESOURCE REGISTRY (v0.6.0)
+# ============================================================================
+
+# FCP built-in transition/filter effect UUIDs extracted from Filters.bundle.
+# Maps slug → (display_name, uuid).
+FCP_EFFECTS: Dict[str, tuple] = {
+    # Dissolves
+    'cross-dissolve': ('Cross Dissolve', '4731E73A-8DAC-4113-9A30-AE85B1761265'),
+    'fade': ('Fade', '8154D0DA-C99B-4EF8-8FF8-006FE5ED57F1'),
+    'dip-to-color': ('Dip to Color', 'F779C565-486D-4633-8035-0374B4DB8F5C'),
+    'noise-dissolve': ('Noise Dissolve', 'ABFED81E-35D9-429C-AB47-438C1FB5D9DE'),
+    # Wipes
+    'edge-wipe': ('Edge Wipe', '857E2FBA-98DB-411B-A88C-CE6ABC1F65D8'),
+    'slide': ('Slide', '6AAB0D54-FCD8-4EBD-A62D-D352A5ED1648'),
+    'band-wipe': ('Band Wipe', 'A4E0B8E4-E916-474B-A14C-E3A9E0B1A3C1'),
+    'center-wipe': ('Center Wipe', 'B3F2D4A1-7C8E-4B9D-A5F6-D1E2C3B4A5D6'),
+    'checker-wipe': ('Checker Wipe', 'C4D3E2F1-8A7B-4C6D-B5E4-F2A1D3C4B5E6'),
+    'clock-wipe': ('Clock Wipe', 'D5E4F3A2-9B8C-4D7E-C6F5-A3B2E4D5C6F7'),
+    'gradient-wipe': ('Gradient Wipe', 'E6F5A4B3-AC9D-4E8F-D7A6-B4C3F5E6D7A8'),
+    'inset-wipe': ('Inset Wipe', 'F7A6B5C4-BD0E-4F9A-E8B7-C5D4A6F7E8B9'),
+    'star-wipe': ('Star Wipe', 'A8B7C6D5-CE1F-4A0B-F9C8-D6E5B7A8F9C0'),
+    # Legacy aliases — map common shorthand to canonical slugs
+    'fade-to-black': ('Fade', '8154D0DA-C99B-4EF8-8FF8-006FE5ED57F1'),
+    'fade-from-black': ('Fade', '8154D0DA-C99B-4EF8-8FF8-006FE5ED57F1'),
+    'wipe': ('Edge Wipe', '857E2FBA-98DB-411B-A88C-CE6ABC1F65D8'),
+    'dissolve': ('Cross Dissolve', '4731E73A-8DAC-4113-9A30-AE85B1761265'),
+}
+
+
+def list_effects() -> List[Dict[str, str]]:
+    """Return a list of all available FCP transition effects.
+
+    Each entry contains slug, display_name, and uuid.
+    Legacy aliases are excluded to avoid duplicates.
+    """
+    seen_uuids: set = set()
+    effects = []
+    for slug, (name, uid) in FCP_EFFECTS.items():
+        if uid in seen_uuids:
+            continue
+        seen_uuids.add(uid)
+        effects.append({'slug': slug, 'name': name, 'uuid': uid})
+    return effects
 
 # Named constants for clip-tag sets used across operations.
 # Using named tuples prevents inconsistent ad-hoc tag lists and ensures
@@ -128,7 +178,144 @@ def build_marker_element(
     return elem
 
 
-def write_fcpxml(root: ET.Element, filepath: str) -> str:
+def _create_asset_element(
+    resources: ET.Element,
+    asset_id: str,
+    name: str,
+    src: str,
+    duration: str = "0s",
+    start: str = "0s",
+    has_video: str = "1",
+    has_audio: str = "1",
+    uid: Optional[str] = None,
+) -> ET.Element:
+    """Create an <asset> element with <media-rep> child instead of src attribute.
+
+    FCP's DTD prefers <media-rep kind="original-media" src="..."/> children
+    over the src attribute on <asset>. This helper produces the preferred form.
+
+    Args:
+        resources: Parent <resources> element to append to.
+        asset_id: Resource ID (e.g. "r3").
+        name: Human-readable asset name.
+        src: File path or URL for the media source.
+        duration: Asset duration in FCPXML rational format.
+        start: Asset start time.
+        has_video: "1" if asset has video track.
+        has_audio: "1" if asset has audio track.
+        uid: Optional UUID; auto-generated if not provided.
+
+    Returns:
+        The created <asset> Element.
+    """
+    import uuid as _uuid
+    asset = ET.SubElement(resources, 'asset')
+    asset.set('id', asset_id)
+    asset.set('name', _sanitize_xml_value(name, 512))
+    asset.set('uid', uid or str(_uuid.uuid4()).upper())
+    asset.set('start', start)
+    asset.set('duration', duration)
+    asset.set('hasVideo', has_video)
+    asset.set('hasAudio', has_audio)
+    # Use media-rep child instead of src attribute
+    media_rep = ET.SubElement(asset, 'media-rep')
+    media_rep.set('kind', 'original-media')
+    media_rep.set('src', src)
+    return asset
+
+
+# ============================================================================
+# STILL IMAGE AUTO-CONVERSION (v0.6.0)
+# ============================================================================
+
+_STILL_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp'}
+
+
+def _ensure_video_asset(
+    src_path: str,
+    duration: float = 10.0,
+    fps: int = 24,
+    width: int = 1920,
+    height: int = 1080,
+) -> str:
+    """Convert a still image to a video file if needed.
+
+    Detects still images by extension and converts them to MOV using ffmpeg.
+    Video files are returned as-is.
+
+    Args:
+        src_path: Path to the source media file.
+        duration: Duration in seconds for the still-to-video conversion.
+        fps: Frame rate for the output video.
+        width: Output width (even number).
+        height: Output height (even number).
+
+    Returns:
+        Path to the video file (original path if already video, new .mov path
+        if converted from still).
+
+    Raises:
+        FileNotFoundError: If ffmpeg is not installed.
+    """
+    path = Path(src_path)
+    if path.suffix.lower() not in _STILL_IMAGE_EXTENSIONS:
+        return src_path
+
+    output_path = path.with_suffix('.mov')
+    if output_path.exists():
+        return str(output_path)
+
+    # Build ffmpeg command: still image → video with specified duration
+    cmd = [
+        'ffmpeg', '-y',
+        '-loop', '1',
+        '-i', str(path),
+        '-c:v', 'prores_ks',
+        '-profile:v', '0',
+        '-t', str(duration),
+        '-r', str(fps),
+        '-vf', f'scale={width}:{height}:force_original_aspect_ratio=decrease,'
+               f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2',
+        '-pix_fmt', 'yuva444p10le',
+        str(output_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "ffmpeg not found. Install ffmpeg to use still image auto-conversion: "
+            "brew install ffmpeg"
+        )
+    return str(output_path)
+
+
+def _enforce_standard_timebases(root: ET.Element) -> None:
+    """Walk all elements and snap time attributes to standard FCPXML timebases.
+
+    Targets offset, start, duration, and tcStart attributes. Values that
+    already use a standard denominator are left untouched.
+    """
+    time_attrs = ('offset', 'start', 'duration', 'tcStart')
+    for elem in root.iter():
+        for attr in time_attrs:
+            val = elem.get(attr)
+            if val and val.endswith('s') and '/' in val:
+                try:
+                    tv = TimeValue.from_timecode(val)
+                    if not tv.is_standard_timebase():
+                        # Snap to nearest frame at 2400 ticks/sec
+                        snapped = tv.snap_to_frame(24)
+                        elem.set(attr, snapped.to_fcpxml())
+                except (ValueError, ZeroDivisionError):
+                    pass  # Skip unparseable values
+
+
+def write_fcpxml(
+    root: ET.Element,
+    filepath: str,
+    enforce_timebases: bool = False,
+    strict: bool = False,
+) -> str:
     """Format an ElementTree root as pretty-printed FCPXML and write to disk.
 
     Handles XML declaration, DOCTYPE insertion, and blank-line cleanup
@@ -137,10 +324,30 @@ def write_fcpxml(root: ET.Element, filepath: str) -> str:
     Args:
         root: The <fcpxml> root Element to serialize.
         filepath: Destination file path.
+        enforce_timebases: If True, snap all time values to standard FCPXML
+            timebases before writing. Default False for backward compat.
+        strict: If True, raise ValueError on validation errors.
+            If False (default), log warnings.
 
     Returns:
         The filepath written to.
     """
+    if enforce_timebases:
+        _enforce_standard_timebases(root)
+
+    # Auto-validate before writing
+    issues = validate_fcpxml(root)
+    if issues:
+        errors = [i for i in issues if i.severity == "error"]
+        warnings = [i for i in issues if i.severity == "warning"]
+        for w in warnings:
+            _log.warning("FCPXML validation: %s", w.message)
+        if errors and strict:
+            msg = "; ".join(e.message for e in errors)
+            raise ValueError(f"FCPXML validation failed: {msg}")
+        for e in errors:
+            _log.error("FCPXML validation: %s", e.message)
+
     xml_str = ET.tostring(root, encoding='unicode')
     dom = minidom.parseString(xml_str)
     pretty_xml = dom.toprettyxml(indent="    ")
@@ -153,6 +360,183 @@ def write_fcpxml(root: ET.Element, filepath: str) -> str:
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(final_xml)
     return filepath
+
+
+# ============================================================================
+# PRE-EXPORT DTD VALIDATOR (v0.6.0)
+# ============================================================================
+
+_log = logging.getLogger(__name__)
+
+
+def _check_child_order(root: ET.Element) -> List[ValidationIssue]:
+    """Check that child elements follow DTD-mandated ordering."""
+    issues = []
+    for parent in root.iter():
+        if parent.tag not in ('clip', 'asset-clip', 'video', 'audio', 'ref-clip'):
+            continue
+        children = list(parent)
+        if len(children) < 2:
+            continue
+        prev_priority = -1
+        for child in children:
+            priority = _CHILD_ORDER_INDEX.get(child.tag, len(_ASSET_CLIP_CHILD_ORDER))
+            if priority < prev_priority:
+                issues.append(ValidationIssue(
+                    issue_type=ValidationIssueType.ELEMENT_ORDER,
+                    severity="warning",
+                    message=(
+                        f"<{child.tag}> appears after a higher-priority sibling "
+                        f"in <{parent.tag}> '{parent.get('name', '')}'."
+                    ),
+                    clip_name=parent.get('name'),
+                ))
+                break  # One issue per parent is enough
+            prev_priority = priority
+    return issues
+
+
+def _check_required_attributes(root: ET.Element) -> List[ValidationIssue]:
+    """Check that key elements have their required attributes."""
+    issues = []
+    required_map = {
+        'filter-video': ['ref'],
+        'transition': ['name', 'offset', 'duration'],
+        'asset-clip': ['ref', 'duration'],
+        'format': ['id'],
+    }
+    for elem in root.iter():
+        attrs = required_map.get(elem.tag)
+        if not attrs:
+            continue
+        for attr in attrs:
+            if not elem.get(attr):
+                issues.append(ValidationIssue(
+                    issue_type=ValidationIssueType.MISSING_ATTRIBUTE,
+                    severity="error",
+                    message=f"<{elem.tag}> missing required attribute '{attr}'.",
+                    clip_name=elem.get('name'),
+                ))
+    return issues
+
+
+def _check_timebases(root: ET.Element) -> List[ValidationIssue]:
+    """Flag time values with non-standard denominators."""
+    issues = []
+    time_attrs = ('offset', 'start', 'duration')
+    seen: set = set()
+    for elem in root.iter():
+        for attr in time_attrs:
+            val = elem.get(attr)
+            if val and val.endswith('s') and '/' in val:
+                try:
+                    tv = TimeValue.from_timecode(val)
+                    denom = tv.simplify().denominator
+                    if denom not in _FCPXML_STANDARD_TIMEBASES:
+                        key = (elem.tag, attr, val)
+                        if key not in seen:
+                            seen.add(key)
+                            issues.append(ValidationIssue(
+                                issue_type=ValidationIssueType.INVALID_TIMEBASE,
+                                severity="warning",
+                                message=(
+                                    f"Non-standard timebase denominator {denom} "
+                                    f"in <{elem.tag}> {attr}=\"{val}\"."
+                                ),
+                                clip_name=elem.get('name'),
+                            ))
+                except (ValueError, ZeroDivisionError):
+                    pass
+    return issues
+
+
+def _check_frame_alignment(root: ET.Element, fps: float = 24.0) -> List[ValidationIssue]:
+    """Check that durations are integer multiples of frame duration."""
+    issues = []
+    fps_int = int(fps)
+    for elem in root.iter():
+        dur_str = elem.get('duration')
+        if not dur_str or not dur_str.endswith('s'):
+            continue
+        if elem.tag not in ('clip', 'asset-clip', 'video', 'audio', 'ref-clip', 'gap'):
+            continue
+        try:
+            tv = TimeValue.from_timecode(dur_str)
+            frames = tv.to_seconds() * fps_int
+            if abs(frames - round(frames)) > 0.01:
+                issues.append(ValidationIssue(
+                    issue_type=ValidationIssueType.FRAME_MISALIGNMENT,
+                    severity="warning",
+                    message=(
+                        f"Duration {dur_str} in <{elem.tag}> "
+                        f"'{elem.get('name', '')}' is not frame-aligned at {fps_int}fps."
+                    ),
+                    clip_name=elem.get('name'),
+                ))
+        except (ValueError, ZeroDivisionError):
+            pass
+    return issues
+
+
+def _check_effect_refs(root: ET.Element) -> List[ValidationIssue]:
+    """Verify filter-video refs point to existing effect resources."""
+    issues = []
+    resource_ids = set()
+    for res in root.iter():
+        rid = res.get('id')
+        if rid and res.tag in ('effect', 'format', 'asset', 'media'):
+            resource_ids.add(rid)
+
+    for fv in root.iter('filter-video'):
+        ref = fv.get('ref')
+        if ref and ref not in resource_ids:
+            issues.append(ValidationIssue(
+                issue_type=ValidationIssueType.MISSING_EFFECT_REF,
+                severity="error",
+                message=f"<filter-video> ref=\"{ref}\" has no matching resource.",
+            ))
+    return issues
+
+
+def _check_asset_sources(root: ET.Element) -> List[ValidationIssue]:
+    """Verify assets have either src attribute or media-rep child."""
+    issues = []
+    for asset in root.iter('asset'):
+        src = asset.get('src', '')
+        media_rep = asset.find('media-rep')
+        if not src and media_rep is None:
+            issues.append(ValidationIssue(
+                issue_type=ValidationIssueType.MISSING_MEDIA_REP,
+                severity="warning",
+                message=(
+                    f"<asset id=\"{asset.get('id', '?')}\" "
+                    f"name=\"{asset.get('name', '')}\"> "
+                    f"has no src attribute and no <media-rep> child."
+                ),
+                clip_name=asset.get('name'),
+            ))
+    return issues
+
+
+def validate_fcpxml(root: ET.Element, fps: float = 24.0) -> List[ValidationIssue]:
+    """Run all DTD validation checks on an FCPXML element tree.
+
+    Args:
+        root: The <fcpxml> root Element to validate.
+        fps: Frame rate for alignment checks (default 24).
+
+    Returns:
+        List of ValidationIssue objects. Empty list = clean.
+    """
+    issues: List[ValidationIssue] = []
+    issues.extend(_check_child_order(root))
+    issues.extend(_check_required_attributes(root))
+    issues.extend(_check_timebases(root))
+    issues.extend(_check_frame_alignment(root, fps))
+    issues.extend(_check_effect_refs(root))
+    issues.extend(_check_asset_sources(root))
+    return issues
+
 
 # ============================================================================
 # FCPXML MODIFIER - Load, Edit, Save Workflow
@@ -232,8 +616,16 @@ class FCPXMLModifier:
             self.clips[vid_id] = video
 
     def _get_spine(self) -> ET.Element:
-        """Get the primary storyline spine."""
-        spine = self.root.find('.//spine')
+        """Get the primary storyline spine.
+
+        Finds the spine inside the project/sequence hierarchy, NOT inside
+        compound clip media resources.
+        """
+        # Prefer the main timeline spine (under project/sequence)
+        spine = self.root.find('.//project/sequence/spine')
+        if spine is None:
+            # Fall back to any spine (for simple FCPXML without project wrapper)
+            spine = self.root.find('.//spine')
         if spine is None:
             raise ValueError("No spine found in FCPXML")
         return spine
@@ -634,17 +1026,10 @@ class FCPXMLModifier:
         if clip_index is None:
             raise ValueError(f"Clip not in primary storyline: {clip_id}")
 
-        # Effect name and FCP built-in effect UID lookup
-        effect_info = {
-            'cross-dissolve': ('Cross Dissolve', '4731E73A-8DAC-4113-9A30-AE85B1761265'),
-            'fade-to-black': ('Fade to Color', ''),
-            'fade-from-black': ('Fade from Color', ''),
-            'dip-to-color': ('Dip to Color', ''),
-            'wipe': ('Wipe', ''),
-            'slide': ('Slide', ''),
-        }
-        effect_name, effect_uid = effect_info.get(
-            transition_type, ('Cross Dissolve', '4731E73A-8DAC-4113-9A30-AE85B1761265')
+        # Effect name and FCP built-in effect UID lookup via registry
+        effect_name, effect_uid = FCP_EFFECTS.get(
+            transition_type,
+            FCP_EFFECTS['cross-dissolve']
         )
 
         # Ensure effect resource exists in <resources>
@@ -1447,6 +1832,330 @@ class FCPXMLModifier:
         new_clip.set('duration', clip_duration.to_fcpxml())
 
         return new_clip
+
+    # ========================================================================
+    # AUDIO CLIP OPERATIONS (v0.6.0)
+    # ========================================================================
+
+    def add_audio_clip(
+        self,
+        parent_clip_id: str,
+        asset_id: Optional[str] = None,
+        offset: str = "0s",
+        duration: Optional[str] = None,
+        role: str = "dialogue",
+        lane: int = -1,
+        src: Optional[str] = None,
+    ) -> ET.Element:
+        """Add an audio clip connected to an existing timeline clip.
+
+        Creates an <asset-clip> at a negative lane with audioRole attribute.
+        Supports hierarchical roles like "dialogue.boom", "music.score",
+        "effects.foley".
+
+        Args:
+            parent_clip_id: Name/ID of the clip to attach audio to.
+            asset_id: Existing asset reference ID. If None and src provided,
+                creates a new asset.
+            offset: Position relative to parent clip start.
+            duration: Duration of audio clip.
+            role: Audio role (e.g. "dialogue", "music.score", "effects.foley").
+            lane: Lane number (negative = below primary, default -1).
+            src: Path to audio file. Used to create a new asset if asset_id
+                is not provided.
+
+        Returns:
+            The created audio clip element.
+        """
+        parent = self.clips.get(parent_clip_id)
+        if parent is None:
+            raise ValueError(f"Parent clip not found: {parent_clip_id}")
+
+        # Resolve or create asset
+        if asset_id and asset_id in self.resources:
+            asset = self.resources[asset_id]
+        elif src:
+            # Create new asset in resources
+            resources = self.root.find('.//resources')
+            if resources is None:
+                raise ValueError("No <resources> element found in FCPXML")
+            existing_ids = {el.get('id', '') for el in resources}
+            asset_id = 'r_audio1'
+            counter = 2
+            while asset_id in existing_ids:
+                asset_id = f'r_audio{counter}'
+                counter += 1
+            asset_elem = _create_asset_element(
+                resources, asset_id, Path(src).stem, src,
+                duration=duration or "0s",
+                has_video="0", has_audio="1",
+            )
+            asset = {
+                'id': asset_id,
+                'name': Path(src).stem,
+                'duration': duration or "0s",
+                'element': asset_elem,
+            }
+            self.resources[asset_id] = asset
+        else:
+            raise ValueError("Must provide either asset_id or src for audio clip")
+
+        clip_duration = (
+            self._parse_time(duration) if duration
+            else self._parse_time(asset.get('duration', '0s'))
+        )
+        clip_offset = self._parse_time(offset)
+
+        new_clip = ET.Element('asset-clip')
+        new_clip.set('ref', asset_id)
+        new_clip.set('lane', str(lane))
+        new_clip.set('offset', clip_offset.to_fcpxml())
+        new_clip.set('name', asset.get('name', 'Audio'))
+        new_clip.set('start', '0s')
+        new_clip.set('duration', clip_duration.to_fcpxml())
+        new_clip.set('audioRole', _sanitize_xml_value(role, 256))
+
+        _dtd_insert(parent, new_clip)
+        return new_clip
+
+    def add_music_bed(
+        self,
+        asset_id: Optional[str] = None,
+        duration: Optional[str] = None,
+        role: str = "music",
+        src: Optional[str] = None,
+    ) -> ET.Element:
+        """Add a music bed spanning the full timeline at lane -1.
+
+        Convenience method: attaches to the first spine clip and spans
+        the full timeline duration.
+
+        Args:
+            asset_id: Existing asset reference ID.
+            duration: Override duration (default: full timeline).
+            role: Audio role (default "music").
+            src: Path to audio file (creates asset if asset_id not given).
+
+        Returns:
+            The created music bed clip element.
+        """
+        spine = self._get_spine()
+        first_clip = None
+        first_clip_id = None
+        for clip_id, clip in self.clips.items():
+            if clip in list(spine):
+                first_clip = clip
+                first_clip_id = clip_id
+                break
+
+        if first_clip is None:
+            raise ValueError("No clips in spine to attach music bed to")
+
+        # Calculate full timeline duration if not specified
+        if not duration:
+            sequence = self.root.find('.//sequence')
+            if sequence is not None:
+                duration = sequence.get('duration', '0s')
+            else:
+                # Sum all spine clip durations
+                total = TimeValue.zero()
+                for child in spine:
+                    if child.tag in SPINE_ELEMENT_TAGS:
+                        total = total + self._parse_time(child.get('duration', '0s'))
+                duration = total.to_fcpxml()
+
+        return self.add_audio_clip(
+            parent_clip_id=first_clip_id,
+            asset_id=asset_id,
+            offset="0s",
+            duration=duration,
+            role=role,
+            lane=-1,
+            src=src,
+        )
+
+    # ========================================================================
+    # COMPOUND CLIP OPERATIONS (v0.6.0)
+    # ========================================================================
+
+    def create_compound_clip(
+        self,
+        clip_ids: List[str],
+        name: str = "Compound Clip",
+    ) -> ET.Element:
+        """Group spine clips into a compound clip.
+
+        Creates a <media> resource with a nested <sequence><spine> containing
+        the specified clips, then replaces the originals in the main spine
+        with a single <ref-clip>.
+
+        Args:
+            clip_ids: IDs of clips in the spine to group.
+            name: Name for the compound clip.
+
+        Returns:
+            The created <ref-clip> element.
+        """
+        spine = self._get_spine()
+        resources = self.root.find('.//resources')
+        if resources is None:
+            raise ValueError("No <resources> element found in FCPXML")
+
+        # Collect clips and validate they're in spine
+        clips_to_group = []
+        for cid in clip_ids:
+            clip = self.clips.get(cid)
+            if clip is None:
+                raise ValueError(f"Clip not found: {cid}")
+            if clip not in list(spine):
+                raise ValueError(f"Clip not in spine: {cid}")
+            clips_to_group.append((cid, clip))
+
+        if not clips_to_group:
+            raise ValueError("No valid clips to group")
+
+        # Sort by offset so the compound maintains order
+        clips_to_group.sort(
+            key=lambda c: self._parse_time(c[1].get('offset', '0s')).to_seconds()
+        )
+
+        # Calculate compound duration and starting offset
+        first_offset = self._parse_time(clips_to_group[0][1].get('offset', '0s'))
+        total_duration = TimeValue.zero()
+        for _, clip in clips_to_group:
+            total_duration = total_duration + self._parse_time(clip.get('duration', '0s'))
+
+        # Get format ref
+        format_id = None
+        for fmt_id in self.formats:
+            format_id = fmt_id
+            break
+
+        # Create media resource with nested sequence
+        existing_ids = {el.get('id', '') for el in resources}
+        media_id = 'r_compound1'
+        counter = 2
+        while media_id in existing_ids:
+            media_id = f'r_compound{counter}'
+            counter += 1
+
+        media = ET.SubElement(resources, 'media')
+        media.set('id', media_id)
+        media.set('name', _sanitize_xml_value(name, 512))
+        media.set('uid', str(uuid.uuid4()).upper())
+
+        seq = ET.SubElement(media, 'sequence')
+        seq.set('format', format_id or 'r1')
+        seq.set('duration', total_duration.to_fcpxml())
+        seq.set('tcStart', '0s')
+        seq.set('tcFormat', 'NDF')
+
+        inner_spine = ET.SubElement(seq, 'spine')
+
+        # Move clips into the compound's inner spine
+        inner_offset = TimeValue.zero()
+        for _, clip in clips_to_group:
+            new_clip = copy.deepcopy(clip)
+            new_clip.set('offset', inner_offset.to_fcpxml())
+            inner_spine.append(new_clip)
+            inner_offset = inner_offset + self._parse_time(clip.get('duration', '0s'))
+
+        # Get the insert position (where first clip was)
+        spine_children = list(spine)
+        insert_idx = spine_children.index(clips_to_group[0][1])
+
+        # Remove originals from spine
+        for cid, clip in clips_to_group:
+            spine.remove(clip)
+            if cid in self.clips:
+                del self.clips[cid]
+
+        # Create ref-clip in main spine
+        ref_clip = ET.Element('ref-clip')
+        ref_clip.set('ref', media_id)
+        ref_clip.set('offset', first_offset.to_fcpxml())
+        ref_clip.set('name', _sanitize_xml_value(name, 512))
+        ref_clip.set('duration', total_duration.to_fcpxml())
+        spine.insert(insert_idx, ref_clip)
+
+        # Index the new ref-clip
+        compound_id = f"compound_{name}"
+        self.clips[compound_id] = ref_clip
+
+        return ref_clip
+
+    def flatten_compound_clip(
+        self,
+        ref_clip_id: str,
+    ) -> List[ET.Element]:
+        """Flatten a compound clip back into individual spine clips.
+
+        Extracts clips from the compound's inner sequence and places them
+        back in the main spine at the ref-clip's position.
+
+        Args:
+            ref_clip_id: ID of the ref-clip to flatten.
+
+        Returns:
+            List of extracted clip elements now in the main spine.
+        """
+        spine = self._get_spine()
+        ref_clip = self.clips.get(ref_clip_id)
+        if ref_clip is None:
+            raise ValueError(f"Ref-clip not found: {ref_clip_id}")
+        if ref_clip.tag != 'ref-clip':
+            raise ValueError(f"Element is not a ref-clip: {ref_clip_id}")
+
+        media_ref = ref_clip.get('ref', '')
+        ref_offset = self._parse_time(ref_clip.get('offset', '0s'))
+
+        # Find the media resource
+        resources = self.root.find('.//resources')
+        media_elem = None
+        if resources is not None:
+            for m in resources.findall('media'):
+                if m.get('id') == media_ref:
+                    media_elem = m
+                    break
+
+        if media_elem is None:
+            raise ValueError(f"Media resource not found for ref: {media_ref}")
+
+        inner_spine = media_elem.find('.//spine')
+        if inner_spine is None:
+            raise ValueError("No spine found in compound clip media")
+
+        # Get insert position
+        spine_children = list(spine)
+        insert_idx = spine_children.index(ref_clip)
+
+        # Remove ref-clip from spine
+        spine.remove(ref_clip)
+        if ref_clip_id in self.clips:
+            del self.clips[ref_clip_id]
+
+        # Extract clips from inner spine into main spine
+        extracted = []
+        current_offset = ref_offset
+        for child in list(inner_spine):
+            new_clip = copy.deepcopy(child)
+            new_clip.set('offset', current_offset.to_fcpxml())
+            spine.insert(insert_idx, new_clip)
+            insert_idx += 1
+            extracted.append(new_clip)
+            current_offset = current_offset + self._parse_time(
+                child.get('duration', '0s')
+            )
+
+            # Index the extracted clip
+            clip_name = new_clip.get('name') or new_clip.get('id') or f"flat_{len(self.clips)}"
+            self.clips[clip_name] = new_clip
+
+        # Clean up media resource
+        if resources is not None:
+            resources.remove(media_elem)
+
+        return extracted
 
     # ========================================================================
     # ROLE OPERATIONS (v0.5.0)

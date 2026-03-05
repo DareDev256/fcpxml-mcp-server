@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-03-04
+
+### Added
+
+- **Effect Resource Registry**: Module-level `FCP_EFFECTS` dict mapping 15+ transition slugs to FCP display names and UUIDs (Cross Dissolve, Fade, Dip to Color, Edge Wipe, Slide, Noise Dissolve, Band/Center/Checker/Clock/Gradient/Inset/Star Wipe). Legacy aliases for `fade-to-black`, `wipe`, `dissolve`. New `list_effects()` convenience function.
+- **Standard Timebase Enforcement**: `TimeValue.snap_to_frame(fps)` snaps to nearest frame in 2400-tick timebase. `TimeValue.is_standard_timebase()` checks denominator. `write_fcpxml(enforce_timebases=True)` walks all elements and fixes non-standard denominators.
+- **Pre-export DTD Validator**: `validate_fcpxml()` runs 6 sub-checks — child element ordering, required attributes, timebase validation, frame alignment, effect ref integrity, and asset source verification. Auto-called on every `write_fcpxml()` with warning logs. `strict=True` mode raises on errors. 6 new `ValidationIssueType` enum values.
+- **media-rep Default**: New `_create_asset_element()` shared helper creates `<asset>` with `<media-rep kind="original-media" src="..."/>` child instead of `src` attribute (preferred by FCP's DTD). Rough cut generation uses media-rep form.
+- **Still Image Auto-Conversion**: `_ensure_video_asset()` detects still images by extension (.png, .jpg, .jpeg, .tiff, .tif, .bmp) and converts to ProRes MOV via ffmpeg subprocess. Skips if already video or .mov already exists.
+- **Audio Support**: `FCPXMLModifier.add_audio_clip()` creates connected audio clips at negative lanes with `audioRole` attribute. Supports hierarchical roles (dialogue.boom, music.score, effects.foley). `add_music_bed()` convenience attaches full-timeline audio at lane -1. New `add_audio` MCP tool.
+- **Compound Clip Generation**: `FCPXMLModifier.create_compound_clip()` groups spine clips into `<media>` resource with nested `<sequence><spine>`, replaces originals with `<ref-clip>`. `flatten_compound_clip()` reverses the operation. New `create_compound_clip` and `flatten_compound_clip` MCP tools.
+- **Template System**: New `fcpxml/templates.py` with `TemplateSlot`, `Template`, `ClipSpec` dataclasses. 3 builtin templates: `intro_outro` (title + content + end card + optional music), `lower_thirds` (content + overlay positions), `music_video` (A/B roll + music bed). `list_templates()` and `apply_template()` functions. New `list_templates` and `apply_template` MCP tools.
+- **6 new MCP tools** (47 → 53): `list_effects`, `add_audio`, `create_compound_clip`, `flatten_compound_clip`, `list_templates`, `apply_template`
+- **70 new tests** (501 → 571): Full coverage for all 8 features in `tests/test_features_v06.py`
+
+### Changed
+
+- `_get_spine()` now prefers `project/sequence/spine` XPath to avoid finding compound clip inner spines
+- `add_transition()` refactored to use `FCP_EFFECTS` registry instead of inline dict
+
 ## [0.5.29] - 2026-03-03
 
 ### Fixed

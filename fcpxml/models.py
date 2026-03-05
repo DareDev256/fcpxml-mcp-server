@@ -168,6 +168,13 @@ class ValidationIssueType(Enum):
     DUPLICATE = "duplicate"
     ORPHAN_REF = "orphan_ref"
     INVALID_OFFSET = "invalid_offset"
+    # DTD validation types (v0.6.0)
+    ELEMENT_ORDER = "element_order"
+    MISSING_ATTRIBUTE = "missing_attribute"
+    INVALID_TIMEBASE = "invalid_timebase"
+    FRAME_MISALIGNMENT = "frame_misalignment"
+    MISSING_EFFECT_REF = "missing_effect_ref"
+    MISSING_MEDIA_REP = "missing_media_rep"
 
 
 # ============================================================================
@@ -356,6 +363,29 @@ class TimeValue:
         if not isinstance(other, TimeValue):
             return False
         return abs(self.to_seconds() - other.to_seconds()) < 0.0001
+
+    def snap_to_frame(self, fps: float) -> 'TimeValue':
+        """Round this time value to the nearest frame boundary at the given fps.
+
+        Uses the 2400-tick timebase (LCM of common frame rates) so results
+        always land on clean frame boundaries.
+
+        Args:
+            fps: Frame rate to snap to (e.g. 24, 30, 60)
+
+        Returns:
+            New TimeValue snapped to the nearest frame in 2400-tick timebase.
+        """
+        fps_int = int(fps) if fps else 24
+        ticks_per_frame = 2400 // fps_int
+        total_ticks = round(self.to_seconds() * 2400)
+        snapped_ticks = round(total_ticks / ticks_per_frame) * ticks_per_frame
+        return TimeValue(snapped_ticks, 2400)
+
+    def is_standard_timebase(self) -> bool:
+        """Check if this TimeValue's denominator is an FCP-accepted timebase."""
+        simplified = self.simplify()
+        return simplified.denominator in _FCPXML_STANDARD_TIMEBASES
 
     def __repr__(self) -> str:
         return f"TimeValue({self.numerator}/{self.denominator}s = {self.to_seconds():.3f}s)"

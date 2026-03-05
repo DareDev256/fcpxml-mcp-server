@@ -1,14 +1,14 @@
 # FCPXML MCP
 
-**The bridge between Final Cut Pro and AI. 47 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
+**The bridge between Final Cut Pro and AI. 53 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-501_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-10-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~7k_LOC-informational.svg)](#architecture)
+[![Tests](https://img.shields.io/badge/tests-571_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-11-blue.svg)](#testing)
+[![Source](https://img.shields.io/badge/source-~9k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -245,6 +245,10 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | **Generation** | 3 | Rough cuts, montages, A/B roll |
 | **Beat Sync** | 2 | Import beat markers, snap cuts to beats |
 | **Import** | 2 | SRT/VTT subtitles, YouTube chapters → markers |
+| **Audio** | 1 | Add audio clips, music beds at any lane |
+| **Compound** | 2 | Create/flatten compound clips |
+| **Templates** | 2 | Pre-built timeline structures (intro/outro, lower thirds, music video) |
+| **Effects** | 1 | List FCP transition effects with UUIDs |
 
 <details>
 <summary><strong>Full tool reference (click to expand)</strong></summary>
@@ -282,6 +286,9 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 #### Import — 2 tools
 `import_srt_markers` · `import_transcript_markers`
 
+#### v0.6.0 — Audio, Compound, Templates, Effects — 6 tools
+`list_effects` · `add_audio` · `create_compound_clip` · `flatten_compound_clip` · `list_templates` · `apply_template`
+
 </details>
 
 ---
@@ -313,7 +320,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ```
 fcp-mcp-server/           ~7k lines Python
-├── server.py              MCP entry point — 47 tools, 5 prompts, resource discovery
+├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 ├── fcpxml/
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
