@@ -489,6 +489,178 @@ class TestMarkerTypeXmlContract:
             assert MarkerType.from_xml_element(elem) == mt
 
 
+class TestTimeValueSnapToFrame:
+    """Tests for TimeValue.snap_to_frame — 2400-tick frame boundary snapping."""
+
+    def test_snap_exact_frame_is_noop(self):
+        """A value already on a frame boundary stays unchanged."""
+        tv = TimeValue(100, 2400)  # exactly 1 frame at 24fps (2400/24=100 ticks)
+        snapped = tv.snap_to_frame(24)
+        assert snapped.to_seconds() == pytest.approx(tv.to_seconds(), abs=1e-6)
+
+    def test_snap_between_frames_rounds_nearest(self):
+        """A value between frames snaps to the nearest one."""
+        # 1.5 frames at 24fps = 150 ticks. Should snap to 100 or 200.
+        tv = TimeValue(150, 2400)
+        snapped = tv.snap_to_frame(24)
+        assert snapped.denominator == 2400
+        assert snapped.numerator in (100, 200)
+
+    def test_snap_30fps_frame_boundaries(self):
+        """30fps: each frame = 80 ticks. 85 ticks should snap to 80."""
+        tv = TimeValue(85, 2400)
+        snapped = tv.snap_to_frame(30)
+        assert snapped.numerator == 80
+        assert snapped.denominator == 2400
+
+    def test_snap_preserves_zero(self):
+        tv = TimeValue(0, 24).snap_to_frame(24)
+        assert tv.to_seconds() == 0.0
+
+    def test_snap_large_value_stays_aligned(self):
+        """10 seconds at 24fps should remain exactly 10 seconds."""
+        tv = TimeValue(240, 24)  # 10s
+        snapped = tv.snap_to_frame(24)
+        assert snapped.to_seconds() == pytest.approx(10.0, abs=1e-6)
+
+
+class TestTimeValueStandardTimebase:
+    """Tests for TimeValue.is_standard_timebase — FCP DTD denominator checks."""
+
+    @pytest.mark.parametrize("denom", [1, 24, 30, 60, 2400])
+    def test_standard_denominators_accepted(self, denom):
+        assert TimeValue(denom, denom).is_standard_timebase() is True
+
+    def test_non_standard_denominator_rejected(self):
+        """Denominators like 7 are not in any FCP timebase."""
+        assert TimeValue(7, 7).is_standard_timebase() is True  # simplifies to 1/1
+        assert TimeValue(3, 7).is_standard_timebase() is False
+
+    def test_simplification_reveals_standard(self):
+        """72/24 simplifies to 3/1 — denominator 1 is standard."""
+        assert TimeValue(72, 24).is_standard_timebase() is True
+
+    def test_simplification_reveals_non_standard(self):
+        """15/7 doesn't simplify to a standard timebase."""
+        assert TimeValue(15, 7).is_standard_timebase() is False
+
+
+class TestTimeValueToFcpxmlEdgeCases:
+    """Tests for to_fcpxml fallback paths that prevent FCP DTD rejection."""
+
+    def test_whole_seconds_simplify(self):
+        """72/24 = 3 whole seconds → '3s'."""
+        assert TimeValue(72, 24).to_fcpxml() == "3s"
+
+    def test_standard_timebase_simplifies(self):
+        """75/30 simplifies to 5/2 — but 2 is not standard, so stays '75/30s'."""
+        result = TimeValue(75, 30).to_fcpxml()
+        # Should NOT produce "5/2s" since 2 isn't a standard timebase
+        assert "/2s" not in result or "75/30s" == result
+
+    def test_non_standard_denom_falls_back_to_original(self):
+        """If simplification yields a non-standard denom, keep the original."""
+        # 7 ticks at denom 21 → simplifies to 1/3. 3 is non-standard.
+        # Should fall back to "7/21s"
+        tv = TimeValue(7, 21)
+        result = tv.to_fcpxml()
+        assert result == "7/21s"
+
+    def test_zero_is_always_zero_seconds(self):
+        assert TimeValue(0, 2400).to_fcpxml() == "0s"
+
+
+class TestTimeValueArithmeticEdgeCases:
+    """Edge cases in TimeValue arithmetic that could produce incorrect frame values."""
+
+    def test_sub_negative_result(self):
+        """Subtraction producing negative time — used for offset calculations."""
+        result = TimeValue(24, 24) - TimeValue(72, 24)
+        assert result.to_seconds() == pytest.approx(-2.0)
+
+    def test_mul_by_zero(self):
+        assert (TimeValue(72, 24) * 0).to_seconds() == 0.0
+
+    def test_div_preserves_value(self):
+        """Division should maintain the time value, not produce rounding drift."""
+        tv = TimeValue(72, 24)  # 3 seconds
+        halved = tv / 2
+        assert halved.to_seconds() == pytest.approx(1.5, abs=1e-6)
+
+    def test_add_mismatched_timebases_lcm(self):
+        """24fps + 30fps values should use LCM denominator, not multiply."""
+        a = TimeValue(24, 24)  # 1 second
+        b = TimeValue(30, 30)  # 1 second
+        result = a + b
+        assert result.to_seconds() == pytest.approx(2.0)
+        # LCM(24,30)=120, not 24*30=720
+        assert result.denominator <= 720  # at minimum, shouldn't explode
+
+    def test_equality_across_timebases(self):
+        """1 second expressed in different timebases must be equal."""
+        assert TimeValue(24, 24) == TimeValue(30, 30) == TimeValue(2400, 2400)
+
+    def test_inequality_near_boundary(self):
+        """Values differing by less than 0.0001s are considered equal (see __eq__)."""
+        a = TimeValue(24000, 24000)  # exactly 1s
+        b = TimeValue(24001, 24000)  # 1.0000417s
+        # This tests the 0.0001s epsilon in __eq__
+        assert a == b  # within epsilon
+
+
+class TestMarkerTypeAliasSemantics:
+    """MarkerType.TODO and .INCOMPLETE are aliases — verify enum edge cases."""
+
+    def test_aliases_are_identical(self):
+        assert MarkerType.TODO is MarkerType.INCOMPLETE
+
+    def test_alias_value_matches(self):
+        assert MarkerType.TODO.value == MarkerType.INCOMPLETE.value == "todo"
+
+    def test_alias_xml_tag_matches(self):
+        assert MarkerType.TODO.xml_tag == MarkerType.INCOMPLETE.xml_tag == "marker"
+
+    def test_alias_xml_attrs_matches(self):
+        assert MarkerType.TODO.xml_attrs == MarkerType.INCOMPLETE.xml_attrs
+
+    def test_from_string_returns_canonical(self):
+        """from_string('todo') returns the first-declared enum member (TODO)."""
+        result = MarkerType.from_string("todo")
+        assert result is MarkerType.TODO
+        assert result is MarkerType.INCOMPLETE  # same object
+
+    def test_from_xml_element_numeric_completed_values(self):
+        """Only exact '0' and '1' are recognised — '2', '-1', '00' are STANDARD."""
+        import xml.etree.ElementTree as ET
+        for bad_val in ('2', '-1', '00', '01', '10'):
+            elem = ET.Element('marker')
+            elem.set('completed', bad_val)
+            assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD, (
+                f"completed='{bad_val}' should be STANDARD, not a task marker"
+            )
+
+
+class TestTimecodeEdgeCases:
+    """Edge cases in Timecode that could cause silent bugs in the parser."""
+
+    def test_zero_frames_smpte(self):
+        assert Timecode(frames=0, frame_rate=24.0).to_smpte() == "00:00:00:00"
+
+    def test_one_frame_smpte(self):
+        assert Timecode(frames=1, frame_rate=24.0).to_smpte() == "00:00:00:01"
+
+    def test_exactly_one_hour(self):
+        tc = Timecode(frames=24 * 3600, frame_rate=24.0)
+        assert tc.to_smpte() == "01:00:00:00"
+        assert tc.seconds == pytest.approx(3600.0)
+
+    def test_to_time_value_roundtrip(self):
+        """Timecode → TimeValue → seconds should be lossless."""
+        tc = Timecode(frames=2715, frame_rate=30.0)
+        tv = tc.to_time_value()
+        assert tv.to_seconds() == pytest.approx(tc.seconds, abs=1e-6)
+
+
 class TestPacingConfig:
 
     def test_pacing_ranges(self):

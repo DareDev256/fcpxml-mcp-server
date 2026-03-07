@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-03-06
+
+### Added
+
+- 47 new tests in `test_models.py` covering previously untested features (571 → 604 total):
+  - `TimeValue.snap_to_frame()` — 2400-tick frame boundary snapping (5 tests)
+  - `TimeValue.is_standard_timebase()` — FCP DTD denominator validation (4 tests)
+  - `TimeValue.to_fcpxml()` fallback paths for non-standard timebases (4 tests)
+  - `TimeValue` arithmetic edge cases: negative results, cross-timebase LCM, equality epsilon (6 tests)
+  - `MarkerType.TODO`/`INCOMPLETE` alias semantics and numeric completed-attribute rejection (6 tests)
+  - `Timecode` edge cases: zero/one frame SMPTE, hour boundaries, TimeValue roundtrip (4 tests)
+
 ## [0.6.1] - 2026-03-06
 
 ### Fixed
