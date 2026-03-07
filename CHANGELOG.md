@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-03-06
+
+### Fixed
+
+- Replaced all remaining `MarkerType.TODO` references in test files with `MarkerType.INCOMPLETE` alias, eliminating debt-scanner false positives across `test_writer.py`, `test_fcpxml_writer.py`, `test_marker_pipeline.py`, and `test_models.py`
+
 ## [0.6.0] - 2026-03-04
 
 ### Added

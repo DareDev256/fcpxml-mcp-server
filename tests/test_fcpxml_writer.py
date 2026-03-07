@@ -398,14 +398,14 @@ def test_chapter_marker_no_note(writer, fps):
 
 
 def test_todo_marker_completed_attr(writer, fps):
-    """TODO markers must emit completed='0' — the only way FCP recognises them as open tasks."""
+    """INCOMPLETE markers must emit completed='0' — the only way FCP recognises them as open tasks."""
     clip = Clip(
         name="Todo", start=Timecode(frames=0, frame_rate=fps),
         duration=Timecode(frames=48, frame_rate=fps),
         media_path="file:///media/todo.mov",
         markers=[Marker(
             name="Fix color", start=Timecode(frames=6, frame_rate=fps),
-            marker_type=MarkerType.TODO,
+            marker_type=MarkerType.INCOMPLETE,
         )],
     )
     tl = Timeline(name="T", duration=Timecode(frames=48, frame_rate=fps),
@@ -461,7 +461,7 @@ def test_all_marker_types_on_one_clip(writer, fps):
         Marker(name="Std", start=Timecode(frames=0, frame_rate=fps),
                marker_type=MarkerType.STANDARD),
         Marker(name="Task", start=Timecode(frames=6, frame_rate=fps),
-               marker_type=MarkerType.TODO),
+               marker_type=MarkerType.INCOMPLETE),
         Marker(name="Done", start=Timecode(frames=12, frame_rate=fps),
                marker_type=MarkerType.COMPLETED),
         Marker(name="Ch1", start=Timecode(frames=18, frame_rate=fps),

@@ -251,12 +251,12 @@ def test_add_marker_completed(temp_fcpxml):
 
 
 def test_marker_type_roundtrip(temp_fcpxml, tmp_path):
-    """TODO and COMPLETED markers survive save/re-parse without losing their type."""
+    """INCOMPLETE and COMPLETED markers survive save/re-parse without losing their type."""
     from fcpxml.models import MarkerType
     from fcpxml.parser import FCPXMLParser
 
     modifier = FCPXMLModifier(temp_fcpxml)
-    modifier.add_marker('Broll_City', '00:00:00:06', 'Todo task', MarkerType.TODO)
+    modifier.add_marker('Broll_City', '00:00:00:06', 'Todo task', MarkerType.INCOMPLETE)
     modifier.add_marker('Broll_City', '00:00:00:12', 'Done task', MarkerType.COMPLETED)
 
     output = str(tmp_path / 'roundtrip.fcpxml')
@@ -268,12 +268,12 @@ def test_marker_type_roundtrip(temp_fcpxml, tmp_path):
     for clip in project.primary_timeline.clips:
         all_markers.extend(clip.markers)
     types = {m.name: m.marker_type for m in all_markers}
-    assert types['Todo task'] == MarkerType.TODO
+    assert types['Todo task'] == MarkerType.INCOMPLETE
     assert types['Done task'] == MarkerType.COMPLETED
 
 
 def test_marker_type_from_string_roundtrip(temp_fcpxml, tmp_path):
-    """MarkerType.from_string('todo') → write → parse must survive as TODO, not STANDARD."""
+    """MarkerType.from_string('todo') → write → parse must survive as INCOMPLETE, not STANDARD."""
     from fcpxml.models import MarkerType
     from fcpxml.parser import FCPXMLParser
 
@@ -292,8 +292,8 @@ def test_marker_type_from_string_roundtrip(temp_fcpxml, tmp_path):
     for clip in project.primary_timeline.clips:
         all_markers.extend(clip.markers)
     types = {m.name: m.marker_type for m in all_markers}
-    assert types['Via string'] == MarkerType.TODO
-    assert types['Via alias'] == MarkerType.TODO
+    assert types['Via string'] == MarkerType.INCOMPLETE
+    assert types['Via alias'] == MarkerType.INCOMPLETE
 
 
 def test_marker_completed_attr_no_whitespace(temp_fcpxml):
@@ -301,10 +301,10 @@ def test_marker_completed_attr_no_whitespace(temp_fcpxml):
     from fcpxml.models import MarkerType
 
     modifier = FCPXMLModifier(temp_fcpxml)
-    todo = modifier.add_marker('Broll_City', '00:00:00:06', 'Strict0', MarkerType.TODO)
+    todo = modifier.add_marker('Broll_City', '00:00:00:06', 'Strict0', MarkerType.INCOMPLETE)
     done = modifier.add_marker('Broll_City', '00:00:00:12', 'Strict1', MarkerType.COMPLETED)
 
-    assert todo.get('completed') == '0', "TODO marker must write exact '0'"
+    assert todo.get('completed') == '0', "INCOMPLETE marker must write exact '0'"
     assert done.get('completed') == '1', "COMPLETED marker must write exact '1'"
     # Verify no leading/trailing whitespace
     assert todo.get('completed').strip() == todo.get('completed')

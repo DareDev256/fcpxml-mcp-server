@@ -348,8 +348,8 @@ class TestValidationResult:
 class TestMarkerType:
 
     @pytest.mark.parametrize("value,expected", [
-        ("todo", MarkerType.TODO),
-        ("TODO", MarkerType.TODO),
+        ("todo", MarkerType.INCOMPLETE),
+        ("TODO", MarkerType.INCOMPLETE),
         ("completed", MarkerType.COMPLETED),
         ("COMPLETED", MarkerType.COMPLETED),
         ("standard", MarkerType.STANDARD),
@@ -359,7 +359,7 @@ class TestMarkerType:
         assert MarkerType.from_string(value) == expected
 
     @pytest.mark.parametrize("alias,expected", [
-        ("todo-marker", MarkerType.TODO),
+        ("todo-marker", MarkerType.INCOMPLETE),
         ("completed-marker", MarkerType.COMPLETED),
         ("chapter-marker", MarkerType.CHAPTER),
     ])
@@ -368,8 +368,8 @@ class TestMarkerType:
         assert MarkerType.from_string(alias) == expected
 
     @pytest.mark.parametrize("value,expected", [
-        ("Todo", MarkerType.TODO),
-        ("tOdO", MarkerType.TODO),
+        ("Todo", MarkerType.INCOMPLETE),
+        ("tOdO", MarkerType.INCOMPLETE),
         ("Completed", MarkerType.COMPLETED),
         ("cOMPLETED", MarkerType.COMPLETED),
         ("Standard", MarkerType.STANDARD),
@@ -380,7 +380,7 @@ class TestMarkerType:
         assert MarkerType.from_string(value) == expected
 
     @pytest.mark.parametrize("alias,expected", [
-        ("  todo-marker  ", MarkerType.TODO),
+        ("  todo-marker  ", MarkerType.INCOMPLETE),
         (" completed-marker ", MarkerType.COMPLETED),
         ("\tchapter-marker\t", MarkerType.CHAPTER),
     ])
@@ -390,7 +390,7 @@ class TestMarkerType:
 
     def test_enum_values_are_lowercase(self):
         """Enum .value must be lowercase strings — they're used as dict keys."""
-        assert MarkerType.TODO.value == "todo"
+        assert MarkerType.INCOMPLETE.value == "todo"
         assert MarkerType.COMPLETED.value == "completed"
         assert MarkerType.STANDARD.value == "standard"
         assert MarkerType.CHAPTER.value == "chapter"
@@ -401,7 +401,7 @@ class TestMarkerType:
 
     def test_xml_tag_chapter_vs_marker(self):
         assert MarkerType.CHAPTER.xml_tag == "chapter-marker"
-        assert MarkerType.TODO.xml_tag == "marker"
+        assert MarkerType.INCOMPLETE.xml_tag == "marker"
         assert MarkerType.COMPLETED.xml_tag == "marker"
         assert MarkerType.STANDARD.xml_tag == "marker"
 
@@ -419,7 +419,7 @@ class TestMarkerTypeXmlContract:
         import xml.etree.ElementTree as ET
         elem = ET.Element('marker')
         elem.set('completed', '0')
-        assert MarkerType.from_xml_element(elem) == MarkerType.TODO
+        assert MarkerType.from_xml_element(elem) == MarkerType.INCOMPLETE
 
     def test_from_xml_element_completed(self):
         import xml.etree.ElementTree as ET
@@ -468,7 +468,7 @@ class TestMarkerTypeXmlContract:
         assert MarkerType.from_xml_element(elem) == MarkerType.CHAPTER
 
     def test_xml_attrs_todo(self):
-        assert MarkerType.TODO.xml_attrs == {'completed': '0'}
+        assert MarkerType.INCOMPLETE.xml_attrs == {'completed': '0'}
 
     def test_xml_attrs_completed(self):
         assert MarkerType.COMPLETED.xml_attrs == {'completed': '1'}

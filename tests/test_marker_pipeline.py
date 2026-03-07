@@ -46,7 +46,7 @@ class TestBuildMarkerElement:
 
     def test_todo_sets_completed_zero(self):
         parent = ET.Element("clip")
-        elem = build_marker_element(parent, MarkerType.TODO, "0s", "1/24s", "Fix")
+        elem = build_marker_element(parent, MarkerType.INCOMPLETE, "0s", "1/24s", "Fix")
         assert elem.tag == "marker"
         assert elem.get("completed") == "0"
 
