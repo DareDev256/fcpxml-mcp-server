@@ -440,7 +440,7 @@ class TestMarkerTypeXmlContract:
         assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
 
     def test_from_xml_element_whitespace_padded_zero_is_standard(self):
-        """Whitespace around '0' must NOT match TODO — strict exact matching."""
+        """Whitespace around '0' must NOT match INCOMPLETE — strict exact matching."""
         import xml.etree.ElementTree as ET
         elem = ET.Element('marker')
         elem.set('completed', ' 0 ')
@@ -454,7 +454,7 @@ class TestMarkerTypeXmlContract:
         assert MarkerType.from_xml_element(elem) == MarkerType.STANDARD
 
     def test_from_xml_element_empty_completed_is_standard(self):
-        """An empty completed='' attribute must fall to STANDARD, not TODO."""
+        """An empty completed='' attribute must fall to STANDARD, not INCOMPLETE."""
         import xml.etree.ElementTree as ET
         elem = ET.Element('marker')
         elem.set('completed', '')
@@ -609,25 +609,25 @@ class TestTimeValueArithmeticEdgeCases:
 
 
 class TestMarkerTypeAliasSemantics:
-    """MarkerType.TODO and .INCOMPLETE are aliases — verify enum edge cases."""
+    """MarkerType.INCOMPLETE is canonical; .TODO is a backward-compat alias."""
 
     def test_aliases_are_identical(self):
-        assert MarkerType.TODO is MarkerType.INCOMPLETE
+        assert MarkerType.INCOMPLETE is MarkerType.TODO
 
     def test_alias_value_matches(self):
-        assert MarkerType.TODO.value == MarkerType.INCOMPLETE.value == "todo"
+        assert MarkerType.INCOMPLETE.value == MarkerType.TODO.value == "todo"
 
     def test_alias_xml_tag_matches(self):
-        assert MarkerType.TODO.xml_tag == MarkerType.INCOMPLETE.xml_tag == "marker"
+        assert MarkerType.INCOMPLETE.xml_tag == MarkerType.TODO.xml_tag == "marker"
 
     def test_alias_xml_attrs_matches(self):
-        assert MarkerType.TODO.xml_attrs == MarkerType.INCOMPLETE.xml_attrs
+        assert MarkerType.INCOMPLETE.xml_attrs == MarkerType.TODO.xml_attrs
 
     def test_from_string_returns_canonical(self):
-        """from_string('todo') returns the first-declared enum member (TODO)."""
+        """from_string('todo') returns the canonical enum member (INCOMPLETE)."""
         result = MarkerType.from_string("todo")
-        assert result is MarkerType.TODO
-        assert result is MarkerType.INCOMPLETE  # same object
+        assert result is MarkerType.INCOMPLETE
+        assert result is MarkerType.TODO  # same object
 
     def test_from_xml_element_numeric_completed_values(self):
         """Only exact '0' and '1' are recognised — '2', '-1', '00' are STANDARD."""

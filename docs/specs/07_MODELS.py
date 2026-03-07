@@ -20,12 +20,12 @@ from datetime import timedelta
 class MarkerType(Enum):
     """Types of markers in Final Cut Pro.
 
-    In FCPXML, TODO and COMPLETED are both <marker> elements
-    distinguished by the completed attribute: '0' = TODO, '1' = COMPLETED.
+    In FCPXML, INCOMPLETE and COMPLETED are both <marker> elements
+    distinguished by the completed attribute: '0' = INCOMPLETE, '1' = COMPLETED.
     Only CHAPTER uses a separate <chapter-marker> tag.
     """
     STANDARD = "standard"
-    TODO = "todo"
+    INCOMPLETE = "todo"
     CHAPTER = "chapter"
     COMPLETED = "completed"
 

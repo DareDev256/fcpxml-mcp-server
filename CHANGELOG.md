@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-03-06
+
+### Changed
+
+- Made `MarkerType.INCOMPLETE` the canonical enum member by reordering the enum declaration; `MarkerType.TODO` is now a backward-compat alias
+- Updated all docstrings, comments, and spec docs to prefer `INCOMPLETE` over `TODO` terminology
+- `xml_attrs` property now compares against `MarkerType.INCOMPLETE` instead of `MarkerType.TODO`
+
 ## [0.6.2] - 2026-03-06
 
 ### Added

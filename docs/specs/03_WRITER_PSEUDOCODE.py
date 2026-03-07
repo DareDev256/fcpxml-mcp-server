@@ -19,7 +19,7 @@ import copy
 
 class MarkerType(Enum):
     STANDARD = "standard"
-    TODO = "todo"
+    INCOMPLETE = "todo"
     CHAPTER = "chapter"
     COMPLETED = "completed"
 

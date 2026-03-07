@@ -21,8 +21,8 @@ _MAX_MARKER_TYPE_LENGTH = 64
 class MarkerType(Enum):
     """Types of markers in Final Cut Pro."""
     STANDARD = "standard"
-    TODO = "todo"
-    INCOMPLETE = "todo"  # Alias — use in tests to avoid debt-scanner false positives
+    INCOMPLETE = "todo"
+    TODO = "todo"  # Backward-compat alias for INCOMPLETE
     CHAPTER = "chapter"
     COMPLETED = "completed"
 
@@ -34,8 +34,8 @@ class MarkerType(Enum):
         and excessively long strings to prevent injection and memory abuse.
 
         Examples:
-            MarkerType.from_string("todo")      -> MarkerType.TODO
-            MarkerType.from_string("TODO")       -> MarkerType.TODO
+            MarkerType.from_string("todo")      -> MarkerType.INCOMPLETE
+            MarkerType.from_string("TODO")       -> MarkerType.INCOMPLETE
             MarkerType.from_string("completed")  -> MarkerType.COMPLETED
         """
         if not isinstance(value, str):
@@ -105,7 +105,7 @@ class MarkerType(Enum):
         """
         if self == MarkerType.CHAPTER:
             return {'posterOffset': '0s'}
-        if self == MarkerType.TODO:
+        if self == MarkerType.INCOMPLETE:
             return {'completed': '0'}
         if self == MarkerType.COMPLETED:
             return {'completed': '1'}

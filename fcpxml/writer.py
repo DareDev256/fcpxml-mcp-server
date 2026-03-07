@@ -548,7 +548,7 @@ class FCPXMLModifier:
 
     Usage:
         modifier = FCPXMLModifier("project.fcpxml")
-        modifier.add_marker("clip_0", "00:00:10:00", "Review", MarkerType.TODO)
+        modifier.add_marker("clip_0", "00:00:10:00", "Review", MarkerType.INCOMPLETE)
         modifier.trim_clip("clip_1", trim_end="-2s")
         modifier.save("project_modified.fcpxml")
     """

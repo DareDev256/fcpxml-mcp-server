@@ -413,7 +413,7 @@ def test_todo_marker_completed_attr(writer, fps):
     root = writer._build_fcpxml(Project(name="T", timelines=[tl]))
     marker = root.find(".//asset-clip/marker")
     assert marker is not None
-    assert marker.get("completed") == "0", "TODO marker must have completed='0'"
+    assert marker.get("completed") == "0", "INCOMPLETE marker must have completed='0'"
     assert marker.get("value") == "Fix color"
 
 
