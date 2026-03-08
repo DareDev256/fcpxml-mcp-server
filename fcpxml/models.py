@@ -19,10 +19,33 @@ _MAX_MARKER_TYPE_LENGTH = 64
 
 
 class MarkerType(Enum):
-    """Types of markers in Final Cut Pro."""
+    """Types of markers in Final Cut Pro.
+
+    Members:
+        STANDARD   — Default marker with no completion state.
+        INCOMPLETE — Task marker (completed="0" in FCPXML).  ← canonical name
+        TODO       — Alias for INCOMPLETE. Kept for backward compatibility;
+                     resolves to the same object (``MarkerType.TODO is
+                     MarkerType.INCOMPLETE``).  Python enums treat the first
+                     member with a given value as canonical; all subsequent
+                     members sharing that value become aliases.
+        CHAPTER    — Chapter marker (``<chapter-marker>`` element).
+        COMPLETED  — Task marker with completed="1".
+
+    Serialization helpers:
+        ``from_string()``      — Accepts values, names, and legacy aliases
+                                 (e.g. ``"todo-marker"``).  Always returns the
+                                 canonical member.
+        ``from_xml_element()`` — Reads an ``lxml``/``ElementTree`` element and
+                                 returns the appropriate type based on the tag
+                                 name and ``completed`` attribute.
+        ``xml_tag``            — The FCPXML element tag to emit when writing.
+        ``xml_attrs``          — Extra attributes required when writing (e.g.
+                                 ``completed="0"`` for INCOMPLETE).
+    """
     STANDARD = "standard"
     INCOMPLETE = "todo"
-    TODO = "todo"  # Backward-compat alias for INCOMPLETE
+    TODO = "todo"  # Backward-compat alias — resolves to INCOMPLETE at runtime
     CHAPTER = "chapter"
     COMPLETED = "completed"
 

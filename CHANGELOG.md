@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-03-08
+
+### Changed
+
+- Expanded `MarkerType` class docstring with full member inventory, alias semantics, and serialization helper reference — the canonical `INCOMPLETE` / `TODO` alias relationship is now documented where developers will actually read it
+- Fixed ambiguous `# TODO` comment in `test_models.py` that read like a code TODO rather than an enum member reference
+
 ## [0.6.4] - 2026-03-08
 
 ### Fixed

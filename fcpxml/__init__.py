@@ -65,7 +65,7 @@ from .writer import (
     write_fcpxml,
 )
 
-__version__ = "0.6.0"
+__version__ = "0.6.5"
 __author__ = "DareDev256"
 
 __all__ = [

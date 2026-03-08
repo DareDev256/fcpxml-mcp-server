@@ -627,7 +627,7 @@ class TestMarkerTypeAliasSemantics:
         """from_string('todo') returns the canonical enum member (INCOMPLETE)."""
         result = MarkerType.from_string("todo")
         assert result is MarkerType.INCOMPLETE
-        assert result is MarkerType.INCOMPLETE  # TODO alias resolves to same object
+        assert result is MarkerType.INCOMPLETE  # .TODO alias is the same object
 
     def test_from_xml_element_numeric_completed_values(self):
         """Only exact '0' and '1' are recognised — '2', '-1', '00' are STANDARD."""
