@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-03-08
+
+### Changed
+
+- Extracted `_tc()` helper method in `FCPXMLParser` — consolidates 12 identical `Timecode.from_rational(elem.get(...), self.frame_rate)` call sites into a single method, centralising frame-rate threading
+- Extracted `_iter_connected_elements()` generator — deduplicates the connected clip iteration logic shared between `_parse_connected_clips` and `_parse_gap_connected_clips`, eliminating 15 lines of near-identical traversal code
+- Removed intermediate variables (`duration_str`, `start_str`, `clip_tags`) that existed only to feed into the now-inlined helper calls
+
 ## [0.6.5] - 2026-03-08
 
 ### Changed

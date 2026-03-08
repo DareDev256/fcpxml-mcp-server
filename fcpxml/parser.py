@@ -35,6 +35,14 @@ class FCPXMLParser:
         self.formats: Dict[str, Dict[str, Any]] = {}
         self.frame_rate: float = 24.0
 
+    def _tc(self, elem: ET.Element, attr: str, default: str = '0s') -> Timecode:
+        """Parse a rational time attribute from an XML element.
+
+        Centralises the ``Timecode.from_rational(elem.get(attr), frame_rate)``
+        pattern that repeats across every clip/marker/transition parser.
+        """
+        return Timecode.from_rational(elem.get(attr, default), self.frame_rate)
+
     def parse_file(self, filepath: str) -> Project:
         """Parse an FCPXML file and return a Project object.
 
@@ -119,13 +127,12 @@ class FCPXMLParser:
         if sequence is None:
             return None
 
-        duration_str = sequence.get('duration', '0s')
         format_ref = sequence.get('format', '')
         fmt = self.formats.get(format_ref, {})
 
         timeline = Timeline(
             name=name,
-            duration=Timecode.from_rational(duration_str, self.frame_rate),
+            duration=self._tc(sequence, 'duration'),
             frame_rate=self.frame_rate,
             width=fmt.get('width', 1920),
             height=fmt.get('height', 1080)
@@ -151,8 +158,7 @@ class FCPXMLParser:
                     self._parse_connected_clips(elem, clip, timeline)
                     current_offset += clip.duration.frames
             elif tag == 'gap':
-                duration_str = elem.get('duration', '0s')
-                gap_frames = Timecode.from_rational(duration_str, self.frame_rate).frames
+                gap_frames = self._tc(elem, 'duration').frames
                 self._parse_gap_connected_clips(elem, current_offset, timeline)
                 current_offset += gap_frames
             elif tag == 'transition':
@@ -163,8 +169,8 @@ class FCPXMLParser:
     def _parse_clip(self, elem: ET.Element, offset: int) -> Optional[Clip]:
         """Parse a clip element."""
         name = elem.get('name', 'Untitled Clip')
-        duration = Timecode.from_rational(elem.get('duration', '0s'), self.frame_rate)
-        source_start = Timecode.from_rational(elem.get('start', '0s'), self.frame_rate)
+        duration = self._tc(elem, 'duration')
+        source_start = self._tc(elem, 'start')
         ref = elem.get('ref', '')
         media_path = self.resources.get(ref, {}).get('src', '')
 
@@ -196,8 +202,8 @@ class FCPXMLParser:
         """
         return Marker(
             name=elem.get('value', ''),
-            start=Timecode.from_rational(elem.get('start', '0s'), self.frame_rate),
-            duration=Timecode.from_rational(elem.get('duration', '1/24s'), self.frame_rate),
+            start=self._tc(elem, 'start'),
+            duration=self._tc(elem, 'duration', '1/24s'),
             marker_type=MarkerType.from_xml_element(elem),
             note=elem.get('note', '')
         )
@@ -218,18 +224,17 @@ class FCPXMLParser:
 
     def _parse_keyword(self, elem: ET.Element) -> Optional[Keyword]:
         """Parse a keyword element."""
-        start_str, duration_str = elem.get('start'), elem.get('duration')
         return Keyword(
             value=elem.get('value', ''),
-            start=Timecode.from_rational(start_str, self.frame_rate) if start_str else None,
-            duration=Timecode.from_rational(duration_str, self.frame_rate) if duration_str else None
+            start=self._tc(elem, 'start') if elem.get('start') else None,
+            duration=self._tc(elem, 'duration') if elem.get('duration') else None,
         )
 
     def _parse_transition(self, elem: ET.Element, offset: int) -> Optional[Transition]:
         """Parse a transition element."""
         return Transition(
             name=elem.get('name', 'Cross Dissolve'),
-            duration=Timecode.from_rational(elem.get('duration', '1s'), self.frame_rate),
+            duration=self._tc(elem, 'duration', '1s'),
             start=Timecode(frames=offset, frame_rate=self.frame_rate)
         )
 
@@ -267,58 +272,50 @@ class FCPXMLParser:
 
         return result
 
-    def _parse_connected_clips(self, parent_elem: ET.Element,
-                                parent_clip: Clip, timeline: Timeline):
-        """Parse connected clips attached to a primary storyline clip."""
-        clip_tags = _CONNECTED_CLIP_TAGS
+    def _iter_connected_elements(self, parent_elem: ET.Element, parent_name: str):
+        """Yield ``(element, lane, parent_name)`` tuples for connected clips.
+
+        Shared iteration logic for both spine-clip and gap-attached connected
+        clips — walks direct children with a ``lane`` attribute and
+        ``<storyline>`` wrappers, yielding parsed :class:`ConnectedClip`
+        objects without prescribing where they get stored.
+        """
         for child in parent_elem:
             lane = child.get('lane')
-            if lane is not None and child.tag in clip_tags:
+            if lane is not None and child.tag in _CONNECTED_CLIP_TAGS:
                 connected = self._parse_one_connected_clip(
-                    child, int(lane), parent_clip.name)
+                    child, int(lane), parent_name)
                 if connected:
-                    parent_clip.connected_clips.append(connected)
-                    timeline.connected_clips.append(connected)
+                    yield connected
             elif child.tag == 'storyline':
                 lane_val = int(child.get('lane', '1'))
                 for sub_elem in child:
-                    if sub_elem.tag in clip_tags:
+                    if sub_elem.tag in _CONNECTED_CLIP_TAGS:
                         connected = self._parse_one_connected_clip(
-                            sub_elem, lane_val, parent_clip.name)
+                            sub_elem, lane_val, parent_name)
                         if connected:
-                            parent_clip.connected_clips.append(connected)
-                            timeline.connected_clips.append(connected)
+                            yield connected
+
+    def _parse_connected_clips(self, parent_elem: ET.Element,
+                                parent_clip: Clip, timeline: Timeline):
+        """Parse connected clips attached to a primary storyline clip."""
+        for connected in self._iter_connected_elements(parent_elem, parent_clip.name):
+            parent_clip.connected_clips.append(connected)
+            timeline.connected_clips.append(connected)
 
     def _parse_gap_connected_clips(self, gap_elem: ET.Element,
                                     gap_offset: int, timeline: Timeline):
         """Parse connected clips attached to gap elements."""
-        clip_tags = _CONNECTED_CLIP_TAGS
-        for child in gap_elem:
-            lane = child.get('lane')
-            if lane is not None and child.tag in clip_tags:
-                connected = self._parse_one_connected_clip(
-                    child, int(lane), f"gap@{gap_offset}")
-                if connected:
-                    timeline.connected_clips.append(connected)
-            elif child.tag == 'storyline':
-                lane_val = int(child.get('lane', '1'))
-                for sub_elem in child:
-                    if sub_elem.tag in clip_tags:
-                        connected = self._parse_one_connected_clip(
-                            sub_elem, lane_val, f"gap@{gap_offset}")
-                        if connected:
-                            timeline.connected_clips.append(connected)
+        for connected in self._iter_connected_elements(gap_elem, f"gap@{gap_offset}"):
+            timeline.connected_clips.append(connected)
 
     def _parse_one_connected_clip(self, elem: ET.Element, lane: int,
                                    parent_name: str) -> Optional[ConnectedClip]:
         """Parse a single connected clip element."""
         name = elem.get('name', 'Untitled')
-        duration = Timecode.from_rational(
-            elem.get('duration', '0s'), self.frame_rate)
-        start = Timecode.from_rational(
-            elem.get('start', '0s'), self.frame_rate)
-        offset = Timecode.from_rational(
-            elem.get('offset', '0s'), self.frame_rate)
+        duration = self._tc(elem, 'duration')
+        start = self._tc(elem, 'start')
+        offset = self._tc(elem, 'offset')
         ref = elem.get('ref', '')
         media_path = self.resources.get(ref, {}).get('src', '')
         role = elem.get('audioRole', '') or elem.get('videoRole', '')
