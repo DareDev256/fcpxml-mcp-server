@@ -49,7 +49,7 @@ class MarkerType(Enum):
         lowered = value.strip().lower()
         if not lowered:
             raise ValueError("Marker type cannot be empty")
-        # Accept legacy aliases from older specs (e.g. "todo-marker" → TODO)
+        # Accept legacy aliases from older specs (e.g. "todo-marker" → INCOMPLETE)
         aliases = {
             "todo-marker": "todo",
             "completed-marker": "completed",
@@ -73,7 +73,7 @@ class MarkerType(Enum):
 
         Rules (in priority order):
           1. <chapter-marker> tag → CHAPTER (completed attr ignored)
-          2. completed='0' (exact) → TODO
+          2. completed='0' (exact) → INCOMPLETE
           3. completed='1' (exact) → COMPLETED
           4. Everything else → STANDARD (including whitespace-padded,
              absent, empty, or non-boolean completed values)
@@ -86,7 +86,7 @@ class MarkerType(Enum):
             return cls.CHAPTER
         completed = elem.get('completed')
         if completed == '0':
-            return cls.TODO
+            return cls.INCOMPLETE
         if completed == '1':
             return cls.COMPLETED
         return cls.STANDARD

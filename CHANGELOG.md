@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-03-08
+
+### Fixed
+
+- `MarkerType.from_xml_element()` now returns `cls.INCOMPLETE` instead of `cls.TODO` — completes the canonical rename missed in v0.6.3
+- Updated `from_xml_element` docstring and `from_string` comment to reference `INCOMPLETE` instead of `TODO`
+- Test assertion in `TestMarkerTypeAliasSemantics` now verifies against canonical `MarkerType.INCOMPLETE`
+
 ## [0.6.3] - 2026-03-06
 
 ### Changed
