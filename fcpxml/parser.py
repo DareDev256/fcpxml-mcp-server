@@ -106,8 +106,11 @@ class FCPXMLParser:
             }
             frame_dur = fmt.get('frameDuration', '1/24s')
             if '/' in frame_dur:
-                num, denom = frame_dur.rstrip('s').split('/')
-                self.frame_rate = int(denom) / int(num)
+                parts = frame_dur.rstrip('s').split('/', 1)
+                num, denom = int(parts[0]), int(parts[1])
+                if num <= 0:
+                    raise ValueError(f"Invalid frameDuration numerator: {frame_dur}")
+                self.frame_rate = denom / num
 
         for asset in resources.findall('asset'):
             asset_id = asset.get('id', '')

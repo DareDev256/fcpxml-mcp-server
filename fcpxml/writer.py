@@ -568,8 +568,11 @@ class FCPXMLModifier:
         for fmt in self.root.findall('.//format'):
             frame_dur = fmt.get('frameDuration', '1/30s')
             if '/' in frame_dur:
-                num, denom = frame_dur.replace('s', '').split('/')
-                return int(denom) / int(num)
+                parts = frame_dur.replace('s', '').split('/', 1)
+                num, denom = int(parts[0]), int(parts[1])
+                if num <= 0:
+                    return 30.0
+                return denom / num
         return 30.0
 
     def _build_resource_index(self) -> None:
@@ -1242,7 +1245,7 @@ class FCPXMLModifier:
             new_clip.set('start', current_start.to_fcpxml())
             new_clip.set('duration', segment_duration.to_fcpxml())
 
-            spine.insert(clip_index + i, new_clip)
+            spine.insert(clip_index + len(new_clips), new_clip)
             new_clips.append(new_clip)
 
             # Update for next iteration

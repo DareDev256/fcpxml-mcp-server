@@ -879,3 +879,83 @@ class TestTemplateSystem:
         assert slot.default_duration == 5.0
         assert slot.lane == 0
         assert slot.required is True
+
+
+# ============================================================================
+# Defensive validation fixes (v0.6.7)
+# ============================================================================
+
+class TestZeroDivisionDefenses:
+    """Verify that malformed rational time values don't cause ZeroDivisionError."""
+
+    def test_snap_to_frame_rejects_zero_fps(self):
+        tv = TimeValue(100, 2400)
+        with pytest.raises(ValueError, match="fps must be positive"):
+            tv.snap_to_frame(0)
+
+    def test_snap_to_frame_rejects_negative_fps(self):
+        tv = TimeValue(100, 2400)
+        with pytest.raises(ValueError, match="fps must be positive"):
+            tv.snap_to_frame(-24)
+
+    def test_from_timecode_rejects_zero_denominator(self):
+        with pytest.raises(ValueError, match="Zero denominator"):
+            TimeValue.from_timecode("100/0s", 24)
+
+    def test_from_timecode_valid_rational_still_works(self):
+        tv = TimeValue.from_timecode("100/2400s", 24)
+        assert tv.numerator == 100
+        assert tv.denominator == 2400
+
+    def test_from_timecode_split_maxsplit_handles_extra_slashes(self):
+        # "1/2/3s" should fail int() on "2/3", not unpack error
+        with pytest.raises(ValueError):
+            TimeValue.from_timecode("1/2/3s", 24)
+
+    def test_parser_rejects_zero_numerator_frame_duration(self):
+        """Parser should raise on frameDuration with zero numerator."""
+        from fcpxml.parser import FCPXMLParser
+        xml_str = '''<?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="0/24s" width="1920" height="1080"/>
+            </resources>
+            <library><event><project name="test">
+                <sequence format="r1"><spine></spine></sequence>
+            </project></event></library>
+        </fcpxml>'''
+        with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+            f.write(xml_str)
+            f.flush()
+            try:
+                parser = FCPXMLParser()
+                with pytest.raises(ValueError, match="Invalid frameDuration numerator"):
+                    parser.parse_file(f.name)
+            finally:
+                os.unlink(f.name)
+
+    def test_writer_fps_fallback_on_zero_numerator(self):
+        """Writer should fall back to 30fps on zero-numerator frameDuration."""
+        from fcpxml.writer import FCPXMLModifier
+        xml_str = '''<?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="0/24s" width="1920" height="1080"/>
+                <asset id="r2" name="test" src="test.mov" start="0s" duration="10s"/>
+            </resources>
+            <library><event><project name="test">
+                <sequence format="r1"><spine>
+                    <clip name="C1" offset="0s" duration="5s" ref="r2"/>
+                </spine></sequence>
+            </project></event></library>
+        </fcpxml>'''
+        with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+            f.write(xml_str)
+            f.flush()
+            try:
+                mod = FCPXMLModifier(f.name)
+                assert mod.fps == 30.0  # Falls back to default
+            finally:
+                os.unlink(f.name)

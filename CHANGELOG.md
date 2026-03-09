@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.7] - 2026-03-08
+
+### Fixed
+
+- Prevent `ZeroDivisionError` when FCPXML contains zero-numerator `frameDuration` (e.g. `"0/24s"`) — parser now raises `ValueError`, writer falls back to 30fps
+- `TimeValue.from_timecode()` rejects zero-denominator rational strings (e.g. `"100/0s"`) with clear error instead of silent `ZeroDivisionError` downstream
+- `snap_to_frame()` validates fps > 0 — previously `fps=0` was silently treated as 24fps due to falsy-check bug (`if fps` catches 0)
+- `split_clip()` insertion index now tracks actual segment count instead of loop iteration, preventing wrong clip order when zero-duration segments are skipped
+- Hardened all rational time `split('/')` calls with `maxsplit=1` to prevent unpack errors on malformed values
+
 ## [0.6.6] - 2026-03-08
 
 ### Changed

@@ -250,8 +250,11 @@ class TimeValue:
         if tc.endswith('s'):
             tc_val = tc[:-1]
             if '/' in tc_val:
-                num, denom = tc_val.split('/')
-                return cls(int(num), int(denom))
+                parts = tc_val.split('/', 1)
+                num, denom = int(parts[0]), int(parts[1])
+                if denom == 0:
+                    raise ValueError(f"Zero denominator in timecode: {tc}")
+                return cls(num, denom)
             else:
                 seconds = float(tc_val)
                 frames = int(round(seconds * fps))
@@ -399,7 +402,9 @@ class TimeValue:
         Returns:
             New TimeValue snapped to the nearest frame in 2400-tick timebase.
         """
-        fps_int = int(fps) if fps else 24
+        fps_int = int(fps) if fps is not None else 24
+        if fps_int <= 0:
+            raise ValueError(f"fps must be positive, got {fps}")
         ticks_per_frame = 2400 // fps_int
         total_ticks = round(self.to_seconds() * 2400)
         snapped_ticks = round(total_ticks / ticks_per_frame) * ticks_per_frame
