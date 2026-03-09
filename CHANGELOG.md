@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-03-08
+
+### Changed
+
+- Extracted `_get_clip_times()` helper in `FCPXMLModifier` — consolidates repeated `_parse_time(clip.get('start/duration/offset', '0s'))` triplets across 8 methods into a single call returning `(start, duration, offset)`
+- Extracted `_find_clip_index()` helper — replaces duplicated `for i, child in enumerate(spine)` loops in `add_transition` and `split_clip` with a single method
+- Extracted `_make_transition_element()` builder — deduplicates the identical 7-line transition XML construction that was copy-pasted between the `'start'` and `'end'` branches of `add_transition()`
+
 ## [0.6.7] - 2026-03-08
 
 ### Fixed

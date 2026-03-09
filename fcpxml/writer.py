@@ -637,6 +637,41 @@ class FCPXMLModifier:
         """Parse a timecode string to TimeValue."""
         return TimeValue.from_timecode(tc, self.fps)
 
+    def _get_clip_times(
+        self, clip: ET.Element
+    ) -> tuple:
+        """Return (start, duration, offset) TimeValues for a clip element."""
+        return (
+            self._parse_time(clip.get('start', '0s')),
+            self._parse_time(clip.get('duration', '0s')),
+            self._parse_time(clip.get('offset', '0s')),
+        )
+
+    def _find_clip_index(self, spine: ET.Element, clip: ET.Element) -> int | None:
+        """Find the index of a clip in the spine. Returns None if not found."""
+        for i, child in enumerate(spine):
+            if child == clip:
+                return i
+        return None
+
+    def _make_transition_element(
+        self,
+        effect_name: str,
+        trans_offset: 'TimeValue',
+        trans_duration: 'TimeValue',
+        effect_ref_id: str | None,
+    ) -> ET.Element:
+        """Build a <transition> element with optional filter-video child."""
+        transition = ET.Element('transition')
+        transition.set('name', effect_name)
+        transition.set('offset', trans_offset.to_fcpxml())
+        transition.set('duration', trans_duration.to_fcpxml())
+        if effect_ref_id:
+            fv = ET.SubElement(transition, 'filter-video')
+            fv.set('ref', effect_ref_id)
+            fv.set('name', effect_name)
+        return transition
+
     def save(self, output_path: Optional[str] = None) -> str:
         """Write modified FCPXML to file."""
         out_path = output_path or str(self.path)
@@ -813,8 +848,7 @@ class FCPXMLModifier:
         if clip is None:
             raise ValueError(f"Clip not found: {clip_id}")
 
-        current_start = self._parse_time(clip.get('start', '0s'))
-        current_duration = self._parse_time(clip.get('duration', '0s'))
+        current_start, current_duration, _ = self._get_clip_times(clip)
 
         original_duration = current_duration
 
@@ -927,8 +961,7 @@ class FCPXMLModifier:
         elif target_position == 'end':
             if spine_children:
                 last = spine_children[-1]
-                last_offset = self._parse_time(last.get('offset', '0s'))
-                last_dur = self._parse_time(last.get('duration', '0s'))
+                _, last_dur, last_offset = self._get_clip_times(last)
                 target_offset = last_offset + last_dur
             else:
                 target_offset = TimeValue.zero()
@@ -1020,11 +1053,7 @@ class FCPXMLModifier:
         trans_duration = self._parse_time(duration)
 
         # Find clip index in spine
-        clip_index = None
-        for i, child in enumerate(spine):
-            if child == clip:
-                clip_index = i
-                break
+        clip_index = self._find_clip_index(spine, clip)
 
         if clip_index is None:
             raise ValueError(f"Clip not in primary storyline: {clip_id}")
@@ -1060,42 +1089,22 @@ class FCPXMLModifier:
 
         transitions_added = []
 
+        _, clip_dur, clip_offset = self._get_clip_times(clip)
+        half_dur = trans_duration * 0.5
+
         if position in ('end', 'both'):
-            clip_offset = self._parse_time(clip.get('offset', '0s'))
-            clip_dur = self._parse_time(clip.get('duration', '0s'))
-
-            # Transition centered on edit point
-            half_dur = trans_duration * 0.5
-            trans_offset = clip_offset + clip_dur - half_dur
-
-            transition = ET.Element('transition')
-            transition.set('name', effect_name)
-            transition.set('offset', trans_offset.to_fcpxml())
-            transition.set('duration', trans_duration.to_fcpxml())
-
-            if effect_ref_id:
-                fv = ET.SubElement(transition, 'filter-video')
-                fv.set('ref', effect_ref_id)
-                fv.set('name', effect_name)
-
+            end_offset = clip_offset + clip_dur - half_dur
+            transition = self._make_transition_element(
+                effect_name, end_offset, trans_duration, effect_ref_id
+            )
             spine.insert(clip_index + 1, transition)
             transitions_added.append(transition)
 
         if position in ('start', 'both'):
-            clip_offset = self._parse_time(clip.get('offset', '0s'))
-            half_dur = trans_duration * 0.5
-            trans_offset = clip_offset - half_dur
-
-            transition = ET.Element('transition')
-            transition.set('name', effect_name)
-            transition.set('offset', trans_offset.to_fcpxml())
-            transition.set('duration', trans_duration.to_fcpxml())
-
-            if effect_ref_id:
-                fv = ET.SubElement(transition, 'filter-video')
-                fv.set('ref', effect_ref_id)
-                fv.set('name', effect_name)
-
+            start_offset = clip_offset - half_dur
+            transition = self._make_transition_element(
+                effect_name, start_offset, trans_duration, effect_ref_id
+            )
             spine.insert(clip_index, transition)
             transitions_added.append(transition)
 
@@ -1200,19 +1209,13 @@ class FCPXMLModifier:
             raise ValueError(f"Clip not found: {clip_id}")
 
         # Find clip in spine
-        clip_index = None
-        for i, child in enumerate(spine):
-            if child == clip:
-                clip_index = i
-                break
+        clip_index = self._find_clip_index(spine, clip)
 
         if clip_index is None:
             raise ValueError(f"Clip not in spine: {clip_id}")
 
         # Get clip properties
-        clip_offset = self._parse_time(clip.get('offset', '0s'))
-        clip_start = self._parse_time(clip.get('start', '0s'))
-        clip_duration = self._parse_time(clip.get('duration', '0s'))
+        clip_start, clip_duration, clip_offset = self._get_clip_times(clip)
         clip_name = clip.get('name', 'Clip')
         clip.get('ref')
 
@@ -1281,8 +1284,7 @@ class FCPXMLModifier:
             if clip not in list(spine):
                 continue
 
-            clip_duration = self._parse_time(clip.get('duration', '0s'))
-            clip_offset = self._parse_time(clip.get('offset', '0s'))
+            _, clip_duration, clip_offset = self._get_clip_times(clip)
             clip_index = list(spine).index(clip)
 
             if ripple:
@@ -1357,8 +1359,7 @@ class FCPXMLModifier:
         for ff in reversed(flash_frames):
             clip = ff['clip']
             clip_index = list(spine).index(clip)
-            clip_duration = self._parse_time(clip.get('duration', '0s'))
-            clip_offset = self._parse_time(clip.get('offset', '0s'))
+            _, clip_duration, clip_offset = self._get_clip_times(clip)
 
             # Determine actual mode
             actual_mode = mode
@@ -1465,8 +1466,7 @@ class FCPXMLModifier:
                 if not clip_keywords.intersection(set(keywords)):
                     continue
 
-            current_duration = self._parse_time(clip.get('duration', '0s'))
-            current_start = self._parse_time(clip.get('start', '0s'))
+            current_start, current_duration, _ = self._get_clip_times(clip)
             original_duration = current_duration.to_seconds()
 
             # Check max duration
