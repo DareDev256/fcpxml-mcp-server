@@ -192,6 +192,12 @@ def test_parse_duration_rational(generator):
     assert abs(tv.to_seconds() - 10.0) < 0.1
 
 
+def test_parse_duration_fractional_seconds(generator):
+    """'1m30.5s' should parse to 90.5 seconds, not crash."""
+    tv = generator._parse_duration("1m30.5s")
+    assert abs(tv.to_seconds() - 90.5) < 0.5
+
+
 # ============================================================
 # _filter_clips
 # ============================================================
@@ -375,6 +381,25 @@ def test_select_clips_by_segments_distributes_unspecified_duration(generator):
     selected = generator._select_clips_by_segments(clips, segments, target, pacing)
     auto_clips = [c for c in selected if c.get("segment") == "Auto"]
     assert len(auto_clips) > 0
+
+
+def test_select_clips_by_segments_no_reuse_across_segments(generator):
+    """Clips used in one segment must not appear in subsequent segments."""
+    clips = generator._filter_clips()
+    # Two segments, both want all clips — second should get different ones
+    segments = [
+        SegmentSpec(name="Seg1", keywords=None, duration_seconds=5),
+        SegmentSpec(name="Seg2", keywords=None, duration_seconds=5),
+    ]
+    target = TimeValue.from_seconds(10.0, generator.fps)
+    pacing = PacingConfig(pacing="medium")
+
+    selected = generator._select_clips_by_segments(clips, segments, target, pacing)
+    seg1_names = [c['name'] for c in selected if c.get('segment') == 'Seg1']
+    seg2_names = [c['name'] for c in selected if c.get('segment') == 'Seg2']
+    # No clip name should appear in both segments
+    overlap = set(seg1_names) & set(seg2_names)
+    assert len(overlap) == 0, f"Clips reused across segments: {overlap}"
 
 
 # ============================================================

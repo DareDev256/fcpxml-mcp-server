@@ -110,6 +110,8 @@ class FCPXMLParser:
                 num, denom = int(parts[0]), int(parts[1])
                 if num <= 0:
                     raise ValueError(f"Invalid frameDuration numerator: {frame_dur}")
+                if denom <= 0:
+                    raise ValueError(f"Invalid frameDuration denominator: {frame_dur}")
                 self.frame_rate = denom / num
 
         for asset in resources.findall('asset'):

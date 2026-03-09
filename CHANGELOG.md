@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.9] - 2026-03-09
+
+### Fixed
+
+- Reject zero-denominator `frameDuration` in parser (e.g. `"1/0s"`) — previously set fps=0.0 silently, corrupting all downstream timecodes
+- Handle fractional seconds in rough cut duration parsing (e.g. `"1m30.5s"`) — previously crashed with `ValueError` on `int("30.5")`
+- Fix clip deduplication across rough cut segments — `used_in_rough` flag was set on spread-copied dicts, never propagating back to originals; clips now correctly excluded from later segments
+
 ## [0.6.8] - 2026-03-08
 
 ### Changed

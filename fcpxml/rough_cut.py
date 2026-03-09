@@ -200,7 +200,7 @@ class RoughCutGenerator:
         if 'm' in duration and ':' not in duration:
             parts = duration.lower().replace('s', '').split('m')
             minutes = int(parts[0]) if parts[0] else 0
-            seconds = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+            seconds = float(parts[1]) if len(parts) > 1 and parts[1] else 0
             total_seconds = minutes * 60 + seconds
             return TimeValue.from_seconds(total_seconds, self.fps)
 
@@ -330,10 +330,13 @@ class RoughCutGenerator:
                 seg_clips, seg_target, pacing, segment.priority
             )
 
-            # Mark as used
+            # Mark as used on originals so they're excluded from later segments
+            used_names = {sel['name'] for sel in seg_selected}
+            for c in clips:
+                if c['name'] in used_names:
+                    c['used_in_rough'] = True
             for sel in seg_selected:
                 sel['segment'] = segment.name
-                sel['used_in_rough'] = True
 
             selected.extend(seg_selected)
 

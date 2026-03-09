@@ -341,3 +341,10 @@ def test_version_preserved():
 
 def test_default_version():
     assert FCPXMLParser().parse_string('<fcpxml><resources/></fcpxml>').fcpxml_version == "1.11"
+
+
+def test_zero_denominator_frame_duration_raises():
+    """frameDuration with zero denominator must raise, not silently set fps=0."""
+    xml = _fcpxml(CLIP_A, ASSET_R2, frame_dur="1/0s")
+    with pytest.raises(ValueError, match="denominator"):
+        FCPXMLParser().parse_string(xml)
