@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.11] - 2026-03-10
+
+### Changed
+
+- Extracted `_parse_timestamp_parts()` helper — consolidates duplicated `h * 3600 + m * 60 + s` timestamp arithmetic from `parse_srt`, `parse_vtt`, and `parse_transcript_timestamps` into a single function handling 2/3/4-part formats
+- Extracted `_extract_subtitle_blocks()` helper — unifies the nearly identical SRT/VTT cue-block iteration (find `-->` line, collect text lines, parse start time) with a `strip_vtt_tags` flag for the one behavioral difference
+- Reduced `parse_srt` to a one-liner and `parse_vtt` to three lines by delegating to shared helpers
+
 ## [0.6.10] - 2026-03-09
 
 ### Added

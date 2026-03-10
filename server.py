@@ -223,79 +223,65 @@ def _no_timeline():
     return [TextContent(type="text", text="No timelines found")]
 
 
-def parse_srt(text: str) -> list[dict]:
-    """Parse SRT subtitle format into timestamp/text pairs."""
+def _parse_timestamp_parts(parts: list[str]) -> float | None:
+    """Convert colon-separated timestamp parts to total seconds.
+
+    Handles 2-part (M:SS), 3-part (H:MM:SS / HH:MM:SS.ms), and
+    4-part (HH:MM:SS:FF SMPTE — frames ignored) formats.  Returns
+    ``None`` when the part count is unrecognised so callers can skip.
+    """
+    if len(parts) == 2:
+        return int(parts[0]) * 60 + float(parts[1])
+    elif len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    elif len(parts) == 4:
+        # SMPTE: HH:MM:SS:FF — ignore frames for marker placement
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+    return None
+
+
+def _extract_subtitle_blocks(text: str, *, strip_vtt_tags: bool = False) -> list[dict]:
+    """Extract timestamp/text pairs from subtitle cue blocks (SRT or VTT).
+
+    Both SRT and VTT use the same ``start --> end`` cue syntax with
+    text lines underneath; only header stripping and tag cleaning differ.
+    """
     markers = []
     blocks = re.split(r'\n\s*\n', text.strip())
     for block in blocks:
         lines = block.strip().split('\n')
         if len(lines) < 2:
             continue
-        # Find the timestamp line (contains -->)
         ts_line = None
         text_lines = []
         for line in lines:
             if '-->' in line:
                 ts_line = line
             elif ts_line is not None:
-                text_lines.append(line)
-        if not ts_line:
+                if strip_vtt_tags:
+                    line = re.sub(r'<[^>]+>', '', line)
+                cleaned = line.strip()
+                if cleaned:
+                    text_lines.append(cleaned)
+        if not ts_line or not text_lines:
             continue
-        # Parse start time: "00:01:30,500 --> 00:01:35,000"
-        start_str = ts_line.split('-->')[0].strip()
-        start_str = start_str.replace(',', '.')  # SRT uses comma for ms
-        parts = start_str.split(':')
-        if len(parts) == 3:
-            h, m = int(parts[0]), int(parts[1])
-            s = float(parts[2])
-            total_seconds = h * 3600 + m * 60 + s
-            markers.append({
-                'seconds': total_seconds,
-                'text': ' '.join(text_lines).strip(),
-            })
+        start_str = ts_line.split('-->')[0].strip().replace(',', '.')
+        seconds = _parse_timestamp_parts(start_str.split(':'))
+        if seconds is not None:
+            markers.append({'seconds': seconds, 'text': ' '.join(text_lines)})
     return markers
+
+
+def parse_srt(text: str) -> list[dict]:
+    """Parse SRT subtitle format into timestamp/text pairs."""
+    return _extract_subtitle_blocks(text)
 
 
 def parse_vtt(text: str) -> list[dict]:
     """Parse WebVTT subtitle format into timestamp/text pairs."""
-    markers = []
-    # Strip WEBVTT header
     text = re.sub(r'^WEBVTT.*?\n', '', text, flags=re.MULTILINE)
-    # Remove NOTE blocks
     text = re.sub(r'NOTE\n.*?\n\n', '', text, flags=re.DOTALL)
-    blocks = re.split(r'\n\s*\n', text.strip())
-    for block in blocks:
-        lines = block.strip().split('\n')
-        ts_line = None
-        text_lines = []
-        for line in lines:
-            if '-->' in line:
-                ts_line = line
-            elif ts_line is not None:
-                # Strip VTT formatting tags
-                clean = re.sub(r'<[^>]+>', '', line)
-                if clean.strip():
-                    text_lines.append(clean.strip())
-        if not ts_line or not text_lines:
-            continue
-        start_str = ts_line.split('-->')[0].strip()
-        start_str = start_str.replace(',', '.')
-        parts = start_str.split(':')
-        if len(parts) == 3:
-            h, m = int(parts[0]), int(parts[1])
-            s = float(parts[2])
-            total_seconds = h * 3600 + m * 60 + s
-        elif len(parts) == 2:
-            m = int(parts[0])
-            s = float(parts[1])
-            total_seconds = m * 60 + s
-        else:
-            continue
-        markers.append({
-            'seconds': total_seconds,
-            'text': ' '.join(text_lines).strip(),
-        })
-    return markers
+    return _extract_subtitle_blocks(text, strip_vtt_tags=True)
 
 
 def parse_transcript_timestamps(text: str) -> list[dict]:
@@ -312,30 +298,11 @@ def parse_transcript_timestamps(text: str) -> list[dict]:
         line = line.strip()
         if not line:
             continue
-        # Match timestamp at start of line
-        match = re.match(
-            r'^(\d{1,2}:\d{2}(?::\d{2}){0,2})\s+(.+)$', line
-        )
+        match = re.match(r'^(\d{1,2}:\d{2}(?::\d{2}){0,2})\s+(.+)$', line)
         if match:
-            ts_str = match.group(1)
-            label = match.group(2).strip()
-            parts = ts_str.split(':')
-            if len(parts) == 2:
-                m, s = int(parts[0]), int(parts[1])
-                total_seconds = m * 60 + s
-            elif len(parts) == 3:
-                h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
-                total_seconds = h * 3600 + m * 60 + s
-            elif len(parts) == 4:
-                # SMPTE: HH:MM:SS:FF — ignore frames for marker placement
-                h, m, s = int(parts[0]), int(parts[1]), int(parts[2])
-                total_seconds = h * 3600 + m * 60 + s
-            else:
-                continue
-            markers.append({
-                'seconds': total_seconds,
-                'text': label,
-            })
+            seconds = _parse_timestamp_parts(match.group(1).split(':'))
+            if seconds is not None:
+                markers.append({'seconds': seconds, 'text': match.group(2).strip()})
     return markers
 
 
