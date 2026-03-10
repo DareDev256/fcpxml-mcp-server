@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.10] - 2026-03-09
+
+### Added
+
+- Dedicated `test_diff.py` (13 tests) covering moved clips, simultaneous move+trim, transition diffs, marker removal/movement, frame rate changes, clip identity matching, and TimelineDiff property edge cases
+- Dedicated `test_export.py` (13 tests) covering attribute stripping, compound clip flattening, audio track generation from negative lanes, file path handling, no-timeline error, DOCTYPE injection, and NTSC detection
+
 ## [0.6.9] - 2026-03-09
 
 ### Fixed

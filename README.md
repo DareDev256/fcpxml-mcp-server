@@ -329,12 +329,14 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 604 tests across 11 suites
+├── tests/                 640 tests across 13 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
 │   ├── test_server.py     MCP tool handlers, dispatch, path validation
 │   ├── test_rough_cut.py  Rough cut generation, montage, A/B roll
+│   ├── test_diff.py       Moved clips, transitions, markers, clip identity
+│   ├── test_export.py     Attribute stripping, compound flattening, audio tracks
 │   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
 │   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
 │   ├── test_pipeline_roundtrip.py  Write→parse symmetry at multiple frame rates
@@ -395,7 +397,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-501 tests across 10 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, and backward compatibility.
+640 tests across 13 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
 
 ---
 
