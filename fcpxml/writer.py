@@ -1131,6 +1131,9 @@ class FCPXMLModifier:
         Returns:
             Modified clip element
         """
+        if speed <= 0:
+            raise ValueError(f"Speed must be positive, got {speed}")
+
         clip = self.clips.get(clip_id)
         if clip is None:
             raise ValueError(f"Clip not found: {clip_id}")

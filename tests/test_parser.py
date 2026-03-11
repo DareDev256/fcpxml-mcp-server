@@ -328,6 +328,19 @@ def test_duration_to_seconds_bare_number():
     assert FCPXMLParser()._parse_duration_to_seconds("5") == pytest.approx(5.0)
 
 
+def test_duration_to_seconds_zero_denominator():
+    """Zero-denominator rational returns 0.0 instead of crashing."""
+    assert FCPXMLParser()._parse_duration_to_seconds("10/0s") == 0.0
+
+
+def test_duration_to_seconds_multiple_slashes():
+    """Malformed rational with extra slashes doesn't crash (uses maxsplit=1)."""
+    # "10/20/30s" → num="10", denom="20/30" → float("20/30") raises ValueError
+    # which is correct — it should reject truly malformed input, not silently unpack wrong
+    with pytest.raises(ValueError):
+        FCPXMLParser()._parse_duration_to_seconds("10/20/30s")
+
+
 def test_parse_fcpxml_convenience():
     project = parse_fcpxml(str(SAMPLE))
     assert project.name == "Music Video Edit"

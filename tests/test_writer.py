@@ -529,6 +529,20 @@ def test_change_speed_invalid_clip(temp_fcpxml):
         modifier.change_speed(clip_id='ghost', speed=2.0)
 
 
+def test_change_speed_zero_raises(temp_fcpxml):
+    """Speed=0 raises ValueError instead of ZeroDivisionError."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises(ValueError, match="Speed must be positive"):
+        modifier.change_speed(clip_id='Broll_Studio', speed=0)
+
+
+def test_change_speed_negative_raises(temp_fcpxml):
+    """Negative speed raises ValueError."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises(ValueError, match="Speed must be positive"):
+        modifier.change_speed(clip_id='Broll_Studio', speed=-1.0)
+
+
 # ============================================================
 # DTD Element Ordering Tests
 # ============================================================

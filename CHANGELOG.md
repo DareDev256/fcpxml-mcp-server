@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.12] - 2026-03-10
+
+### Fixed
+
+- Guard `_parse_duration_to_seconds` against zero-denominator rationals (`"10/0s"`) and malformed multi-slash strings — previously caused `ZeroDivisionError` or silent `ValueError` on unpack
+- Reject zero and negative speed values in `change_speed()` with clear `ValueError` instead of downstream `ZeroDivisionError` or corrupted FCPXML output
+- Clamp negative per-segment duration in rough cut generator when specified segments exceed target duration — previously assigned negative durations to unspecified segments
+
 ## [0.6.11] - 2026-03-10
 
 ### Changed

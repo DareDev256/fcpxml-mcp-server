@@ -346,8 +346,11 @@ class FCPXMLParser:
         if duration_str.endswith('s'):
             duration_str = duration_str[:-1]
         if '/' in duration_str:
-            num, denom = duration_str.split('/')
-            return float(num) / float(denom)
+            num, denom = duration_str.split('/', 1)
+            d = float(denom)
+            if d == 0:
+                return 0.0
+            return float(num) / d
         return float(duration_str)
 
 

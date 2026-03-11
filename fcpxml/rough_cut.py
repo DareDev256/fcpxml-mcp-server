@@ -306,7 +306,7 @@ class RoughCutGenerator:
 
         if unspecified_count > 0:
             remaining_duration = target_duration.to_seconds() - total_specified
-            per_segment = remaining_duration / unspecified_count
+            per_segment = max(0, remaining_duration / unspecified_count)
         else:
             per_segment = 0
 

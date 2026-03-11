@@ -383,6 +383,25 @@ def test_select_clips_by_segments_distributes_unspecified_duration(generator):
     assert len(auto_clips) > 0
 
 
+def test_select_clips_by_segments_overcommitted_clamps_to_zero(generator):
+    """When specified segments exceed target, unspecified segments get 0 not negative."""
+    clips = generator._filter_clips()
+    # Target=10s but specified segments total 30s — unspecified should get 0, not -20
+    segments = [
+        SegmentSpec(name="Big1", keywords=None, duration_seconds=15),
+        SegmentSpec(name="Big2", keywords=None, duration_seconds=15),
+        SegmentSpec(name="Leftover", keywords=None, duration_seconds=0),
+    ]
+    target = TimeValue.from_seconds(10.0, generator.fps)
+    pacing = PacingConfig(pacing="medium")
+
+    # Should not crash and leftover segment should produce no negative durations
+    selected = generator._select_clips_by_segments(clips, segments, target, pacing)
+    leftover_clips = [c for c in selected if c.get("segment") == "Leftover"]
+    for c in leftover_clips:
+        assert c.get('duration_seconds', 0) >= 0
+
+
 def test_select_clips_by_segments_no_reuse_across_segments(generator):
     """Clips used in one segment must not appear in subsequent segments."""
     clips = generator._filter_clips()
