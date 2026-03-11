@@ -358,13 +358,13 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
 | **Output sandbox** | `_validate_output_path(anchor_dir=...)` restricts writes to descendants of the source file's directory |
 | **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set — prevents workspace enumeration |
-| **XML parsing** | `defusedxml` blocks XXE, billion laughs, entity expansion, remote DTD attacks |
+| **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
 | **Role values** | Stripped of control characters before XML attribute assignment |
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-52+ security-specific tests across `test_security.py` and inline hardening tests in other suites.
+57+ security-specific tests across `test_security.py` and inline hardening tests in other suites.
 
 ---
 

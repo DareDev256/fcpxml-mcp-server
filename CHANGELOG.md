@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.13] - 2026-03-11
+
+### Security
+
+- Harden `safe_xml.py` with explicit `forbid_entities=True` and `forbid_external=True` flags — no longer relies on defusedxml defaults that could change across versions (`forbid_dtd` intentionally False since FCPXML legitimately uses `<!DOCTYPE fcpxml>`)
+- Add integration-level XXE rejection tests for `FCPXMLModifier`, `DaVinciExporter`, and `RoughCutGenerator` entry points — previously only `FCPXMLParser` was tested
+
 ## [0.6.12] - 2026-03-10
 
 ### Fixed

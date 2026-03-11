@@ -18,8 +18,10 @@ from unittest.mock import MagicMock
 import pytest
 from defusedxml import DTDForbidden, EntitiesForbidden
 
+from fcpxml.export import DaVinciExporter
 from fcpxml.models import MarkerType
 from fcpxml.parser import _MAX_FILE_SIZE_BYTES, FCPXMLParser
+from fcpxml.rough_cut import RoughCutGenerator
 from fcpxml.safe_xml import safe_fromstring, safe_parse
 from fcpxml.writer import (
     _MAX_MARKER_NAME_LENGTH,
@@ -510,6 +512,44 @@ class TestXXEProtection:
         parser = FCPXMLParser()
         project = parser.parse_string(xml)
         assert project.name == "Safe"
+
+    def test_modifier_rejects_xxe(self, tmp_path):
+        """FCPXMLModifier must reject XXE — it also uses safe_parse internally."""
+        p = tmp_path / "xxe_mod.fcpxml"
+        p.write_text(self.XXE_FILE_READ)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            FCPXMLModifier(str(p))
+
+    def test_modifier_rejects_billion_laughs(self, tmp_path):
+        """FCPXMLModifier must reject entity expansion bombs."""
+        p = tmp_path / "bomb_mod.fcpxml"
+        p.write_text(self.BILLION_LAUGHS)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            FCPXMLModifier(str(p))
+
+    def test_exporter_rejects_xxe(self, tmp_path):
+        """DaVinciExporter must reject XXE through safe_parse."""
+        p = tmp_path / "xxe_export.fcpxml"
+        p.write_text(self.XXE_FILE_READ)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            DaVinciExporter(str(p))
+
+    def test_rough_cut_rejects_xxe(self, tmp_path):
+        """RoughCutGenerator must reject XXE through safe_parse."""
+        p = tmp_path / "xxe_rough.fcpxml"
+        p.write_text(self.XXE_FILE_READ)
+        with pytest.raises((EntitiesForbidden, DTDForbidden)):
+            RoughCutGenerator(str(p))
+
+    def test_explicit_forbid_flags_active(self):
+        """Verify safe_xml._SECURITY_FLAGS block entities and externals.
+
+        forbid_dtd is False because FCPXML legitimately uses <!DOCTYPE fcpxml>.
+        """
+        from fcpxml.safe_xml import _SECURITY_FLAGS
+        assert _SECURITY_FLAGS["forbid_dtd"] is False  # FCPXML needs DOCTYPE
+        assert _SECURITY_FLAGS["forbid_entities"] is True
+        assert _SECURITY_FLAGS["forbid_external"] is True
 
 
 # ============================================================================
