@@ -223,6 +223,25 @@ def _no_timeline():
     return [TextContent(type="text", text="No timelines found")]
 
 
+def _require_timeline(filepath: str):
+    """Parse FCPXML and return (project, timeline), raising if no timeline exists.
+
+    Centralises the repeated _parse_project + _no_timeline guard that
+    appears in every read-only timeline handler.  Returns a tuple so
+    callers can destructure directly::
+
+        project, tl = _require_timeline(arguments["filepath"])
+    """
+    project, tl = _parse_project(filepath)
+    if not tl:
+        raise _NoTimelineError()
+    return project, tl
+
+
+class _NoTimelineError(Exception):
+    """Sentinel raised by _require_timeline when no timelines exist."""
+
+
 def _parse_timestamp_parts(parts: list[str]) -> float | None:
     """Convert colon-separated timestamp parts to total seconds.
 
@@ -1302,9 +1321,7 @@ async def handle_list_projects(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_analyze_timeline(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     durs = [c.duration_seconds for c in tl.clips]
     avg, med, mn, mx = (0, 0, 0, 0) if not durs else (
         sum(durs)/len(durs), sorted(durs)[len(durs)//2], min(durs), max(durs))
@@ -1333,9 +1350,7 @@ async def handle_analyze_timeline(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_list_clips(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     limit = arguments.get("limit")
     clips = tl.clips[:limit] if limit else tl.clips
     result = f"# Clips in {tl.name}\n\n| # | Name | Start | Duration | Keywords |\n|---|------|-------|----------|----------|\n"
@@ -1346,9 +1361,7 @@ async def handle_list_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     markers = list(tl.markers)
     for clip in tl.clips:
         markers.extend(clip.markers)
@@ -1368,9 +1381,7 @@ async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_find_short_cuts(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     threshold = arguments.get("threshold_seconds", 0.5)
     short = tl.get_clips_shorter_than(threshold)
     if not short:
@@ -1381,9 +1392,7 @@ async def handle_find_short_cuts(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     threshold = arguments.get("threshold_seconds", 10.0)
     long = tl.get_clips_longer_than(threshold)
     if not long:
@@ -1394,9 +1403,7 @@ async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_list_keywords(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     keywords = {}
     for clip in tl.clips:
         for kw in clip.keywords:
@@ -1410,9 +1417,7 @@ async def handle_list_keywords(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_export_edl(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     edl = f"TITLE: {tl.name}\nFCM: NON-DROP FRAME\n\n"
     for i, c in enumerate(tl.clips, 1):
         edl += f"{i:03d}  AX       V     C        {format_timecode(c.source_start)} {format_timecode(c.end)} {format_timecode(c.start)} {format_timecode(c.end)}\n"
@@ -1421,9 +1426,7 @@ async def handle_export_edl(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_export_csv(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     csv = "Name,Start,End,Duration,Keywords\n"
     for c in tl.clips:
         kws = "|".join(k.value for k in c.keywords)
@@ -1432,9 +1435,7 @@ async def handle_export_csv(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     if not tl.clips:
         return [TextContent(type="text", text="No clips to analyze")]
     durs = [c.duration_seconds for c in tl.clips]
@@ -1492,9 +1493,7 @@ async def handle_list_library_clips(arguments: dict) -> Sequence[TextContent]:
 # ----- QC / VALIDATION HANDLERS -----
 
 async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     fps = tl.frame_rate
     critical_threshold = arguments.get("critical_threshold_frames", 2)
     warning_threshold = arguments.get("warning_threshold_frames", 6)
@@ -1612,9 +1611,7 @@ async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     fps = tl.frame_rate
     min_gap_frames = arguments.get("min_gap_frames", 1)
     min_gap_seconds = min_gap_frames / fps
@@ -1908,9 +1905,7 @@ async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
     fps = tl.frame_rate
     checks = arguments.get("checks", ["all"])
     run_all = "all" in checks
@@ -2381,9 +2376,7 @@ Saved to: `{output_path}`
 # ----- CONNECTED CLIPS & COMPOUND CLIPS HANDLERS (v0.5.0) -----
 
 async def handle_list_connected_clips(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
 
     lane_filter = arguments.get("lane")
     clips = tl.connected_clips
@@ -2427,9 +2420,7 @@ async def handle_add_connected_clip(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_list_compound_clips(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
 
     if not tl.compound_clips:
         return [TextContent(type="text", text="No compound clips found in timeline.")]
@@ -2446,9 +2437,7 @@ async def handle_list_compound_clips(arguments: dict) -> Sequence[TextContent]:
 # ----- ROLES HANDLERS (v0.5.0) -----
 
 async def handle_list_roles(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
 
     audio_roles: dict[str, int] = {}
     video_roles: dict[str, int] = {}
@@ -2512,9 +2501,7 @@ async def handle_assign_role(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_filter_by_role(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
 
     role = arguments["role"].lower()
     role_type = arguments.get("role_type", "any")
@@ -2537,9 +2524,7 @@ async def handle_filter_by_role(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_export_role_stems(arguments: dict) -> Sequence[TextContent]:
-    project, tl = _parse_project(arguments["filepath"])
-    if not tl:
-        return _no_timeline()
+    project, tl = _require_timeline(arguments["filepath"])
 
     stems: dict[str, list] = {}
     for clip in tl.clips:
@@ -2930,6 +2915,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
     try:
         return await handler(arguments)
+    except _NoTimelineError:
+        return _no_timeline()
     except FileNotFoundError as e:
         return [TextContent(type="text", text=f"File not found: {e}")]
     except ValueError as e:

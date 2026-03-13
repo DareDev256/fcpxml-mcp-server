@@ -7,6 +7,7 @@ timelines, clips, markers, and other elements.
 
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import total_ordering
 from math import gcd
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -213,6 +214,7 @@ _FCPXML_STANDARD_TIMEBASES = frozenset({
 })
 
 
+@total_ordering
 @dataclass
 class TimeValue:
     """
@@ -347,23 +349,30 @@ class TimeValue:
             self.denominator // divisor
         )
 
+    @staticmethod
+    def _lcm_denom(d1: int, d2: int) -> int:
+        """LCM of two denominators for cross-timebase arithmetic."""
+        return d1 // gcd(d1, d2) * d2
+
     def __add__(self, other: 'TimeValue') -> 'TimeValue':
         if self.denominator == other.denominator:
             return TimeValue(self.numerator + other.numerator, self.denominator)
-        g = gcd(self.denominator, other.denominator)
-        new_denom = self.denominator // g * other.denominator
-        new_num = (self.numerator * (new_denom // self.denominator)
-                   + other.numerator * (new_denom // other.denominator))
-        return TimeValue(new_num, new_denom)
+        new_denom = TimeValue._lcm_denom(self.denominator, other.denominator)
+        return TimeValue(
+            self.numerator * (new_denom // self.denominator)
+            + other.numerator * (new_denom // other.denominator),
+            new_denom,
+        )
 
     def __sub__(self, other: 'TimeValue') -> 'TimeValue':
         if self.denominator == other.denominator:
             return TimeValue(self.numerator - other.numerator, self.denominator)
-        g = gcd(self.denominator, other.denominator)
-        new_denom = self.denominator // g * other.denominator
-        new_num = (self.numerator * (new_denom // self.denominator)
-                   - other.numerator * (new_denom // other.denominator))
-        return TimeValue(new_num, new_denom)
+        new_denom = TimeValue._lcm_denom(self.denominator, other.denominator)
+        return TimeValue(
+            self.numerator * (new_denom // self.denominator)
+            - other.numerator * (new_denom // other.denominator),
+            new_denom,
+        )
 
     def __mul__(self, scalar: float) -> 'TimeValue':
         new_num = int(self.numerator * scalar)
@@ -375,15 +384,6 @@ class TimeValue:
 
     def __lt__(self, other: 'TimeValue') -> bool:
         return self.to_seconds() < other.to_seconds()
-
-    def __le__(self, other: 'TimeValue') -> bool:
-        return self.to_seconds() <= other.to_seconds()
-
-    def __gt__(self, other: 'TimeValue') -> bool:
-        return self.to_seconds() > other.to_seconds()
-
-    def __ge__(self, other: 'TimeValue') -> bool:
-        return self.to_seconds() >= other.to_seconds()
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TimeValue):

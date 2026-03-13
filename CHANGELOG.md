@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.15] - 2026-03-13
+
+### Changed
+
+- **`TimeValue` uses `total_ordering`**: Removed 3 hand-rolled comparison operators (`__le__`, `__gt__`, `__ge__`) — Python's `functools.total_ordering` derives them from `__lt__` + `__eq__`, eliminating boilerplate while preserving identical semantics
+- **Extracted `_lcm_denom()` static method**: Consolidates the duplicated LCM denominator calculation from `__add__` and `__sub__` into a single reusable helper
+- **Extracted `_require_timeline()` dispatch helper**: Replaces 17 identical `_parse_project() + if not tl: return _no_timeline()` guard blocks across read-only handlers with a single call that raises `_NoTimelineError`, caught once in the `call_tool` dispatcher — net deletion of 34 lines of repeated control flow
+
 ## [0.6.14] - 2026-03-13
 
 ### Added
