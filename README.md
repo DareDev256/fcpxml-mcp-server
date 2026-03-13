@@ -329,7 +329,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 661 tests across 13 suites
+├── tests/                 673 tests across 14 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -340,7 +340,8 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
 │   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
 │   ├── test_pipeline_roundtrip.py  Write→parse symmetry at multiple frame rates
-│   └── test_security.py   Input validation, XML sanitization, XXE protection
+│   ├── test_security.py   Input validation, XML sanitization, XXE protection
+│   └── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
 └── examples/
@@ -398,7 +399,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-661 tests across 13 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
+673 tests across 14 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
 
 ---
 

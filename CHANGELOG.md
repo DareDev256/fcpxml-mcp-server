@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.14] - 2026-03-13
+
+### Added
+
+- 23 edge-case tests in `test_edge_cases.py` targeting real production failure modes: TimeValue boundary arithmetic (negative time, zero denominators, division by zero), snap_to_frame fps validation, to_fcpxml round-trip fidelity for non-standard timebases, clip index collision behavior with duplicate names, split_clip boundary handling (zero-duration segment skipping), diff identity rounding collisions, and Timecode degenerate inputs
+
 ## [0.6.13] - 2026-03-11
 
 ### Security
