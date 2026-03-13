@@ -329,7 +329,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 640 tests across 13 suites
+├── tests/                 661 tests across 13 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -356,7 +356,8 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | Layer | Protection |
 |-------|------------|
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
-| **Output sandbox** | `_validate_output_path(anchor_dir=...)` restricts writes to descendants of the source file's directory |
+| **Output sandbox** | All 4 generation handlers + all write handlers use `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory |
+| **Subprocess bounds** | `_ensure_video_asset` validates duration (≤300s), fps (≤120), resolution (≤7680×4320) before invoking ffmpeg — prevents resource exhaustion |
 | **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set — prevents workspace enumeration |
 | **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
@@ -364,7 +365,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-57+ security-specific tests across `test_security.py` and inline hardening tests in other suites.
+106 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, input validation, subprocess bounds, and role sanitization.
 
 ---
 
@@ -397,7 +398,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-640 tests across 13 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
+661 tests across 13 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
 
 ---
 
