@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.17] - 2026-03-14
+
+### Added
+
+- 15 targeted tests in `test_targeted_gaps.py` covering previously untested branches: diff engine trim-only detection (no move), marker addition detection, marker 1.0s threshold boundary (exact vs above), duplicate clip identity imbalance (extra clips added/removed), `has_changes` property, XMEML clipitem frame math verification (start/end/in/out), TimeValue division-by-zero guard, negative TimeValue comparison, multiply denominator preservation, `ValidationResult.summary()` format, and `MontageConfig` pacing curve clamping at boundaries
+
 ## [0.6.16] - 2026-03-13
 
 ### Added
