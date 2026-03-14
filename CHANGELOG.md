@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.16] - 2026-03-13
+
+### Added
+
+- 21 diversity-picked tests in `test_diversity.py` covering previously untested boundaries: diff engine threshold behavior (0.04s clip move, 1.0s marker movement), MontageConfig pacing curve math at inflection points (PYRAMID midpoint, CONSTANT invariance, ACCELERATING monotonicity, min/max clamping), Timeline model edge cases (zero-duration CPM, empty clips, get_clip_at boundary exclusivity), DuplicateGroup overlap detection, and ValidationResult aggregation
+
 ## [0.6.15] - 2026-03-13
 
 ### Changed

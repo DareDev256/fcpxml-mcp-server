@@ -329,7 +329,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 673 tests across 14 suites
+├── tests/                 694 tests across 15 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -399,7 +399,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-673 tests across 14 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
+694 tests across 15 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
 
 ---
 
