@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-709_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-713_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-16-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~9k_LOC-informational.svg)](#architecture)
 
@@ -360,13 +360,13 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output sandbox** | All 4 generation handlers + all write handlers use `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory |
 | **Subprocess bounds** | `_ensure_video_asset` validates duration (≤300s), fps (≤120), resolution (≤7680×4320) before invoking ffmpeg — prevents resource exhaustion |
 | **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set — prevents workspace enumeration |
-| **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) |
+| **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — includes minidom pretty-print path |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
 | **Role values** | Stripped of control characters before XML attribute assignment |
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-106 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, input validation, subprocess bounds, and role sanitization.
+99 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, input validation, subprocess bounds, minidom hardening, and role sanitization.
 
 ---
 
@@ -399,7 +399,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-694 tests across 15 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
+713 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom hardening, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
 
 ---
 
