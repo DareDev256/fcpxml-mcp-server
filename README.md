@@ -327,7 +327,7 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
-│   ├── diff.py            Timeline comparison engine
+│   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
 │   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 ├── tests/                 694 tests across 15 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
