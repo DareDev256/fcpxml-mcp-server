@@ -9,6 +9,8 @@ Covers:
 - Marker completed-attribute strict validation (completed='0' → incomplete, '1' → completed)
 - File path and directory validation (traversal, null bytes, extensions)
 - Role string sanitization in writer
+- Minidom pretty-print defense-in-depth (defusedxml.minidom)
+- JSON depth-limit enforcement against nested payloads
 """
 
 import sys
@@ -807,3 +809,132 @@ class TestRoleSanitization:
         modifier = FCPXMLModifier(sample_fcpxml)
         clip = modifier.assign_role("TestClip", audio_role="ダイアログ")
         assert clip.get("audioRole") == "ダイアログ"
+
+
+# ============================================================================
+# MINIDOM DEFENSE-IN-DEPTH (v0.6.18)
+# ============================================================================
+
+class TestMinidomDefenseInDepth:
+    """Verify the pretty-print path uses defusedxml.minidom, not stdlib."""
+
+    def test_safe_parse_string_returns_document(self):
+        """safe_parse_string produces a valid minidom Document."""
+        from fcpxml.safe_xml import safe_parse_string
+        doc = safe_parse_string("<root><child/></root>")
+        assert doc.documentElement.tagName == "root"
+
+    def test_safe_parse_string_rejects_xxe(self):
+        """safe_parse_string blocks external entity payloads."""
+        from fcpxml.safe_xml import safe_parse_string
+        xxe_xml = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE foo ['
+            '<!ENTITY xxe SYSTEM "file:///etc/passwd">'
+            ']>'
+            '<root>&xxe;</root>'
+        )
+        with pytest.raises(Exception):
+            safe_parse_string(xxe_xml)
+
+    def test_safe_parse_string_rejects_entity_expansion(self):
+        """safe_parse_string blocks billion-laughs style entity bombs."""
+        from fcpxml.safe_xml import safe_parse_string
+        bomb = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE lolz ['
+            '<!ENTITY lol "lol">'
+            '<!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+            ']>'
+            '<root>&lol2;</root>'
+        )
+        with pytest.raises(Exception):
+            safe_parse_string(bomb)
+
+    def test_export_pretty_write_uses_safe_minidom(self, tmp_path):
+        """export._pretty_write roundtrips through defusedxml.minidom."""
+        import xml.etree.ElementTree as ET  # noqa: I001
+
+        from fcpxml.export import _pretty_write
+
+        root = ET.Element("fcpxml")
+        root.set("version", "1.11")
+        ET.SubElement(root, "resources")
+        out = str(tmp_path / "out.fcpxml")
+        result = _pretty_write(root, out, "<!DOCTYPE fcpxml>")
+        assert result == out
+        content = open(out).read()
+        assert "<fcpxml" in content
+
+    def test_writer_write_fcpxml_uses_safe_minidom(self, tmp_path):
+        """writer.write_fcpxml roundtrips through defusedxml.minidom."""
+        import xml.etree.ElementTree as ET  # noqa: I001
+
+        from fcpxml.writer import write_fcpxml
+
+        root = ET.Element("fcpxml")
+        root.set("version", "1.11")
+        ET.SubElement(root, "resources")
+        ET.SubElement(root, "library")
+        out = str(tmp_path / "out.fcpxml")
+        result = write_fcpxml(root, out, strict=False)
+        assert result == out
+
+
+# ============================================================================
+# JSON DEPTH LIMIT (v0.6.18)
+# ============================================================================
+
+class TestJsonDepthLimit:
+    """Verify _check_json_depth rejects adversarial nesting."""
+
+    def test_shallow_json_passes(self):
+        """Normal beat data (depth ~2) passes validation."""
+        sys.path.insert(0, ".")
+        from server import _check_json_depth
+        data = {"beats": [0.5, 1.0, 1.5, 2.0]}
+        _check_json_depth(data)  # Should not raise
+
+    def test_flat_list_passes(self):
+        """Simple list of beat times passes."""
+        from server import _check_json_depth
+        _check_json_depth([0.5, 1.0, 1.5, 2.0])
+
+    def test_deeply_nested_dict_rejected(self):
+        """Dict nested 60 levels deep is rejected (limit=50)."""
+        from server import _check_json_depth
+        nested: dict = {}
+        current = nested
+        for _ in range(60):
+            current["a"] = {}
+            current = current["a"]
+        with pytest.raises(ValueError, match="nesting depth exceeds"):
+            _check_json_depth(nested)
+
+    def test_deeply_nested_list_rejected(self):
+        """List nested 60 levels deep is rejected."""
+        from server import _check_json_depth
+        nested: list = []
+        current = nested
+        for _ in range(60):
+            inner: list = []
+            current.append(inner)
+            current = inner
+        with pytest.raises(ValueError, match="nesting depth exceeds"):
+            _check_json_depth(nested)
+
+    def test_depth_exactly_at_limit_passes(self):
+        """Object nested exactly at the limit (50) passes."""
+        from server import _check_json_depth
+        nested: dict = {}
+        current = nested
+        for _ in range(49):
+            current["a"] = {}
+            current = current["a"]
+        _check_json_depth(nested)  # Should not raise
+
+    def test_scalar_values_pass(self):
+        """Scalars (str, int, float, None, bool) pass without issue."""
+        from server import _check_json_depth
+        for val in ["hello", 42, 3.14, None, True]:
+            _check_json_depth(val)

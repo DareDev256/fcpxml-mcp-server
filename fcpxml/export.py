@@ -8,15 +8,15 @@ Supports:
 import copy
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
-from xml.dom import minidom
 
 from .parser import FCPXMLParser
+from .safe_xml import safe_parse_string
 
 
 def _pretty_write(root: ET.Element, filepath: str, doctype: str = "") -> str:
     """Write pretty-printed XML to file."""
     xml_str = ET.tostring(root, encoding='unicode')
-    dom = minidom.parseString(xml_str)
+    dom = safe_parse_string(xml_str)
     pretty_xml = dom.toprettyxml(indent="    ")
     lines = [line for line in pretty_xml.split('\n') if line.strip()]
     final_xml = '\n'.join(lines)

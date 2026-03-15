@@ -57,6 +57,31 @@ MAX_FILE_SIZE = 100 * 1024 * 1024
 # SECURITY UTILITIES
 # ============================================================================
 
+# Maximum nesting depth for JSON deserialization (beat markers, configs).
+# Prevents stack overflow / memory exhaustion from deeply nested payloads.
+_MAX_JSON_DEPTH = 50
+
+
+def _check_json_depth(obj: object, _depth: int = 0) -> None:
+    """Reject JSON structures nested beyond _MAX_JSON_DEPTH.
+
+    Prevents denial-of-service via deeply nested objects that exhaust the
+    call stack or memory during downstream processing.  Called after
+    json.load() since Python's json module has no built-in depth limit.
+    """
+    if _depth > _MAX_JSON_DEPTH:
+        raise ValueError(
+            f"JSON nesting depth exceeds {_MAX_JSON_DEPTH} — "
+            "file may be malformed or adversarial"
+        )
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _check_json_depth(v, _depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            _check_json_depth(item, _depth + 1)
+
+
 def _validate_filepath(filepath: str, allowed_extensions: tuple[str, ...] | None = None) -> str:
     """Validate a user-provided file path against traversal and size attacks.
 
@@ -2109,6 +2134,7 @@ async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
 
     with open(beats_path, 'r') as f:
         beats_data = json.load(f)
+    _check_json_depth(beats_data)
 
     beat_times = []
     if isinstance(beats_data, list):

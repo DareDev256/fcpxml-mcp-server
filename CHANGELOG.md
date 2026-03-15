@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.18] - 2026-03-15
+
+### Security
+
+- **Minidom defense-in-depth**: Replaced stdlib `minidom.parseString()` with `defusedxml.minidom.parseString()` in both `export.py` and `writer.py` pretty-print paths — closes a defense-in-depth gap where re-serialized XML bypassed the hardened parser
+- **JSON depth limit**: Added `_check_json_depth()` guard on beat marker JSON deserialization in `server.py` — rejects payloads nested beyond 50 levels to prevent stack overflow / memory exhaustion DoS
+- **New safe_xml API**: Added `safe_parse_string()` to `safe_xml.py` — centralized defusedxml.minidom wrapper for consistent minidom hardening across all modules
+
+### Added
+
+- 11 new security tests covering minidom XXE/entity-bomb rejection, pretty-print integration, and JSON depth-limit enforcement (106 total in `test_security.py`)
+
 ## [0.6.17] - 2026-03-14
 
 ### Added

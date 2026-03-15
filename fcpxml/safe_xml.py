@@ -19,8 +19,10 @@ directly in this codebase. Always import from this module instead.
 """
 
 import xml.etree.ElementTree as ET
+from xml.dom.minidom import Document
 
 import defusedxml.ElementTree as _safe_ET
+import defusedxml.minidom as _safe_minidom
 
 # Explicit security flags — pinned so a defusedxml upgrade that changes
 # defaults cannot silently weaken the boundary.
@@ -54,3 +56,17 @@ def safe_fromstring(text: str) -> ET.Element:
     unchanged.
     """
     return _safe_ET.fromstring(text, **_SECURITY_FLAGS)
+
+
+def safe_parse_string(text: str) -> Document:
+    """Parse an XML string into a minidom Document with XXE protection.
+
+    Drop-in replacement for xml.dom.minidom.parseString(). Used in the
+    pretty-print path (writer.py, export.py) to maintain defense-in-depth
+    even when re-parsing XML that was already produced by safe_parse().
+
+    Why this matters: if a future refactor passes unsanitized XML through
+    _pretty_write(), stdlib minidom would silently process external
+    entities and DTD bombs. Using defusedxml.minidom closes that gap.
+    """
+    return _safe_minidom.parseString(text)

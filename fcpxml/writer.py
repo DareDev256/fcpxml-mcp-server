@@ -13,7 +13,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from xml.dom import minidom
 
 from .models import (
     _FCPXML_STANDARD_TIMEBASES,
@@ -348,8 +347,10 @@ def write_fcpxml(
         for e in errors:
             _log.error("FCPXML validation: %s", e.message)
 
+    from .safe_xml import safe_parse_string
+
     xml_str = ET.tostring(root, encoding='unicode')
-    dom = minidom.parseString(xml_str)
+    dom = safe_parse_string(xml_str)
     pretty_xml = dom.toprettyxml(indent="    ")
     lines = [line for line in pretty_xml.split('\n') if line.strip()]
     final_xml = '\n'.join(lines)
