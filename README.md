@@ -323,6 +323,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 fcp-mcp-server/           ~7k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 ├── fcpxml/
+│   ├── README.md          Developer guide — TimeValue, clip hierarchy, type reference
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
