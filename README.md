@@ -9,7 +9,7 @@
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
 [![Tests](https://img.shields.io/badge/tests-720_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-16-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~9k_LOC-informational.svg)](#architecture)
+[![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -229,9 +229,9 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ---
 
-## All 47 Tools
+## All 53 Tools
 
-| Category | Count | What It Does |
+| Category | Tools | What It Does |
 |----------|------:|--------------|
 | **Analysis** | 11 | Stats, clips, markers, keywords, EDL/CSV, pacing |
 | **Multi-Track** | 3 | Connected clips, compound clips, secondary lanes |
@@ -250,6 +250,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | **Compound** | 2 | Create/flatten compound clips |
 | **Templates** | 2 | Pre-built timeline structures (intro/outro, lower thirds, music video) |
 | **Effects** | 1 | List FCP transition effects with UUIDs |
+| | **53** | |
 
 <details>
 <summary><strong>Full tool reference (click to expand)</strong></summary>
@@ -320,7 +321,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ## Architecture
 
 ```
-fcp-mcp-server/           ~7k lines Python
+fcp-mcp-server/           ~8.7k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 ├── fcpxml/
 │   ├── README.md          Developer guide — TimeValue, clip hierarchy, type reference
@@ -329,8 +330,10 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
-│   └── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-├── tests/                 694 tests across 15 suites
+│   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
+│   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
+│   └── templates.py       Template system (intro/outro, lower thirds, music video)
+├── tests/                 720 tests across 16 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -339,10 +342,13 @@ fcp-mcp-server/           ~7k lines Python
 │   ├── test_diff.py       Moved clips, transitions, markers, clip identity
 │   ├── test_export.py     Attribute stripping, compound flattening, audio tracks
 │   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
+│   ├── test_features_v06.py  Audio, compound clips, templates, effects, validation
 │   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
 │   ├── test_pipeline_roundtrip.py  Write→parse symmetry at multiple frame rates
 │   ├── test_security.py   Input validation, XML sanitization, XXE protection
-│   └── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
+│   ├── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
+│   ├── test_diversity.py  Boundary conditions across diff, models, validation
+│   └── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
 └── examples/
@@ -379,7 +385,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. `INCOMPLETE` is canonical; `TODO` is a backward-compat alias (same object) |
-| **Security-first** | 8-layer defense-in-depth across all 47 handlers — see [Security](#security) for the full matrix |
+| **Security-first** | 10-layer defense-in-depth across all 53 handlers — see [Security](#security) for the full matrix |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -401,7 +407,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-720 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, and backward compatibility.
+720 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
