@@ -333,7 +333,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 720 tests across 16 suites
+├── tests/                 741 tests across 16 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -407,7 +407,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-720 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+741 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
