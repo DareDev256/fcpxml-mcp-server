@@ -333,7 +333,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 741 tests across 16 suites
+├── tests/                 728 tests across 16 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -365,8 +365,8 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 |-------|------------|
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
 | **Output sandbox** | All 4 generation handlers + all write handlers use `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory |
-| **Subprocess bounds** | `_ensure_video_asset` validates duration (≤300s), fps (≤120), resolution (≤7680×4320) before invoking ffmpeg — prevents resource exhaustion |
-| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set — prevents workspace enumeration |
+| **Subprocess bounds** | `_ensure_video_asset` validates duration (0–3600s), fps (1–240), resolution (≤7680×4320) before invoking ffmpeg — prevents resource exhaustion |
+| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, depth-limited `rglob` (≤8 levels), symlink-escape detection — prevents workspace enumeration and traversal DoS |
 | **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom` |
 | **JSON depth limit** | Beat marker JSON deserialization rejects payloads nested beyond 50 levels — prevents stack overflow DoS |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
@@ -374,7 +374,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-106 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, input validation, subprocess bounds, minidom hardening, JSON depth limits, and role sanitization.
+114 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, and role sanitization.
 
 ---
 
@@ -407,7 +407,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-741 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+728 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
