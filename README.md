@@ -374,7 +374,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-114 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, and role sanitization.
+114 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, and role sanitization. Additional hardening includes `parse_string` size limits, ffmpeg parameter bounds validation, inline text size caps, and speed parameter range checks.
 
 ---
 
