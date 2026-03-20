@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-744_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-727_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
@@ -365,16 +365,16 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 |-------|------------|
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
 | **Output sandbox** | All 4 generation handlers + all write handlers use `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory |
-| **Subprocess bounds** | `_ensure_video_asset` validates duration (0–3600s), fps (1–240), resolution (≤7680×4320) before invoking ffmpeg — prevents resource exhaustion |
-| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, depth-limited `rglob` (≤8 levels), symlink-escape detection — prevents workspace enumeration and traversal DoS |
+| **Subprocess bounds** | `_ensure_video_asset` validates duration (0.01–86400s), fps (1–240), width/height (even, 2–16384) before invoking ffmpeg — prevents resource exhaustion |
+| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, depth-limited `rglob` (≤10 levels, 10K file cap), symlink-escape detection — prevents workspace enumeration and traversal DoS |
 | **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom` |
-| **JSON depth limit** | Beat marker JSON deserialization rejects payloads nested beyond 50 levels — prevents stack overflow DoS |
+| **JSON depth limit** | Iterative BFS depth checker rejects payloads nested beyond 50 levels — immune to RecursionError even at ~1000 nesting |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
 | **Role values** | Stripped of control characters before XML attribute assignment |
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-114 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, and role sanitization. Additional hardening includes `parse_string` size limits, ffmpeg parameter bounds validation, inline text size caps, and speed parameter range checks.
+115 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, and role sanitization. Additional hardening includes `parse_string` size limits, ffmpeg parameter bounds validation, inline text size caps, and speed parameter range checks.
 
 ---
 
