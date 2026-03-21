@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-747_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-720_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-18-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
@@ -323,6 +323,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ```
 fcp-mcp-server/           ~8.7k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
+│                          _setup_modifier() consolidates write handler boilerplate
 ├── fcpxml/
 │   ├── README.md          Developer guide — TimeValue, clip hierarchy, type reference
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
@@ -333,7 +334,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 728 tests across 16 suites
+├── tests/                 720 tests across 16 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes

@@ -267,6 +267,33 @@ class _NoTimelineError(Exception):
     """Sentinel raised by _require_timeline when no timelines exist."""
 
 
+def _setup_modifier(
+    arguments: dict,
+    suffix: str = "_modified",
+) -> tuple[str, str, "FCPXMLModifier"]:
+    """Common setup for write handlers: validate paths and create modifier.
+
+    Consolidates the repeated validate-filepath → resolve-output-path →
+    create-modifier boilerplate shared by 18+ write handlers.
+
+    Args:
+        arguments: Tool arguments dict (must contain ``filepath``; may
+            contain ``output_path``).
+        suffix: Default output filename suffix when ``output_path`` is
+            not provided (e.g. ``"_modified"``, ``"_flash_fixed"``).
+
+    Returns:
+        ``(filepath, output_path, modifier)`` tuple ready for the
+        handler's domain-specific operation.
+    """
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, suffix)
+    )
+    modifier = FCPXMLModifier(filepath)
+    return filepath, output_path, modifier
+
+
 def _parse_timestamp_parts(parts: list[str]) -> float | None:
     """Convert colon-separated timestamp parts to total seconds.
 
@@ -1680,11 +1707,7 @@ async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
 # ----- WRITE HANDLERS -----
 
 async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     marker_type = MarkerType.from_string(arguments.get("marker_type", "standard"))
     modifier.add_marker_at_timeline(
         timecode=arguments["timecode"], name=arguments["name"],
@@ -1695,11 +1718,7 @@ async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     markers_added = modifier.batch_add_markers(
         markers=arguments.get("markers", []),
         auto_at_cuts=arguments.get("auto_at_cuts", False),
@@ -1710,11 +1729,7 @@ async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.trim_clip(
         clip_id=arguments["clip_id"],
         trim_start=arguments.get("trim_start"),
@@ -1726,11 +1741,7 @@ async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.reorder_clips(
         clip_ids=arguments["clip_ids"],
         target_position=arguments["target_position"],
@@ -1742,11 +1753,7 @@ async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.add_transition(
         clip_id=arguments["clip_id"],
         position=arguments.get("position", "end"),
@@ -1758,11 +1765,7 @@ async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.change_speed(
         clip_id=arguments["clip_id"],
         speed=arguments["speed"],
@@ -1775,11 +1778,7 @@ async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.delete_clip(
         clip_ids=arguments["clip_ids"],
         ripple=arguments.get("ripple", True),
@@ -1789,11 +1788,7 @@ async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     new_clips = modifier.split_clip(
         clip_id=arguments["clip_id"],
         split_points=arguments["split_points"],
@@ -1803,11 +1798,7 @@ async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     new_clip = modifier.insert_clip(
         asset_id=arguments.get("asset_id"),
         asset_name=arguments.get("asset_name"),
@@ -1826,11 +1817,7 @@ async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
 # ----- BATCH FIX HANDLERS -----
 
 async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_flash_fixed")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_flash_fixed")
     fixed = modifier.fix_flash_frames(
         mode=arguments.get("mode", "auto"),
         threshold_frames=arguments.get("threshold_frames", 6),
@@ -1859,11 +1846,7 @@ async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_rapid_trim")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_rapid_trim")
     trimmed = modifier.rapid_trim(
         max_duration=arguments["max_duration"],
         min_duration=arguments.get("min_duration"),
@@ -1898,11 +1881,7 @@ async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_gaps_filled")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_gaps_filled")
     filled = modifier.fill_gaps(
         mode=arguments.get("mode", "extend_previous"),
         max_gap=arguments.get("max_gap"),
@@ -2425,11 +2404,7 @@ async def handle_list_connected_clips(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_add_connected_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.add_connected_clip(
         parent_clip_id=arguments["parent_clip_id"],
         asset_id=arguments.get("asset_id"),
@@ -2502,11 +2477,7 @@ async def handle_list_roles(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_assign_role(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath)
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.assign_role(
         clip_id=arguments["clip_id"],
         audio_role=arguments.get("audio_role"),
@@ -2683,11 +2654,7 @@ async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextCont
 
 
 async def handle_remove_silence_candidates(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_silence_cleaned")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_silence_cleaned")
     actions = modifier.remove_silence_candidates(
         mode=arguments.get("mode", "mark"),
         min_gap_seconds=arguments.get("min_gap_seconds", 0.5),
@@ -2756,11 +2723,7 @@ async def handle_list_effects(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_add_audio(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_audio")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_audio")
 
     parent_clip_id = arguments.get("parent_clip_id")
     if parent_clip_id:
@@ -2788,11 +2751,7 @@ async def handle_add_audio(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_create_compound_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_compound")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_compound")
     clip_ids = arguments["clip_ids"]
     name = arguments.get("name", "Compound Clip")
     modifier.create_compound_clip(clip_ids, name)
@@ -2804,11 +2763,7 @@ async def handle_create_compound_clip(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_flatten_compound_clip(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_flattened")
-    )
-    modifier = FCPXMLModifier(filepath)
+    filepath, output_path, modifier = _setup_modifier(arguments, "_flattened")
     ref_clip_id = arguments["ref_clip_id"]
     extracted = modifier.flatten_compound_clip(ref_clip_id)
     modifier.save(output_path)
