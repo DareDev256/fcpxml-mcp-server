@@ -365,13 +365,14 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | Layer | Protection |
 |-------|------------|
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
-| **Output sandbox** | All 4 generation handlers + all write handlers use `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory |
-| **Subprocess bounds** | `_ensure_video_asset` validates duration (0.01–86400s), fps (1–240), width/height (even, 2–16384) before invoking ffmpeg — prevents resource exhaustion |
+| **Output sandbox** | All generation, write, export, beat sync, subtitle, and reformat handlers enforce `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory, blocking LLM-generated path escapes |
+| **Subprocess bounds** | `_ensure_video_asset` resolves ffmpeg to an absolute path via `shutil.which()`, validates duration (0.01–86400s), fps (1–240), width/height (even, 2–16384) before invoking — prevents both PATH manipulation and resource exhaustion |
 | **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, depth-limited `rglob` (≤10 levels, 10K file cap), symlink-escape detection — prevents workspace enumeration and traversal DoS |
-| **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom` |
+| **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom`. Ruff `S314`/`S320` rules enforce safe parsing in CI |
 | **JSON depth limit** | Iterative BFS depth checker rejects payloads nested beyond 50 levels — immune to RecursionError even at ~1000 nesting |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
 | **Role values** | Stripped of control characters before XML attribute assignment |
+| **URI parsing** | MCP resource URIs parsed via `urllib.parse.urlparse()` — rejects scheme confusion and handles percent-encoded paths correctly |
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
