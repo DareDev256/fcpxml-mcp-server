@@ -286,7 +286,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 `import_beat_markers` · `snap_to_beats`
 
 #### Import — 2 tools
-`import_srt_markers` · `import_transcript_markers`
+`import_srt_markers` · `import_transcript_markers` (supports SMPTE `HH:MM:SS:FF` with frame-accurate placement)
 
 #### v0.6.0 — Audio, Compound, Templates, Effects — 6 tools
 `list_effects` · `add_audio` · `create_compound_clip` · `flatten_compound_clip` · `list_templates` · `apply_template`

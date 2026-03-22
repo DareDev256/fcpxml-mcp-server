@@ -294,20 +294,29 @@ def _setup_modifier(
     return filepath, output_path, modifier
 
 
-def _parse_timestamp_parts(parts: list[str]) -> float | None:
+def _parse_timestamp_parts(
+    parts: list[str], *, frame_rate: float = 24.0
+) -> float | None:
     """Convert colon-separated timestamp parts to total seconds.
 
     Handles 2-part (M:SS), 3-part (H:MM:SS / HH:MM:SS.ms), and
-    4-part (HH:MM:SS:FF SMPTE — frames ignored) formats.  Returns
-    ``None`` when the part count is unrecognised so callers can skip.
+    4-part (HH:MM:SS:FF SMPTE) formats.  Returns ``None`` when the
+    part count is unrecognised so callers can skip.
+
+    Args:
+        parts: Colon-split timestamp components.
+        frame_rate: FPS used to convert the frame component of SMPTE
+            timecodes into fractional seconds (default 24.0).
     """
     if len(parts) == 2:
         return int(parts[0]) * 60 + float(parts[1])
     elif len(parts) == 3:
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
     elif len(parts) == 4:
-        # SMPTE: HH:MM:SS:FF — ignore frames for marker placement
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        # SMPTE: HH:MM:SS:FF — convert frames to fractional seconds
+        base = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        frames = int(parts[3])
+        return base + (frames / frame_rate) if frame_rate > 0 else base
     return None
 
 

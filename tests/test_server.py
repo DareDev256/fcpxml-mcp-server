@@ -11,6 +11,8 @@ import types
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Shim the `mcp` package tree before importing server.py
 # ---------------------------------------------------------------------------
@@ -87,6 +89,7 @@ if _NEEDS_SHIM:
     _install_mcp_shim()
 
 from server import (  # noqa: E402
+    _parse_timestamp_parts,
     call_tool,
     find_fcpxml_files,
     format_duration,
@@ -304,6 +307,13 @@ class TestParseTranscriptTimestamps:
         assert len(markers) == 1
         assert markers[0]["seconds"] == 10
 
+    def test_smpte_nonzero_frames(self):
+        """SMPTE frames are converted to fractional seconds at default 24fps."""
+        text = "00:00:10:12 Scene Two\n"
+        markers = parse_transcript_timestamps(text)
+        assert len(markers) == 1
+        assert markers[0]["seconds"] == pytest.approx(10.5, abs=1e-6)
+
     def test_blank_lines_skipped(self):
         text = "0:00 Start\n\n\n0:30 Middle\n"
         markers = parse_transcript_timestamps(text)
@@ -311,6 +321,35 @@ class TestParseTranscriptTimestamps:
 
     def test_no_timestamps(self):
         assert parse_transcript_timestamps("just plain text") == []
+
+
+class TestParseTimestampParts:
+    """Direct unit tests for _parse_timestamp_parts SMPTE accuracy."""
+
+    def test_two_part(self):
+        assert _parse_timestamp_parts(["1", "30"]) == 90.0
+
+    def test_three_part(self):
+        assert _parse_timestamp_parts(["1", "05", "30"]) == 3930.0
+
+    def test_four_part_zero_frames(self):
+        assert _parse_timestamp_parts(["0", "0", "10", "00"]) == 10.0
+
+    def test_four_part_nonzero_frames_24fps(self):
+        result = _parse_timestamp_parts(["0", "0", "10", "12"])
+        assert result == pytest.approx(10.5, abs=1e-6)
+
+    def test_four_part_custom_frame_rate(self):
+        result = _parse_timestamp_parts(["0", "0", "5", "15"], frame_rate=30.0)
+        assert result == pytest.approx(5.5, abs=1e-6)
+
+    def test_four_part_frame_rate_25fps(self):
+        result = _parse_timestamp_parts(["0", "0", "1", "5"], frame_rate=25.0)
+        assert result == pytest.approx(1.2, abs=1e-6)
+
+    def test_unrecognised_part_count(self):
+        assert _parse_timestamp_parts(["10"]) is None
+        assert _parse_timestamp_parts(["1", "2", "3", "4", "5"]) is None
 
 
 # ============================================================

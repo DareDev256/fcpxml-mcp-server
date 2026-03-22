@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.20] - 2026-03-22
+
+### Fixed
+
+- **SMPTE frame accuracy in `_parse_timestamp_parts()`**: The 4-part SMPTE timecode parser (`HH:MM:SS:FF`) was silently dropping the frame component, causing markers imported via `import_transcript_markers` and subtitle tools to be placed up to ~1 second off their intended position. Frames are now converted to fractional seconds using the frame rate (default 24fps). Added `frame_rate` keyword argument for caller-specified FPS.
+
+### Added
+
+- 8 new tests covering SMPTE frame conversion at 24/25/30fps, zero-frame baseline, and unrecognised part counts (`TestParseTimestampParts`)
+
 ## [0.6.19] - 2026-03-21
 
 ### Changed
