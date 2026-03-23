@@ -380,6 +380,56 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 
 ---
 
+## Timestamp Parsing — How Import Tools Place Markers
+
+All subtitle and transcript import tools (`import_srt_markers`, `import_transcript_markers`) funnel through a single internal function: **`_parse_timestamp_parts()`** in `server.py`. Understanding it matters when timestamps don't land where you expect.
+
+### Supported Formats
+
+| Format | Example | Parts | Result |
+|--------|---------|-------|--------|
+| **Minutes:Seconds** | `1:30` | 2 | 90.0s |
+| **H:MM:SS** | `1:05:30` | 3 | 3930.0s |
+| **HH:MM:SS.ms** | `00:02:15.500` | 3 | 135.5s |
+| **SMPTE** (HH:MM:SS:FF) | `01:00:10:12` | 4 | 3610.5s @ 24fps |
+
+The SMPTE 4-part format converts the frame component to fractional seconds: `frames / frame_rate`. The default rate is **24fps** — pass `frame_rate=` to override for 25fps (PAL) or 30fps (NTSC) projects.
+
+### The Import Pipeline
+
+```
+SRT / VTT / YouTube chapters / plain transcript
+        │
+        ▼
+  parse_srt()  /  parse_vtt()  /  parse_transcript_timestamps()
+        │                │                      │
+        └────────────────┴──────────────────────┘
+                         │
+                    split on ':'
+                         │
+                         ▼
+             _parse_timestamp_parts(parts, frame_rate=24.0)
+                         │
+                         ▼
+                   total seconds (float)
+                         │
+                         ▼
+               marker placed on timeline
+```
+
+### Edge Cases
+
+- **Unrecognized part counts** (1 part, 5+ parts) return `None` — the marker is silently skipped, not placed incorrectly
+- **Zero frame rate** — falls back to base seconds (frames ignored) rather than dividing by zero
+- **Milliseconds** — only carried in 3-part format via `float()` on the seconds component (`"15.500"` → `15.5`)
+- **Frame rounding** — SMPTE frames are divided exactly (`12/24 = 0.5`), not rounded to the nearest frame boundary. The resulting float is converted to FCPXML's rational `TimeValue` downstream, preserving precision
+
+### Why This Matters
+
+Before v0.6.20, the 4-part SMPTE parser silently dropped frames — `01:00:10:12` became `3610.0s` instead of `3610.5s`. At 24fps, that's up to **~0.96 seconds** of drift per marker. If you imported a subtitle file with SMPTE timecodes, every marker was slightly off. This was subtle enough to pass QC but visible when scrubbing.
+
+---
+
 ## Design Principles
 
 | Principle | Implementation |

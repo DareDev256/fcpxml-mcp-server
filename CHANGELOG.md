@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.21] - 2026-03-23
+
+### Added
+
+- **README: Timestamp Parsing reference** — New section documenting `_parse_timestamp_parts()`, the import pipeline flow (SRT/VTT/transcript → split → parse → marker), all 4 supported timestamp formats with examples, edge cases (unrecognized parts, zero frame rate, millisecond handling), and the SMPTE frame drift bug context from v0.6.20
+
 ## [0.6.20] - 2026-03-22
 
 ### Fixed
