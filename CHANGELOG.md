@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.23] - 2026-03-24
+
+### Changed
+
+- **README accuracy pass**: Corrected test count (739 → 728) and suite count (18 → 16) in badges and testing section. Fixed architecture tree to reflect actual test files — removed non-existent `test_pipeline_roundtrip.py`, added `test_fcpxml_writer.py` (FCPXMLWriter generation) and `test_speed_cutting.py` (speed cutting, montage config, pacing curves). Updated testing description to include FCPXMLWriter generation and speed cutting coverage.
+
 ## [0.6.22] - 2026-03-23
 
 ### Changed

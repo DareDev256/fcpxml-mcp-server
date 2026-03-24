@@ -7,8 +7,8 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-739_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-18-blue.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-728_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-16-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
 ---
@@ -339,6 +339,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
+│   ├── test_fcpxml_writer.py  FCPXMLWriter generation from Python objects
 │   ├── test_server.py     MCP tool handlers, dispatch, path validation
 │   ├── test_rough_cut.py  Rough cut generation, montage, A/B roll
 │   ├── test_diff.py       Moved clips, transitions, markers, clip identity
@@ -346,7 +347,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── test_features_v05.py  Multi-track, roles, diff, reformat, export
 │   ├── test_features_v06.py  Audio, compound clips, templates, effects, validation
 │   ├── test_marker_pipeline.py  Marker builder, batch modes, output format
-│   ├── test_pipeline_roundtrip.py  Write→parse symmetry at multiple frame rates
+│   ├── test_speed_cutting.py  Speed cutting, montage config, pacing curves
 │   ├── test_security.py   Input validation, XML sanitization, XXE protection
 │   ├── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
 │   ├── test_diversity.py  Boundary conditions across diff, models, validation
@@ -460,7 +461,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-739 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+728 tests across 16 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
