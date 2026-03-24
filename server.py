@@ -267,6 +267,33 @@ class _NoTimelineError(Exception):
     """Sentinel raised by _require_timeline when no timelines exist."""
 
 
+def _resolve_io_paths(
+    arguments: dict,
+    suffix: str = "_modified",
+) -> tuple[str, str]:
+    """Validate input filepath and resolve the output path.
+
+    Shared foundation for every handler that reads an FCPXML and writes
+    a derived file.  Validates the input, falls back to a suffixed
+    output name when ``output_path`` is not supplied, and sandbox-checks
+    the result.
+
+    Args:
+        arguments: Tool arguments dict (must contain ``filepath``; may
+            contain ``output_path``).
+        suffix: Default output filename suffix when ``output_path`` is
+            not provided (e.g. ``"_modified"``, ``"_beats"``).
+
+    Returns:
+        ``(filepath, output_path)`` tuple with both paths validated.
+    """
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    output_path = _validate_output_path(
+        arguments.get("output_path") or generate_output_path(filepath, suffix)
+    )
+    return filepath, output_path
+
+
 def _setup_modifier(
     arguments: dict,
     suffix: str = "_modified",
@@ -286,12 +313,28 @@ def _setup_modifier(
         ``(filepath, output_path, modifier)`` tuple ready for the
         handler's domain-specific operation.
     """
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, suffix)
-    )
+    filepath, output_path = _resolve_io_paths(arguments, suffix)
     modifier = FCPXMLModifier(filepath)
     return filepath, output_path, modifier
+
+
+def _setup_generator(
+    arguments: dict,
+    suffix: str = "_roughcut",
+) -> tuple[str, str, "RoughCutGenerator"]:
+    """Common setup for generation handlers: validate paths and create generator.
+
+    Args:
+        arguments: Tool arguments dict (must contain ``filepath`` and
+            ``output_path``).
+        suffix: Default output filename suffix.
+
+    Returns:
+        ``(filepath, output_path, generator)`` tuple.
+    """
+    filepath, output_path = _resolve_io_paths(arguments, suffix)
+    generator = RoughCutGenerator(filepath)
+    return filepath, output_path, generator
 
 
 def _parse_timestamp_parts(
@@ -1994,8 +2037,7 @@ async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
 # ----- GENERATION HANDLERS -----
 
 async def handle_auto_rough_cut(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(arguments["output_path"])
+    filepath, output_path, generator = _setup_generator(arguments, "_roughcut")
 
     segments = None
     if arguments.get("segments"):
@@ -2008,8 +2050,6 @@ async def handle_auto_rough_cut(arguments: dict) -> Sequence[TextContent]:
             )
             for s in arguments["segments"]
         ]
-
-    generator = RoughCutGenerator(filepath)
     result = generator.generate(
         output_path=output_path,
         target_duration=arguments["target_duration"],
@@ -2037,10 +2077,7 @@ Saved to: `{result.output_path}`
 
 
 async def handle_generate_montage(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(arguments["output_path"])
-
-    generator = RoughCutGenerator(filepath)
+    filepath, output_path, generator = _setup_generator(arguments, "_montage")
     result = generator.generate_montage(
         output_path=output_path,
         target_duration=arguments["target_duration"],
@@ -2076,10 +2113,7 @@ Saved to: `{result['output_path']}`
 
 
 async def handle_generate_ab_roll(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(arguments["output_path"])
-
-    generator = RoughCutGenerator(filepath)
+    filepath, output_path, generator = _setup_generator(arguments, "_ab_roll")
     result = generator.generate_ab_roll(
         output_path=output_path,
         target_duration=arguments["target_duration"],
@@ -2114,11 +2148,8 @@ Saved to: `{result['output_path']}`
 # ----- BEAT SYNC HANDLERS -----
 
 async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    filepath, output_path = _resolve_io_paths(arguments, "_beats")
     beats_path = _validate_filepath(arguments["beats_path"], ('.json',))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_beats")
-    )
 
     with open(beats_path, 'r') as f:
         beats_data = json.load(f)
@@ -2172,10 +2203,7 @@ Saved to: `{output_path}`
 
 
 async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_synced")
-    )
+    filepath, output_path = _resolve_io_paths(arguments, "_synced")
     max_shift = arguments.get("max_shift_frames", 6)
     prefer = arguments.get("prefer", "nearest")
 
@@ -2264,11 +2292,8 @@ Your edits are now synced to the beat!
 # ----- SUBTITLE / TRANSCRIPT HANDLERS -----
 
 async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    filepath, output_path = _resolve_io_paths(arguments, "_subtitled")
     srt_path = _validate_filepath(arguments["srt_path"], ('.srt', '.vtt'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_subtitled")
-    )
     mode = arguments.get("mode", "first_per_minute")
     marker_type = arguments.get("marker_type", "chapter")
     max_label = arguments.get("max_label_length", 50)
@@ -2338,10 +2363,7 @@ Saved to: `{output_path}`
 
 
 async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_chapters")
-    )
+    filepath, output_path = _resolve_io_paths(arguments, "_chapters")
     marker_type = arguments.get("marker_type", "chapter")
 
     # Get transcript text from inline or file
@@ -2603,10 +2625,7 @@ async def handle_diff_timelines(arguments: dict) -> Sequence[TextContent]:
 # ----- SOCIAL MEDIA REFORMAT HANDLER (v0.5.0) -----
 
 async def handle_reformat_timeline(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_reformatted")
-    )
+    filepath, output_path = _resolve_io_paths(arguments, "_reformatted")
 
     fmt = arguments["format"]
     if fmt == "custom":
@@ -2686,10 +2705,7 @@ async def handle_remove_silence_candidates(arguments: dict) -> Sequence[TextCont
 # ----- NLE EXPORT HANDLERS (v0.5.0) -----
 
 async def handle_export_resolve_xml(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, "_resolve")
-    )
+    filepath, output_path = _resolve_io_paths(arguments, "_resolve")
     exporter = DaVinciExporter(filepath)
     exporter.export_simplified_fcpxml(
         output_path,
@@ -2705,11 +2721,7 @@ async def handle_export_resolve_xml(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_export_fcp7_xml(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    default_out = str(Path(filepath).with_suffix('')) + "_fcp7.xml"
-    output_path = _validate_output_path(
-        arguments.get("output_path") or default_out
-    )
+    filepath, output_path = _resolve_io_paths(arguments, "_fcp7")
     exporter = DaVinciExporter(filepath)
     exporter.export_xmeml(output_path)
     return [TextContent(type="text", text=(

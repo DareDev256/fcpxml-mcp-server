@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.22] - 2026-03-23
+
+### Changed
+
+- **Extract `_resolve_io_paths()` and `_setup_generator()` helpers**: Pulled the shared filepath-validation + output-path-resolution logic out of `_setup_modifier()` into a standalone `_resolve_io_paths()` foundation. Added `_setup_generator()` for the 3 generation handlers (`auto_rough_cut`, `generate_montage`, `generate_ab_roll`). Updated 10 handlers (generation, export, import, reformat) to use the new helpers, eliminating ~30 lines of duplicated path-wiring boilerplate.
+
 ## [0.6.21] - 2026-03-23
 
 ### Added

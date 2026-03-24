@@ -323,7 +323,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ```
 fcp-mcp-server/           ~8.7k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
-│                          _setup_modifier() consolidates write handler boilerplate
+│                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
+│                          consolidate path validation and handler boilerplate
 ├── fcpxml/
 │   ├── README.md          Developer guide — TimeValue, clip hierarchy, type reference
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
@@ -334,7 +335,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 720 tests across 16 suites
+├── tests/                 728 tests across 16 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
