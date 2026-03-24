@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-720_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-739_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-18-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
@@ -376,7 +376,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-115 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, and role sanitization. Additional hardening includes `parse_string` size limits, ffmpeg parameter bounds validation, inline text size caps, and speed parameter range checks.
+117 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, role sanitization, ffmpeg parameter bounds, and write-handler sandbox enforcement. Security events (null bytes, sandbox escapes, unhandled exceptions) are logged via Python `logging` for audit trails.
 
 ---
 
@@ -459,7 +459,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-728 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+739 tests across 16 suites covering models, parser, writer, server handlers, rough cut generation, marker pipeline roundtrips, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
