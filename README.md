@@ -7,8 +7,8 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-728_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-16-blue.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-745_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
 ---
@@ -335,7 +335,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 728 tests across 16 suites
+├── tests/                 745 tests across 17 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -351,6 +351,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── test_security.py   Input validation, XML sanitization, XXE protection
 │   ├── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
 │   ├── test_diversity.py  Boundary conditions across diff, models, validation
+│   ├── test_server_helpers.py  _resolve_io_paths, _setup_generator composition
 │   └── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
