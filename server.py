@@ -212,6 +212,20 @@ def format_duration(seconds: float) -> str:
     return f"{int(seconds // 60)}m {seconds % 60:.1f}s"
 
 
+def _format_clip_table(clips: list, header: str) -> str:
+    """Render a list of clips as a markdown table with timecodes and durations.
+
+    Shared by handlers that filter clips by duration threshold
+    (find_short_cuts, find_long_clips).
+    """
+    result = f"{header}\n\n| Name | TC | Duration |\n|------|----|---------|\n"
+    result += "\n".join(
+        f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |"
+        for c in clips
+    )
+    return result
+
+
 def _fmt_suggestions(suggestions: list[str]) -> str:
     """Format pacing suggestions as markdown list (Python 3.10 compatible)."""
     if not suggestions:
@@ -361,6 +375,28 @@ def _parse_timestamp_parts(
         frames = int(parts[3])
         return base + (frames / frame_rate) if frame_rate > 0 else base
     return None
+
+
+def _raw_markers_to_batch(
+    raw_markers: list[dict],
+    marker_type: str = "chapter",
+    max_label: int | None = None,
+) -> list[dict]:
+    """Convert raw {seconds, text} marker dicts to batch_add_markers format.
+
+    Shared by import_srt_markers and import_transcript_markers.
+    """
+    batch = []
+    for m in raw_markers:
+        label = m["text"]
+        if max_label and len(label) > max_label:
+            label = label[:max_label]
+        batch.append({
+            "timecode": f"{m['seconds']}s",
+            "name": label,
+            "marker_type": marker_type.upper(),
+        })
+    return batch
 
 
 def _extract_subtitle_blocks(text: str, *, strip_vtt_tags: bool = False) -> list[dict]:
@@ -1490,9 +1526,9 @@ async def handle_find_short_cuts(arguments: dict) -> Sequence[TextContent]:
     short = tl.get_clips_shorter_than(threshold)
     if not short:
         return [TextContent(type="text", text=f"No clips shorter than {threshold}s")]
-    result = f"# Short Clips (< {threshold}s) - {len(short)} found\n\n| Name | TC | Duration |\n|------|----|---------|\n"
-    result += "\n".join(f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |" for c in short)
-    return [TextContent(type="text", text=result)]
+    return [TextContent(type="text", text=_format_clip_table(
+        short, f"# Short Clips (< {threshold}s) - {len(short)} found",
+    ))]
 
 
 async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
@@ -1501,9 +1537,9 @@ async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
     long = tl.get_clips_longer_than(threshold)
     if not long:
         return [TextContent(type="text", text=f"No clips longer than {threshold}s")]
-    result = f"# Long Clips (> {threshold}s) - {len(long)} found\n\n| Name | TC | Duration |\n|------|----|---------|\n"
-    result += "\n".join(f"| {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} |" for c in long)
-    return [TextContent(type="text", text=result)]
+    return [TextContent(type="text", text=_format_clip_table(
+        long, f"# Long Clips (> {threshold}s) - {len(long)} found",
+    ))]
 
 
 async def handle_list_keywords(arguments: dict) -> Sequence[TextContent]:
@@ -1648,12 +1684,7 @@ async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
-    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
-    parser = FCPXMLParser()
-    project = parser.parse_file(filepath)
-    if not project.timelines:
-        return _no_timeline()
-    tl = project.primary_timeline
+    project, tl = _require_timeline(arguments["filepath"])
     mode = arguments.get("mode", "same_source")
 
     source_groups = {}
@@ -2334,15 +2365,7 @@ async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
                 seen_texts.add(key)
                 filtered.append(m)
 
-    # Convert to marker format
-    markers = []
-    for m in filtered:
-        label = m['text'][:max_label] if len(m['text']) > max_label else m['text']
-        markers.append({
-            'timecode': f"{m['seconds']}s",
-            'name': label,
-            'marker_type': marker_type.upper(),
-        })
+    markers = _raw_markers_to_batch(filtered, marker_type, max_label=max_label)
 
     modifier = FCPXMLModifier(filepath)
     added = modifier.batch_add_markers(markers=markers)
@@ -2382,13 +2405,7 @@ async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextCont
     if not raw_markers:
         return [TextContent(type="text", text="No timestamps found. Expected format: '0:00 Title' or 'HH:MM:SS Title', one per line.")]
 
-    markers = []
-    for m in raw_markers:
-        markers.append({
-            'timecode': f"{m['seconds']}s",
-            'name': m['text'],
-            'marker_type': marker_type.upper(),
-        })
+    markers = _raw_markers_to_batch(raw_markers, marker_type)
 
     modifier = FCPXMLModifier(filepath)
     added = modifier.batch_add_markers(markers=markers)

@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-745_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-728_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
@@ -324,7 +324,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 fcp-mcp-server/           ~8.7k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
-│                          consolidate path validation and handler boilerplate
+│                          _format_clip_table() / _raw_markers_to_batch()
+│                          consolidate path validation, rendering, and handler boilerplate
 ├── fcpxml/
 │   ├── README.md          Developer guide — TimeValue, clip hierarchy, type reference
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline

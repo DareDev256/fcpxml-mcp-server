@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.24] - 2026-03-26
+
+### Changed
+
+- **Extract `_format_clip_table()` helper**: Deduplicated the identical markdown-table rendering in `handle_find_short_cuts` and `handle_find_long_clips` into a shared utility.
+- **Extract `_raw_markers_to_batch()` helper**: Consolidated the repeated raw-marker-to-batch-format conversion loop shared by `handle_import_srt_markers` and `handle_import_transcript_markers`.
+- **Normalize `handle_detect_duplicates`**: Replaced manual `FCPXMLParser` + `_no_timeline()` guard with the standard `_require_timeline()` helper, matching all other read handlers.
+
 ## [0.6.23] - 2026-03-24
 
 ### Changed
