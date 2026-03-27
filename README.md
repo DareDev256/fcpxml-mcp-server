@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-732_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-728_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
@@ -331,6 +331,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
+│   │                       _resolve_insert_position() / _find_neighbor_clip() helpers
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export

@@ -655,6 +655,80 @@ class FCPXMLModifier:
                 return i
         return None
 
+    @staticmethod
+    def _find_neighbor_clip(
+        spine_list: list, index: int, direction: str
+    ) -> Optional[ET.Element]:
+        """Find the nearest non-gap clip before or after *index* in *spine_list*.
+
+        Args:
+            spine_list: Materialised list of spine children.
+            index: Position to search from (exclusive).
+            direction: ``'prev'`` to search backward, ``'next'`` to search forward.
+
+        Returns:
+            The first clip-type element found, or ``None``.
+        """
+        if direction == 'prev':
+            for j in range(index - 1, -1, -1):
+                if spine_list[j].tag in CLIP_TAGS:
+                    return spine_list[j]
+        else:
+            for j in range(index + 1, len(spine_list)):
+                if spine_list[j].tag in CLIP_TAGS:
+                    return spine_list[j]
+        return None
+
+    def _resolve_insert_position(
+        self, position: str, spine_children: list
+    ) -> tuple:
+        """Translate a human-friendly position spec into (target_offset, insert_index).
+
+        Supported formats:
+            ``'start'``         — beginning of spine
+            ``'end'``           — after last element
+            ``'after:clip_id'`` — after the named clip
+            ``'before:clip_id'``— before the named clip
+            *timecode*          — absolute timeline position
+
+        Returns:
+            ``(TimeValue, int)`` — the offset and child-index for spine insertion.
+        """
+        if position == 'start':
+            return TimeValue.zero(), 0
+
+        if position == 'end':
+            if spine_children:
+                last = spine_children[-1]
+                last_offset = self._parse_time(last.get('offset', '0s'))
+                last_dur = self._parse_time(last.get('duration', '0s'))
+                return last_offset + last_dur, len(spine_children)
+            return TimeValue.zero(), len(spine_children)
+
+        if position.startswith('after:') or position.startswith('before:'):
+            is_after = position.startswith('after:')
+            ref_id = position.split(':', 1)[1]
+            ref_clip = self.clips.get(ref_id)
+            if ref_clip is None or ref_clip not in spine_children:
+                raise ValueError(f"Reference clip not found: {ref_id}")
+            idx = spine_children.index(ref_clip)
+            ref_offset = self._parse_time(ref_clip.get('offset', '0s'))
+            if is_after:
+                ref_dur = self._parse_time(ref_clip.get('duration', '0s'))
+                return ref_offset + ref_dur, idx + 1
+            return ref_offset, idx
+
+        # Assume timecode
+        target_offset = self._parse_time(position)
+        insert_index = 0
+        for i, child in enumerate(spine_children):
+            child_offset = self._parse_time(child.get('offset', '0s'))
+            if child_offset.to_seconds() >= target_offset.to_seconds():
+                insert_index = i
+                break
+            insert_index = i + 1
+        return target_offset, insert_index
+
     def _make_transition_element(
         self,
         effect_name: str,
@@ -955,48 +1029,9 @@ class FCPXMLModifier:
 
         # Determine target offset and insert index
         spine_children = list(spine)
-
-        if target_position == 'start':
-            target_offset = TimeValue.zero()
-            insert_index = 0
-        elif target_position == 'end':
-            if spine_children:
-                last = spine_children[-1]
-                _, last_dur, last_offset = self._get_clip_times(last)
-                target_offset = last_offset + last_dur
-            else:
-                target_offset = TimeValue.zero()
-            insert_index = len(spine_children)
-        elif target_position.startswith('after:'):
-            ref_id = target_position.split(':', 1)[1]
-            ref_clip = self.clips.get(ref_id)
-            if ref_clip is not None and ref_clip in spine_children:
-                idx = spine_children.index(ref_clip)
-                ref_offset = self._parse_time(ref_clip.get('offset', '0s'))
-                ref_dur = self._parse_time(ref_clip.get('duration', '0s'))
-                target_offset = ref_offset + ref_dur
-                insert_index = idx + 1
-            else:
-                raise ValueError(f"Reference clip not found: {ref_id}")
-        elif target_position.startswith('before:'):
-            ref_id = target_position.split(':', 1)[1]
-            ref_clip = self.clips.get(ref_id)
-            if ref_clip is not None and ref_clip in spine_children:
-                idx = spine_children.index(ref_clip)
-                target_offset = self._parse_time(ref_clip.get('offset', '0s'))
-                insert_index = idx
-            else:
-                raise ValueError(f"Reference clip not found: {ref_id}")
-        else:
-            # Assume timecode
-            target_offset = self._parse_time(target_position)
-            insert_index = 0
-            for i, child in enumerate(spine_children):
-                child_offset = self._parse_time(child.get('offset', '0s'))
-                if child_offset.to_seconds() >= target_offset.to_seconds():
-                    insert_index = i
-                    break
-                insert_index = i + 1
+        target_offset, insert_index = self._resolve_insert_position(
+            target_position, spine_children
+        )
 
         # Insert clips at new position
         current_offset = target_offset
@@ -1383,12 +1418,7 @@ class FCPXMLModifier:
             spine_list = list(spine)
 
             if actual_mode == 'extend_previous' and clip_index > 0:
-                # Find previous non-gap clip
-                prev_clip = None
-                for j in range(clip_index - 1, -1, -1):
-                    if spine_list[j].tag in CLIP_TAGS:
-                        prev_clip = spine_list[j]
-                        break
+                prev_clip = self._find_neighbor_clip(spine_list, clip_index, 'prev')
 
                 if prev_clip is not None:
                     prev_duration = self._parse_time(prev_clip.get('duration', '0s'))
@@ -1399,12 +1429,7 @@ class FCPXMLModifier:
                     result['extended_clip'] = prev_clip.get('name', 'Previous')
 
             elif actual_mode == 'extend_next' and clip_index < len(spine_list) - 1:
-                # Find next non-gap clip
-                next_clip = None
-                for j in range(clip_index + 1, len(spine_list)):
-                    if spine_list[j].tag in CLIP_TAGS:
-                        next_clip = spine_list[j]
-                        break
+                next_clip = self._find_neighbor_clip(spine_list, clip_index, 'next')
 
                 if next_clip is not None:
                     next_duration = self._parse_time(next_clip.get('duration', '0s'))
@@ -1563,12 +1588,7 @@ class FCPXMLModifier:
             }
 
             if mode == 'extend_previous' and gap_index > 0:
-                # Find previous clip
-                prev_clip = None
-                for j in range(gap_index - 1, -1, -1):
-                    if spine_list[j].tag in CLIP_TAGS:
-                        prev_clip = spine_list[j]
-                        break
+                prev_clip = self._find_neighbor_clip(spine_list, gap_index, 'prev')
 
                 if prev_clip is not None:
                     prev_duration = self._parse_time(prev_clip.get('duration', '0s'))
@@ -1579,12 +1599,7 @@ class FCPXMLModifier:
                     filled.append(result)
 
             elif mode == 'extend_next' and gap_index < len(spine_list) - 1:
-                # Find next clip
-                next_clip = None
-                for j in range(gap_index + 1, len(spine_list)):
-                    if spine_list[j].tag in CLIP_TAGS:
-                        next_clip = spine_list[j]
-                        break
+                next_clip = self._find_neighbor_clip(spine_list, gap_index, 'next')
 
                 if next_clip is not None:
                     next_duration = self._parse_time(next_clip.get('duration', '0s'))
@@ -1713,40 +1728,9 @@ class FCPXMLModifier:
         # Get spine and calculate insert position
         spine = self._get_spine()
         spine_children = list(spine)
-
-        if position == 'start':
-            target_offset = TimeValue.zero()
-            insert_index = 0
-        elif position == 'end':
-            if spine_children:
-                last = spine_children[-1]
-                last_offset = self._parse_time(last.get('offset', '0s'))
-                last_dur = self._parse_time(last.get('duration', '0s'))
-                target_offset = last_offset + last_dur
-            else:
-                target_offset = TimeValue.zero()
-            insert_index = len(spine_children)
-        elif position.startswith('after:'):
-            ref_id = position.split(':', 1)[1]
-            ref_clip = self.clips.get(ref_id)
-            if ref_clip is not None and ref_clip in spine_children:
-                idx = spine_children.index(ref_clip)
-                ref_offset = self._parse_time(ref_clip.get('offset', '0s'))
-                ref_dur = self._parse_time(ref_clip.get('duration', '0s'))
-                target_offset = ref_offset + ref_dur
-                insert_index = idx + 1
-            else:
-                raise ValueError(f"Reference clip not found: {ref_id}")
-        else:
-            # Assume timecode
-            target_offset = self._parse_time(position)
-            insert_index = 0
-            for i, child in enumerate(spine_children):
-                child_offset = self._parse_time(child.get('offset', '0s'))
-                if child_offset.to_seconds() >= target_offset.to_seconds():
-                    insert_index = i
-                    break
-                insert_index = i + 1
+        target_offset, insert_index = self._resolve_insert_position(
+            position, spine_children
+        )
 
         # Create new asset-clip element
         new_clip = ET.Element('asset-clip')

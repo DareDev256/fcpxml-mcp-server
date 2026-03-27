@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.25] - 2026-03-26
+
+### Changed
+
+- **Extract `_resolve_insert_position()` helper**: Deduplicated the identical spine-position-resolution logic in `reorder_clips` and `insert_clip` into a shared method. Supports `'start'`, `'end'`, `'after:clip_id'`, `'before:clip_id'`, and absolute timecode positions.
+- **Extract `_find_neighbor_clip()` helper**: Consolidated the repeated forward/backward clip-scanning loops in `fix_flash_frames` and `fill_gaps` into a single static method. Eliminates 4 copies of the same search pattern.
+
 ## [0.6.24] - 2026-03-26
 
 ### Changed
