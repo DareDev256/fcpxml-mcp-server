@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.26] - 2026-03-26
+
+### Fixed
+
+- **Parser crash on assets with `<media-rep>` child**: `_parse_resources()` called `asset.find('media-rep')` twice — once for the `is not None` guard and once for `.get('src')`. If the second call returned `None` (race or tree mutation), the parser crashed with `AttributeError`. Now uses a walrus operator for a single lookup.
+- **Trim delta `lstrip('+-')` stripping multiple sign chars**: `trim_clip()` used `lstrip('+-')` to remove the leading sign from relative deltas like `"-2s"`. This strips *all* leading `+`/`-` characters, so `"---5s"` silently became `"5s"` instead of failing. Fixed to `[1:]` — only the first character is removed.
+- **Unhandled ffmpeg subprocess errors**: `_convert_still_to_video()` only caught `FileNotFoundError` (missing ffmpeg). `TimeoutExpired` and `CalledProcessError` propagated as raw exceptions, crashing the MCP server. Now catches both and raises clear `RuntimeError` messages.
+
+### Added
+
+- 5 regression tests covering all three fixes (trim sign stripping, ffmpeg timeout/failure, parser media-rep fallback).
+
 ## [0.6.25] - 2026-03-26
 
 ### Changed

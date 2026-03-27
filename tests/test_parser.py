@@ -356,6 +356,28 @@ def test_default_version():
     assert FCPXMLParser().parse_string('<fcpxml><resources/></fcpxml>').fcpxml_version == "1.11"
 
 
+def test_asset_media_rep_fallback():
+    """Asset with no direct src should fall back to media-rep child src."""
+    asset_xml = (
+        '<asset id="r2" name="MediaRep" start="0s" duration="100s">'
+        '<media-rep src="file:///video.mov" kind="original-media"/>'
+        '</asset>'
+    )
+    xml = _fcpxml(CLIP_A.replace('ref="r2"', 'ref="r2"'), asset_xml)
+    parser = FCPXMLParser()
+    parser.parse_string(xml)
+    assert parser.resources.get('r2', {}).get('src') == 'file:///video.mov'
+
+
+def test_asset_no_src_no_media_rep():
+    """Asset with neither src attr nor media-rep child should yield empty string, not crash."""
+    asset_xml = '<asset id="r2" name="NoSrc" start="0s" duration="100s"/>'
+    xml = _fcpxml(CLIP_A, asset_xml)
+    parser = FCPXMLParser()
+    parser.parse_string(xml)
+    assert parser.resources.get('r2', {}).get('src') == ''
+
+
 def test_zero_denominator_frame_duration_raises():
     """frameDuration with zero denominator must raise, not silently set fps=0."""
     xml = _fcpxml(CLIP_A, ASSET_R2, frame_dur="1/0s")

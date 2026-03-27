@@ -399,6 +399,27 @@ def test_trim_clip_start_delta(temp_fcpxml):
     assert new_duration == pytest.approx(original_duration - 1.0, abs=0.1)
 
 
+def test_trim_clip_strips_only_first_sign_char(temp_fcpxml):
+    """Trim delta must strip only the leading sign, not multiple +/- chars.
+
+    Regression: lstrip('+-') would eat '-+--120/24s' → '120/24s', silently
+    consuming the entire prefix.  The fix uses [1:] so only the first
+    character is removed — triple-signs like '---1s' become '--1s' which
+    the parser rejects instead of silently treating as '1s'.
+    """
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # A well-formed single-sign delta should still work
+    clip = modifier.trim_clip(clip_id='Broll_Studio', trim_end='-1s', ripple=False)
+    dur = modifier._parse_time(clip.get('duration')).to_seconds()
+    assert dur == pytest.approx(4.0, abs=0.1)
+
+    # A triple-sign like '---1s' should fail (old lstrip would silently accept it)
+    modifier2 = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises((ValueError, Exception)):
+        modifier2.trim_clip(clip_id='Broll_Studio', trim_end='---1s', ripple=False)
+
+
 def test_trim_clip_invalid_clip(temp_fcpxml):
     """Trimming a nonexistent clip raises ValueError."""
     modifier = FCPXMLModifier(temp_fcpxml)

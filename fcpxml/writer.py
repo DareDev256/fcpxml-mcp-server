@@ -285,6 +285,13 @@ def _ensure_video_asset(
             "ffmpeg not found. Install ffmpeg to use still image auto-conversion: "
             "brew install ffmpeg"
         )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"Image conversion timed out after 120s: {path}"
+        )
+    except subprocess.CalledProcessError as e:
+        stderr_msg = e.stderr.decode(errors='replace') if e.stderr else str(e)
+        raise RuntimeError(f"ffmpeg conversion failed: {stderr_msg}")
     return str(output_path)
 
 
@@ -930,7 +937,7 @@ class FCPXMLModifier:
         # Handle trim_start
         if trim_start:
             if trim_start.startswith('+') or trim_start.startswith('-'):
-                delta = self._parse_time(trim_start.lstrip('+-'))
+                delta = self._parse_time(trim_start[1:])
                 if trim_start.startswith('-'):
                     # Extend earlier
                     new_start = current_start - delta
@@ -951,7 +958,7 @@ class FCPXMLModifier:
         # Handle trim_end
         if trim_end:
             if trim_end.startswith('+') or trim_end.startswith('-'):
-                delta = self._parse_time(trim_end.lstrip('+-'))
+                delta = self._parse_time(trim_end[1:])
                 if trim_end.startswith('-'):
                     new_duration = current_duration - delta
                 else:

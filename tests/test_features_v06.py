@@ -11,6 +11,7 @@ Tests for v0.6.0 features:
 """
 
 import os
+import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -441,6 +442,31 @@ class TestStillImageConversion:
             jpg_path = f.name
         try:
             with pytest.raises(FileNotFoundError, match="ffmpeg not found"):
+                _ensure_video_asset(jpg_path)
+        finally:
+            os.unlink(jpg_path)
+
+    @patch('fcpxml.writer.subprocess.run',
+           side_effect=subprocess.TimeoutExpired(cmd='ffmpeg', timeout=120))
+    def test_ffmpeg_timeout_raises_runtime_error(self, mock_run):
+        """Timed-out ffmpeg must raise RuntimeError, not propagate raw TimeoutExpired."""
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+            png_path = f.name
+        try:
+            with pytest.raises(RuntimeError, match="timed out"):
+                _ensure_video_asset(png_path)
+        finally:
+            os.unlink(png_path)
+
+    @patch('fcpxml.writer.subprocess.run',
+           side_effect=subprocess.CalledProcessError(
+               1, 'ffmpeg', stderr=b'Invalid codec'))
+    def test_ffmpeg_failure_raises_runtime_error(self, mock_run):
+        """Non-zero ffmpeg exit must raise RuntimeError with stderr details."""
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as f:
+            jpg_path = f.name
+        try:
+            with pytest.raises(RuntimeError, match="ffmpeg conversion failed"):
                 _ensure_video_asset(jpg_path)
         finally:
             os.unlink(jpg_path)
