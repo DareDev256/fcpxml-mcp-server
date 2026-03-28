@@ -337,7 +337,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 733 tests across 17 suites
+├── tests/                 766 tests across 18 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -354,7 +354,8 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
 │   ├── test_diversity.py  Boundary conditions across diff, models, validation
 │   ├── test_server_helpers.py  _resolve_io_paths, _setup_generator composition
-│   └── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
+│   ├── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
+│   └── test_validation_gaps.py  Input validation, XML priority, diff edge paths
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
 └── examples/
