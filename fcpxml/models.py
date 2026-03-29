@@ -375,7 +375,7 @@ class TimeValue:
         )
 
     def __mul__(self, scalar: float) -> 'TimeValue':
-        new_num = int(self.numerator * scalar)
+        new_num = round(self.numerator * scalar)
         return TimeValue(new_num, self.denominator)
 
     def __truediv__(self, scalar: float) -> 'TimeValue':
@@ -389,6 +389,10 @@ class TimeValue:
         if not isinstance(other, TimeValue):
             return False
         return abs(self.to_seconds() - other.to_seconds()) < 0.0001
+
+    def __hash__(self) -> int:
+        # Round to epsilon precision so equal values hash the same
+        return hash(round(self.to_seconds(), 4))
 
     def snap_to_frame(self, fps: float) -> 'TimeValue':
         """Round this time value to the nearest frame boundary at the given fps.

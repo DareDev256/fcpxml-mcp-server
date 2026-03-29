@@ -607,6 +607,34 @@ class TestTimeValueArithmeticEdgeCases:
         # This tests the 0.0001s epsilon in __eq__
         assert a == b  # within epsilon
 
+    def test_mul_fractional_scalar_rounds_correctly(self):
+        """Multiplying by 0.5 must round, not truncate — avoids half-tick loss."""
+        # round(101 * 0.5) = 50 vs int(101 * 0.5) = 50 — same here, but
+        # round is correct for odd numerators like 5 * 1.5:
+        tv = TimeValue(5, 24)
+        result = tv * 1.5
+        # round(7.5) = 8, int(7.5) = 7 — round gives closer-to-correct result
+        assert result.numerator == 8
+        assert result.to_seconds() == pytest.approx(8 / 24, abs=1e-6)
+
+    def test_hash_equal_values_same_hash(self):
+        """Equal TimeValues must produce the same hash (dict/set contract)."""
+        a = TimeValue(24, 24)
+        b = TimeValue(30, 30)
+        assert a == b
+        assert hash(a) == hash(b)
+
+    def test_hash_usable_in_set(self):
+        """TimeValues must be usable as set elements."""
+        s = {TimeValue(24, 24), TimeValue(30, 30), TimeValue(72, 24)}
+        # 24/24 == 30/30 (both 1s), so set should have 2 elements
+        assert len(s) == 2
+
+    def test_hash_usable_as_dict_key(self):
+        """TimeValues must be usable as dict keys."""
+        d = {TimeValue(24, 24): "one_second"}
+        assert d[TimeValue(30, 30)] == "one_second"
+
 
 class TestMarkerTypeAliasSemantics:
     """MarkerType.INCOMPLETE is canonical; .TODO is a backward-compat alias."""
@@ -627,7 +655,7 @@ class TestMarkerTypeAliasSemantics:
         """from_string('todo') returns the canonical enum member (INCOMPLETE)."""
         result = MarkerType.from_string("todo")
         assert result is MarkerType.INCOMPLETE
-        assert result is MarkerType.INCOMPLETE  # .TODO alias is the same object
+        assert result is MarkerType.TODO  # alias resolves to the same canonical object
 
     def test_from_xml_element_numeric_completed_values(self):
         """Only exact '0' and '1' are recognised — '2', '-1', '00' are STANDARD."""

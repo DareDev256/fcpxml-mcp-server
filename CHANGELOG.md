@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.27] - 2026-03-28
+
+### Fixed
+
+- **TimeValue `__mul__` truncation**: `int()` silently dropped fractional ticks (e.g. `TimeValue(5,24) * 1.5` gave 7 instead of 8). Changed to `round()` for correct nearest-integer rounding.
+- **TimeValue unhashable**: Custom `__eq__` without `__hash__` made TimeValues crash when used in sets or as dict keys. Added epsilon-aware `__hash__` consistent with `__eq__`.
+- **Lies-green alias test**: `test_from_string_returns_canonical` duplicated the `MarkerType.INCOMPLETE` assertion instead of verifying the `MarkerType.TODO` alias. The alias relationship via `from_string` was never validated.
+
+### Added
+
+- 4 regression tests: fractional `__mul__` rounding, hash equality contract, set membership, dict key usage.
+
 ## [0.6.26] - 2026-03-26
 
 ### Fixed
