@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.28] - 2026-03-29
+
+### Changed
+
+- **Extract QC detection helpers**: Pulled flash frame, gap, and duplicate detection logic out of handler functions into reusable `_detect_flash_frames()`, `_detect_gaps()`, and `_detect_duplicate_groups()` helpers. `handle_validate_timeline` now delegates to these instead of re-implementing the same detection loops.
+- **Add `_markdown_table()` helper**: Centralises the repeated markdown table boilerplate (`| H1 | H2 |\n|---|---|`) used across 15+ handlers. Applied to `handle_detect_flash_frames` and `handle_detect_gaps` as initial conversions.
+
 ## [0.6.27] - 2026-03-28
 
 ### Fixed

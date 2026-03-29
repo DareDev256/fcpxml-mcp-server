@@ -226,6 +226,21 @@ def _format_clip_table(clips: list, header: str) -> str:
     return result
 
 
+def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Build a markdown table from headers and rows.
+
+    Returns header row, separator row, and data rows as a single string.
+    Callers avoid repeating the ``| H1 | H2 |\\n|---|---|`` boilerplate
+    that appears in 15+ handlers.
+    """
+    header_line = "| " + " | ".join(headers) + " |"
+    sep_line = "|" + "|".join("------" for _ in headers) + "|"
+    data_lines = "\n".join(
+        "| " + " | ".join(str(c) for c in row) + " |" for row in rows
+    )
+    return f"{header_line}\n{sep_line}\n{data_lines}"
+
+
 def _fmt_suggestions(suggestions: list[str]) -> str:
     """Format pacing suggestions as markdown list (Python 3.10 compatible)."""
     if not suggestions:
@@ -1444,6 +1459,110 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
+# QC DETECTION HELPERS — Pure detection logic, reusable across handlers
+# ============================================================================
+
+
+def _detect_flash_frames(
+    tl: Any, *, critical_threshold: int = 2, warning_threshold: int = 6,
+) -> list:
+    """Find clips shorter than *warning_threshold* frames.
+
+    Returns a list of ``FlashFrame`` objects sorted by severity.  Shared by
+    ``handle_detect_flash_frames`` and ``handle_validate_timeline`` so the
+    detection logic lives in exactly one place.
+    """
+    fps = tl.frame_rate
+    flash_frames: list[FlashFrame] = []
+    for clip in tl.clips:
+        duration_frames = int(clip.duration_seconds * fps)
+        if duration_frames < warning_threshold:
+            severity = (
+                FlashFrameSeverity.CRITICAL
+                if duration_frames < critical_threshold
+                else FlashFrameSeverity.WARNING
+            )
+            flash_frames.append(FlashFrame(
+                clip_name=clip.name, clip_id=clip.name,
+                start=clip.start, duration_frames=duration_frames,
+                duration_seconds=clip.duration_seconds, severity=severity,
+            ))
+    return flash_frames
+
+
+def _detect_gaps(tl: Any, *, min_gap_frames: int = 1) -> list:
+    """Find inter-clip gaps of at least *min_gap_frames* length.
+
+    Returns a list of ``GapInfo`` objects.  Shared by ``handle_detect_gaps``
+    and ``handle_validate_timeline``.
+    """
+    fps = tl.frame_rate
+    min_gap_seconds = min_gap_frames / fps
+    gaps: list[GapInfo] = []
+    sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
+    for i in range(len(sorted_clips) - 1):
+        current_end = sorted_clips[i].end.seconds
+        next_start = sorted_clips[i + 1].start.seconds
+        gap_duration = next_start - current_end
+        if gap_duration >= min_gap_seconds:
+            gaps.append(GapInfo(
+                start=Timecode(frames=int(current_end * fps), frame_rate=fps),
+                duration_frames=int(gap_duration * fps),
+                duration_seconds=gap_duration,
+                previous_clip=sorted_clips[i].name,
+                next_clip=sorted_clips[i + 1].name,
+            ))
+    return gaps
+
+
+def _detect_duplicate_groups(tl: Any, *, mode: str = "same_source") -> list:
+    """Group clips that share a source media reference.
+
+    Returns a list of ``DuplicateGroup`` objects.  Shared by
+    ``handle_detect_duplicates`` and ``handle_validate_timeline``.
+    """
+    source_groups: dict[str, list[dict]] = {}
+    for clip in tl.clips:
+        source_key = clip.media_path or clip.name
+        if source_key not in source_groups:
+            source_groups[source_key] = []
+        source_groups[source_key].append({
+            'name': clip.name,
+            'start': clip.start.seconds,
+            'duration': clip.duration_seconds,
+            'source_start': clip.source_start.seconds if clip.source_start else 0,
+            'source_duration': clip.duration_seconds,
+            'timecode': format_timecode(clip.start),
+        })
+
+    duplicates: list[DuplicateGroup] = []
+    for source_key, clips in source_groups.items():
+        if len(clips) <= 1:
+            continue
+        group = DuplicateGroup(
+            source_ref=source_key,
+            source_name=source_key.split('/')[-1] if '/' in source_key else source_key,
+            clips=clips,
+        )
+        if mode == "same_source":
+            duplicates.append(group)
+        elif mode == "overlapping_ranges" and group.has_overlapping_ranges:
+            duplicates.append(group)
+        elif mode == "identical":
+            seen_ranges: set[tuple] = set()
+            identical_clips = []
+            for c in clips:
+                range_key = (c['source_start'], c['source_duration'])
+                if range_key in seen_ranges:
+                    identical_clips.append(c)
+                seen_ranges.add(range_key)
+            if identical_clips:
+                group.clips = identical_clips
+                duplicates.append(group)
+    return duplicates
+
+
+# ============================================================================
 # TOOL HANDLERS — Each tool gets its own function
 # ============================================================================
 
@@ -1634,20 +1753,12 @@ async def handle_list_library_clips(arguments: dict) -> Sequence[TextContent]:
 
 async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
     project, tl = _require_timeline(arguments["filepath"])
-    fps = tl.frame_rate
     critical_threshold = arguments.get("critical_threshold_frames", 2)
     warning_threshold = arguments.get("warning_threshold_frames", 6)
 
-    flash_frames = []
-    for clip in tl.clips:
-        duration_frames = int(clip.duration_seconds * fps)
-        if duration_frames < warning_threshold:
-            severity = FlashFrameSeverity.CRITICAL if duration_frames < critical_threshold else FlashFrameSeverity.WARNING
-            flash_frames.append(FlashFrame(
-                clip_name=clip.name, clip_id=clip.name,
-                start=clip.start, duration_frames=duration_frames,
-                duration_seconds=clip.duration_seconds, severity=severity,
-            ))
+    flash_frames = _detect_flash_frames(
+        tl, critical_threshold=critical_threshold, warning_threshold=warning_threshold,
+    )
 
     if not flash_frames:
         return [TextContent(type="text", text=f"No flash frames detected (threshold: {warning_threshold} frames)")]
@@ -1664,18 +1775,21 @@ async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
 
 ## Critical Flash Frames
 """
+    flash_headers = ["Clip", "Timecode", "Frames", "Duration"]
     if critical:
-        result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
-        for f in critical:
-            result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
+        result += _markdown_table(flash_headers, [
+            [f.clip_name, format_timecode(f.start), f"{f.duration_frames}f", format_duration(f.duration_seconds)]
+            for f in critical
+        ]) + "\n"
     else:
         result += "_None_\n"
 
     result += "\n## Warning Flash Frames\n"
     if warnings:
-        result += "| Clip | Timecode | Frames | Duration |\n|------|----------|--------|----------|\n"
-        for f in warnings:
-            result += f"| {f.clip_name} | {format_timecode(f.start)} | {f.duration_frames}f | {format_duration(f.duration_seconds)} |\n"
+        result += _markdown_table(flash_headers, [
+            [f.clip_name, format_timecode(f.start), f"{f.duration_frames}f", format_duration(f.duration_seconds)]
+            for f in warnings
+        ]) + "\n"
     else:
         result += "_None_\n"
 
@@ -1687,42 +1801,7 @@ async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
     project, tl = _require_timeline(arguments["filepath"])
     mode = arguments.get("mode", "same_source")
 
-    source_groups = {}
-    for clip in tl.clips:
-        source_key = clip.media_path or clip.name
-        if source_key not in source_groups:
-            source_groups[source_key] = []
-        source_groups[source_key].append({
-            'name': clip.name, 'start': clip.start.seconds,
-            'duration': clip.duration_seconds,
-            'source_start': clip.source_start.seconds if clip.source_start else 0,
-            'source_duration': clip.duration_seconds,
-            'timecode': format_timecode(clip.start),
-        })
-
-    duplicates = []
-    for source_key, clips in source_groups.items():
-        if len(clips) > 1:
-            group = DuplicateGroup(
-                source_ref=source_key,
-                source_name=source_key.split('/')[-1] if '/' in source_key else source_key,
-                clips=clips,
-            )
-            if mode == "same_source":
-                duplicates.append(group)
-            elif mode == "overlapping_ranges" and group.has_overlapping_ranges:
-                duplicates.append(group)
-            elif mode == "identical":
-                seen_ranges = set()
-                identical_clips = []
-                for c in clips:
-                    range_key = (c['source_start'], c['source_duration'])
-                    if range_key in seen_ranges:
-                        identical_clips.append(c)
-                    seen_ranges.add(range_key)
-                if identical_clips:
-                    group.clips = identical_clips
-                    duplicates.append(group)
+    duplicates = _detect_duplicate_groups(tl, mode=mode)
 
     if not duplicates:
         return [TextContent(type="text", text=f"No duplicate clips found (mode: {mode})")]
@@ -1747,24 +1826,9 @@ async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
 
 async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
     project, tl = _require_timeline(arguments["filepath"])
-    fps = tl.frame_rate
     min_gap_frames = arguments.get("min_gap_frames", 1)
-    min_gap_seconds = min_gap_frames / fps
 
-    gaps = []
-    sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
-    for i in range(len(sorted_clips) - 1):
-        current_end = sorted_clips[i].end.seconds
-        next_start = sorted_clips[i + 1].start.seconds
-        gap_duration = next_start - current_end
-        if gap_duration >= min_gap_seconds:
-            gaps.append(GapInfo(
-                start=Timecode(frames=int(current_end * fps), frame_rate=fps),
-                duration_frames=int(gap_duration * fps),
-                duration_seconds=gap_duration,
-                previous_clip=sorted_clips[i].name,
-                next_clip=sorted_clips[i + 1].name,
-            ))
+    gaps = _detect_gaps(tl, min_gap_frames=min_gap_frames)
 
     if not gaps:
         return [TextContent(type="text", text=f"No gaps detected (minimum: {min_gap_frames} frame(s))")]
@@ -1777,11 +1841,12 @@ async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
 - **Minimum Detection**: {min_gap_frames} frame(s)
 
 ## Gaps
-| Position | Duration | Between |
-|----------|----------|---------|
 """
-    for gap in gaps:
-        result += f"| {gap.timecode} | {gap.duration_frames}f ({format_duration(gap.duration_seconds)}) | {gap.previous_clip} -> {gap.next_clip} |\n"
+    result += _markdown_table(
+        ["Position", "Duration", "Between"],
+        [[gap.timecode, f"{gap.duration_frames}f ({format_duration(gap.duration_seconds)})",
+          f"{gap.previous_clip} -> {gap.next_clip}"] for gap in gaps],
+    ) + "\n"
 
     result += "\n*Use `fill_gaps` to automatically close these gaps.*"
     return [TextContent(type="text", text=result)]
@@ -1993,44 +2058,37 @@ async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
 
 async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
     project, tl = _require_timeline(arguments["filepath"])
-    fps = tl.frame_rate
     checks = arguments.get("checks", ["all"])
     run_all = "all" in checks
 
-    issues = []
+    issues: list[str] = []
     flash_count = 0
     gap_count = 0
     duplicate_count = 0
 
     if run_all or "flash_frames" in checks:
-        for clip in tl.clips:
-            duration_frames = int(clip.duration_seconds * fps)
-            if duration_frames < 6:
-                flash_count += 1
-                severity = "error" if duration_frames < 2 else "warning"
-                issues.append(f"- [{severity.upper()}] Flash frame: {clip.name} ({duration_frames}f) at {format_timecode(clip.start)}")
+        flashes = _detect_flash_frames(tl)
+        flash_count = len(flashes)
+        for f in flashes:
+            severity = "error" if f.severity == FlashFrameSeverity.CRITICAL else "warning"
+            issues.append(
+                f"- [{severity.upper()}] Flash frame: {f.clip_name} "
+                f"({f.duration_frames}f) at {format_timecode(f.start)}"
+            )
 
     if run_all or "gaps" in checks:
-        sorted_clips = sorted(tl.clips, key=lambda c: c.start.seconds)
-        for i in range(len(sorted_clips) - 1):
-            current_end = sorted_clips[i].end.seconds
-            next_start = sorted_clips[i + 1].start.seconds
-            gap_duration = next_start - current_end
-            if gap_duration > 0.001:
-                gap_count += 1
-                gap_frames = int(gap_duration * fps)
-                gap_tc = Timecode(frames=int(current_end * fps), frame_rate=fps)
-                issues.append(f"- [WARNING] Gap: {gap_frames}f at {gap_tc.to_smpte()}")
+        detected_gaps = _detect_gaps(tl)
+        gap_count = len(detected_gaps)
+        for g in detected_gaps:
+            issues.append(f"- [WARNING] Gap: {g.duration_frames}f at {g.timecode}")
 
     if run_all or "duplicates" in checks:
-        source_groups = {}
-        for clip in tl.clips:
-            source_key = clip.media_path or clip.name
-            source_groups.setdefault(source_key, []).append(clip)
-        for source, clips in source_groups.items():
-            if len(clips) > 1:
-                duplicate_count += len(clips)
-                issues.append(f"- [INFO] Duplicate source: {source.split('/')[-1]} ({len(clips)} uses)")
+        dup_groups = _detect_duplicate_groups(tl)
+        for group in dup_groups:
+            duplicate_count += group.count
+            issues.append(
+                f"- [INFO] Duplicate source: {group.source_name} ({group.count} uses)"
+            )
 
     error_weight = 10
     warning_weight = 3
