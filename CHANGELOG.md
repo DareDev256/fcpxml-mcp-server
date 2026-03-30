@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.29] - 2026-03-29
+
+### Changed
+
+- **Extract `_format_batch_result()` helper** (server.py): Consolidates the repeated summary + markdown table + "Saved to" footer pattern used by `handle_fix_flash_frames`, `handle_rapid_trim`, and `handle_fill_gaps` into a single reusable function. Reduces ~45 lines of near-duplicate markdown assembly.
+- **Extract `_index_elements()` helper** (writer.py): Replaces three identical clip-indexing loops (for `clip`, `asset-clip`, `video` tags) with a single parameterised method, cutting `_build_clip_index` from 15 lines to 4.
+
 ## [0.6.28] - 2026-03-29
 
 ### Changed

@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-744_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-737_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-18-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
 
@@ -324,7 +324,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 fcp-mcp-server/           ~8.7k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
-│                          _format_clip_table() / _markdown_table() / _raw_markers_to_batch()
+│                          _format_clip_table() / _markdown_table() / _format_batch_result()
+│                          _raw_markers_to_batch()
 │                          _detect_flash_frames() / _detect_gaps() / _detect_duplicate_groups()
 │                          consolidate path validation, QC detection, rendering, handler boilerplate
 ├── fcpxml/
@@ -332,7 +333,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
-│   │                       _resolve_insert_position() / _find_neighbor_clip() helpers
+│   │                       _resolve_insert_position() / _find_neighbor_clip() / _index_elements()
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export

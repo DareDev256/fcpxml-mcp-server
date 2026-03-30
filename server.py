@@ -241,6 +241,29 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> str:
     return f"{header_line}\n{sep_line}\n{data_lines}"
 
 
+def _format_batch_result(
+    title: str,
+    summary: dict[str, str],
+    headers: list[str],
+    rows: list[list[str]],
+    output_path: str,
+) -> str:
+    """Build a standard batch-operation result with summary, table, and save footer.
+
+    Used by batch fix handlers (flash frames, rapid trim, fill gaps) that all
+    share the same markdown structure: ``# Title → ## Summary → ## Details table
+    → Saved to`` footer.
+    """
+    summary_lines = "\n".join(f"- **{k}**: {v}" for k, v in summary.items())
+    table = _markdown_table(headers, rows)
+    return (
+        f"# {title}\n\n"
+        f"## Summary\n{summary_lines}\n\n"
+        f"## Details\n{table}\n\n"
+        f"Saved to: `{output_path}`"
+    )
+
+
 def _fmt_suggestions(suggestions: list[str]) -> str:
     """Format pacing suggestions as markdown list (Python 3.10 compatible)."""
     if not suggestions:
@@ -1975,21 +1998,16 @@ async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
     if not fixed:
         return [TextContent(type="text", text="No flash frames found to fix.")]
 
-    result = f"""# Flash Frames Fixed
-
-## Summary
-- **Fixed**: {len(fixed)} flash frames
-- **Mode**: {arguments.get('mode', 'auto')}
-
-## Details
-| Clip | Frames | Action | Result |
-|------|--------|--------|--------|
-"""
-    for f in fixed:
-        extended = f.get('extended_clip', 'N/A')
-        result += f"| {f['clip_name']} | {f['duration_frames']}f | {f['action']} | Extended: {extended} |\n"
-
-    result += f"\nSaved to: `{output_path}`"
+    result = _format_batch_result(
+        title="Flash Frames Fixed",
+        summary={"Fixed": f"{len(fixed)} flash frames", "Mode": arguments.get('mode', 'auto')},
+        headers=["Clip", "Frames", "Action", "Result"],
+        rows=[
+            [f['clip_name'], f"{f['duration_frames']}f", f['action'], f"Extended: {f.get('extended_clip', 'N/A')}"]
+            for f in fixed
+        ],
+        output_path=output_path,
+    )
     return [TextContent(type="text", text=result)]
 
 
@@ -2009,22 +2027,21 @@ async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
     total_before = sum(t['original_duration'] for t in trimmed)
     total_after = sum(t['new_duration'] for t in trimmed)
 
-    result = f"""# Rapid Trim Complete
-
-## Summary
-- **Clips Trimmed**: {len(trimmed)}
-- **Max Duration**: {arguments['max_duration']}
-- **Trim From**: {arguments.get('trim_from', 'end')}
-- **Time Saved**: {format_duration(total_before - total_after)}
-
-## Trimmed Clips
-| Clip | Before | After |
-|------|--------|-------|
-"""
-    for t in trimmed:
-        result += f"| {t['clip_name']} | {format_duration(t['original_duration'])} | {format_duration(t['new_duration'])} |\n"
-
-    result += f"\nSaved to: `{output_path}`"
+    result = _format_batch_result(
+        title="Rapid Trim Complete",
+        summary={
+            "Clips Trimmed": str(len(trimmed)),
+            "Max Duration": str(arguments['max_duration']),
+            "Trim From": arguments.get('trim_from', 'end'),
+            "Time Saved": format_duration(total_before - total_after),
+        },
+        headers=["Clip", "Before", "After"],
+        rows=[
+            [t['clip_name'], format_duration(t['original_duration']), format_duration(t['new_duration'])]
+            for t in trimmed
+        ],
+        output_path=output_path,
+    )
     return [TextContent(type="text", text=result)]
 
 
@@ -2039,20 +2056,13 @@ async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
     if not filled:
         return [TextContent(type="text", text="No gaps found to fill.")]
 
-    result = f"""# Gaps Filled
-
-## Summary
-- **Gaps Filled**: {len(filled)}
-- **Mode**: {arguments.get('mode', 'extend_previous')}
-
-## Details
-| Position | Duration | Action |
-|----------|----------|--------|
-"""
-    for g in filled:
-        result += f"| {g['timecode']} | {g['duration_frames']}f | {g['action']} |\n"
-
-    result += f"\nSaved to: `{output_path}`"
+    result = _format_batch_result(
+        title="Gaps Filled",
+        summary={"Gaps Filled": str(len(filled)), "Mode": arguments.get('mode', 'extend_previous')},
+        headers=["Position", "Duration", "Action"],
+        rows=[[g['timecode'], f"{g['duration_frames']}f", g['action']] for g in filled],
+        output_path=output_path,
+    )
     return [TextContent(type="text", text=result)]
 
 

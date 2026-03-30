@@ -607,24 +607,23 @@ class FCPXMLModifier:
                 'element': fmt
             }
 
+    def _index_elements(self, tag: str, fallback_prefix: str) -> None:
+        """Index XML elements of *tag* into ``self.clips`` by id/name.
+
+        Each element is keyed by its ``id`` attribute, falling back to
+        ``name``, then a generated ``{fallback_prefix}_{i}`` key.  This
+        replaces three near-identical loops that only differed in the tag
+        name and fallback prefix.
+        """
+        for i, elem in enumerate(self.root.findall(f'.//{tag}')):
+            key = elem.get('id') or elem.get('name') or f"{fallback_prefix}_{i}"
+            self.clips[key] = elem
+
     def _build_clip_index(self) -> None:
         """Build index of all clips for fast lookup."""
         self.clips: Dict[str, ET.Element] = {}
-
-        # Index clips with IDs
-        for i, clip in enumerate(self.root.findall('.//clip')):
-            clip_id = clip.get('id') or clip.get('name') or f"clip_{i}"
-            self.clips[clip_id] = clip
-
-        # Index asset-clips
-        for i, clip in enumerate(self.root.findall('.//asset-clip')):
-            clip_id = clip.get('id') or clip.get('name') or f"asset_clip_{i}"
-            self.clips[clip_id] = clip
-
-        # Index video elements
-        for i, video in enumerate(self.root.findall('.//video')):
-            vid_id = video.get('id') or video.get('name') or f"video_{i}"
-            self.clips[vid_id] = video
+        for tag, prefix in (('clip', 'clip'), ('asset-clip', 'asset_clip'), ('video', 'video')):
+            self._index_elements(tag, prefix)
 
     def _get_spine(self) -> ET.Element:
         """Get the primary storyline spine.
