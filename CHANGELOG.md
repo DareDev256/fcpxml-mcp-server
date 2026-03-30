@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.30] - 2026-03-30
+
+### Fixed
+
+- **Fix `auto_at_cuts` crash on duplicate clip names** (writer.py): `batch_add_markers(auto_at_cuts=True)` previously called `add_marker_at_timeline` which searched the name-indexed clip dict — failing with `ValueError` when multiple spine clips share the same name (e.g., two `Interview_A` clips). Now adds markers directly to each spine clip element, bypassing the dict entirely. Fixes a documented bug in the marker pipeline.
+
 ## [0.6.29] - 2026-03-29
 
 ### Changed

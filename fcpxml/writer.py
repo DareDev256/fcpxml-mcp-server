@@ -866,14 +866,20 @@ class FCPXMLModifier:
             )
             created.append(marker)
 
-        # Auto-detect at cuts
+        # Auto-detect at cuts — add markers directly to each spine clip
+        # instead of re-searching via add_marker_at_timeline, which uses
+        # the name-indexed clip dict and fails on duplicate clip names.
         if auto_at_cuts:
             spine = self._get_spine()
             for i, clip in enumerate(spine.findall('*')):
                 if clip.tag in CLIP_TAGS:
-                    offset = clip.get('offset', '0s')
-                    marker = self.add_marker_at_timeline(
-                        offset, f"Cut {i+1}", MarkerType.STANDARD
+                    clip_start = clip.get('start', '0s')
+                    marker = build_marker_element(
+                        parent=clip,
+                        marker_type=MarkerType.STANDARD,
+                        start=clip_start,
+                        duration=f"1/{int(self.fps)}s",
+                        name=f"Cut {i+1}",
                     )
                     created.append(marker)
 

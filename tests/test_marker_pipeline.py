@@ -97,17 +97,19 @@ class TestBuildMarkerElement:
 class TestBatchAutoAtCuts:
     """batch_add_markers(auto_at_cuts=True) iterates spine clips and marks cuts.
 
-    BUG: auto_at_cuts reads offsets from ALL spine clips, but add_marker_at_timeline
-    searches the name-indexed clip dict (last-one-wins for duplicates). Clips whose
-    names were overwritten by later duplicates are unreachable → ValueError at offset 0s.
+    Previously bugged: auto_at_cuts called add_marker_at_timeline which searched
+    the name-indexed clip dict (last-one-wins for duplicates). Now fixed to add
+    markers directly to each spine clip element.
     """
 
-    def test_auto_at_cuts_fails_on_duplicate_names(self, temp_fcpxml):
-        """First cut at 0s hits Interview_A — but the indexed copy is at 1122/24s.
-        This documents the duplicate-name clip index limitation."""
+    def test_auto_at_cuts_works_with_duplicate_names(self, temp_fcpxml):
+        """Duplicate clip names in the spine no longer cause ValueError."""
         modifier = FCPXMLModifier(temp_fcpxml)
-        with pytest.raises(ValueError, match="No clip found"):
-            modifier.batch_add_markers(markers=[], auto_at_cuts=True)
+        created = modifier.batch_add_markers(markers=[], auto_at_cuts=True)
+        # sample.fcpxml has 9 spine clips — each should get a cut marker
+        assert len(created) == 9
+        assert all(m.tag == 'marker' for m in created)
+        assert all('Cut' in m.get('value', '') for m in created)
 
     def test_auto_at_cuts_on_unique_timeline(self, tmp_path):
         """Works correctly when all clip names are unique."""
