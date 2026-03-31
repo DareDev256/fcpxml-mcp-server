@@ -883,26 +883,42 @@ class FCPXMLModifier:
                     )
                     created.append(marker)
 
-        # Auto-detect at intervals
+        # Auto-detect at intervals — iterate spine clips directly instead
+        # of add_marker_at_timeline, which uses the name-indexed clip dict
+        # and silently drops markers on duplicate-named clips.
         if auto_at_intervals:
             interval = self._parse_time(auto_at_intervals).to_seconds()
-            # Get timeline duration
             sequence = self.root.find('.//sequence')
             if sequence is not None:
                 duration_str = sequence.get('duration', '0s')
                 total_duration = self._parse_time(duration_str).to_seconds()
 
+                spine = self._get_spine()
                 current = interval
                 count = 1
                 while current < total_duration:
-                    tc = TimeValue.from_seconds(current, self.fps)
-                    try:
-                        marker = self.add_marker_at_timeline(
-                            tc.to_fcpxml(), f"Marker {count}", MarkerType.STANDARD
-                        )
-                        created.append(marker)
-                    except ValueError:
-                        pass  # No clip at this position
+                    # Find the spine clip containing this position
+                    for clip in spine.findall('*'):
+                        if clip.tag not in CLIP_TAGS:
+                            continue
+                        offset = self._parse_time(
+                            clip.get('offset', '0s')
+                        ).to_seconds()
+                        dur = self._parse_time(
+                            clip.get('duration', '0s')
+                        ).to_seconds()
+                        if offset <= current < offset + dur:
+                            relative = current - offset
+                            rel_tv = TimeValue.from_seconds(relative, self.fps)
+                            marker = build_marker_element(
+                                parent=clip,
+                                marker_type=MarkerType.STANDARD,
+                                start=rel_tv.to_fcpxml(),
+                                duration=f"1/{int(self.fps)}s",
+                                name=f"Marker {count}",
+                            )
+                            created.append(marker)
+                            break
                     current += interval
                     count += 1
 

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.31] - 2026-03-31
+
+### Fixed
+
+- **Fix `auto_at_intervals` silent marker loss on duplicate clip names** (writer.py): `batch_add_markers(auto_at_intervals=...)` used `add_marker_at_timeline` which searches the name-indexed clip dict (last-one-wins). Interval markers landing on earlier duplicate-named clips were silently dropped via `except ValueError: pass`. Now iterates spine clips directly — same fix pattern as `auto_at_cuts` in v0.6.30. Added regression test.
+
 ## [0.6.30] - 2026-03-30
 
 ### Fixed

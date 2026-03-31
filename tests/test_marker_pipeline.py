@@ -158,6 +158,33 @@ class TestBatchAutoAtIntervals:
         assert len(created) == 2
         assert all(m.get("value", "").startswith("Marker ") for m in created)
 
+    def test_interval_works_with_duplicate_clip_names(self, tmp_path):
+        """Interval markers must not silently drop on duplicate-named clips.
+
+        Previously, auto_at_intervals used add_marker_at_timeline which
+        searches the name-indexed clip dict (last-one-wins). Markers landing
+        on earlier duplicate-named clips were silently lost.
+        """
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.11"><resources>
+<format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+<asset id="r2" name="A" src="a.mov" start="0s" duration="100s"/>
+</resources><library><event name="E"><project name="P">
+<sequence format="r1" duration="480/24s"><spine>
+<asset-clip ref="r2" offset="0s" name="Interview" start="0s" duration="240/24s" format="r1"/>
+<asset-clip ref="r2" offset="240/24s" name="Interview" start="0s" duration="240/24s" format="r1"/>
+</spine></sequence></project></event></library></fcpxml>"""
+        p = tmp_path / "dup_interval.fcpxml"
+        p.write_text(xml)
+        modifier = FCPXMLModifier(str(p))
+        # 20s timeline, 5s intervals → 3 markers (at 5s, 10s, 15s)
+        # Clip 1 covers 0–10s, Clip 2 covers 10–20s (both named "Interview")
+        created = modifier.batch_add_markers(
+            markers=[], auto_at_intervals="00:00:05:00"
+        )
+        assert len(created) == 3
+        assert all(m.get("value", "").startswith("Marker ") for m in created)
+
     def test_interval_past_timeline_creates_nothing(self, temp_fcpxml):
         modifier = FCPXMLModifier(temp_fcpxml)
         # 999s interval on a ~54s timeline → zero markers
