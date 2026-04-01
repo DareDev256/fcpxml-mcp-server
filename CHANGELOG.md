@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.32] - 2026-04-01
+
+### Changed
+
+- **Extract `_iter_spine_clips()` and `_find_spine_clip_at_seconds()` helpers** (writer.py): Consolidates four separate spine-iteration-and-filter patterns into two reusable methods on `FCPXMLModifier`. `_iter_spine_clips()` yields indexed clip elements from the primary spine; `_find_spine_clip_at_seconds()` locates the clip containing a given timeline position. Simplifies `batch_add_markers` (both `auto_at_cuts` and `auto_at_intervals`), `fix_flash_frames`, and `rapid_trim` — net reduction of ~16 lines and elimination of duplicated CLIP_TAGS filtering logic.
+
 ## [0.6.31] - 2026-03-31
 
 ### Fixed

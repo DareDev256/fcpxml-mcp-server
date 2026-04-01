@@ -640,6 +640,41 @@ class FCPXMLModifier:
             raise ValueError("No spine found in FCPXML")
         return spine
 
+    def _iter_spine_clips(self) -> list[tuple[int, ET.Element]]:
+        """Return an indexed list of clip-type elements in the primary spine.
+
+        Filters out gaps, transitions, and other non-clip elements, returning
+        only ``(index_in_spine, element)`` pairs where the tag is in
+        ``CLIP_TAGS``.  The index is the element's position among *all* spine
+        children (not just clips), so it stays valid for insertion/removal.
+        """
+        spine = self._get_spine()
+        return [
+            (i, child)
+            for i, child in enumerate(spine.findall('*'))
+            if child.tag in CLIP_TAGS
+        ]
+
+    def _find_spine_clip_at_seconds(self, target_seconds: float) -> tuple[ET.Element, float]:
+        """Find the spine clip containing *target_seconds* and return it with the relative offset.
+
+        Returns:
+            ``(clip_element, relative_seconds)`` — the clip and the time
+            within that clip corresponding to *target_seconds*.
+
+        Raises:
+            ValueError: If no clip spans the requested position.
+        """
+        spine = self._get_spine()
+        for child in spine.findall('*'):
+            if child.tag not in CLIP_TAGS:
+                continue
+            offset = self._parse_time(child.get('offset', '0s')).to_seconds()
+            dur = self._parse_time(child.get('duration', '0s')).to_seconds()
+            if offset <= target_seconds < offset + dur:
+                return child, target_seconds - offset
+        raise ValueError(f"No spine clip at position {target_seconds:.3f}s")
+
     def _parse_time(self, tc: str) -> TimeValue:
         """Parse a timecode string to TimeValue."""
         return TimeValue.from_timecode(tc, self.fps)
@@ -866,59 +901,46 @@ class FCPXMLModifier:
             )
             created.append(marker)
 
-        # Auto-detect at cuts — add markers directly to each spine clip
-        # instead of re-searching via add_marker_at_timeline, which uses
-        # the name-indexed clip dict and fails on duplicate clip names.
+        # Auto-detect at cuts — add a marker at the start of every spine clip.
         if auto_at_cuts:
-            spine = self._get_spine()
-            for i, clip in enumerate(spine.findall('*')):
-                if clip.tag in CLIP_TAGS:
-                    clip_start = clip.get('start', '0s')
-                    marker = build_marker_element(
-                        parent=clip,
-                        marker_type=MarkerType.STANDARD,
-                        start=clip_start,
-                        duration=f"1/{int(self.fps)}s",
-                        name=f"Cut {i+1}",
-                    )
-                    created.append(marker)
+            for i, clip in self._iter_spine_clips():
+                clip_start = clip.get('start', '0s')
+                marker = build_marker_element(
+                    parent=clip,
+                    marker_type=MarkerType.STANDARD,
+                    start=clip_start,
+                    duration=f"1/{int(self.fps)}s",
+                    name=f"Cut {i+1}",
+                )
+                created.append(marker)
 
-        # Auto-detect at intervals — iterate spine clips directly instead
-        # of add_marker_at_timeline, which uses the name-indexed clip dict
-        # and silently drops markers on duplicate-named clips.
+        # Auto-detect at intervals — place markers at regular time steps.
         if auto_at_intervals:
             interval = self._parse_time(auto_at_intervals).to_seconds()
             sequence = self.root.find('.//sequence')
             if sequence is not None:
-                duration_str = sequence.get('duration', '0s')
-                total_duration = self._parse_time(duration_str).to_seconds()
+                total_duration = self._parse_time(
+                    sequence.get('duration', '0s')
+                ).to_seconds()
 
-                spine = self._get_spine()
                 current = interval
                 count = 1
                 while current < total_duration:
-                    # Find the spine clip containing this position
-                    for clip in spine.findall('*'):
-                        if clip.tag not in CLIP_TAGS:
-                            continue
-                        offset = self._parse_time(
-                            clip.get('offset', '0s')
-                        ).to_seconds()
-                        dur = self._parse_time(
-                            clip.get('duration', '0s')
-                        ).to_seconds()
-                        if offset <= current < offset + dur:
-                            relative = current - offset
-                            rel_tv = TimeValue.from_seconds(relative, self.fps)
-                            marker = build_marker_element(
-                                parent=clip,
-                                marker_type=MarkerType.STANDARD,
-                                start=rel_tv.to_fcpxml(),
-                                duration=f"1/{int(self.fps)}s",
-                                name=f"Marker {count}",
-                            )
-                            created.append(marker)
-                            break
+                    try:
+                        clip, relative = self._find_spine_clip_at_seconds(current)
+                    except ValueError:
+                        current += interval
+                        count += 1
+                        continue
+                    rel_tv = TimeValue.from_seconds(relative, self.fps)
+                    marker = build_marker_element(
+                        parent=clip,
+                        marker_type=MarkerType.STANDARD,
+                        start=rel_tv.to_fcpxml(),
+                        duration=f"1/{int(self.fps)}s",
+                        name=f"Marker {count}",
+                    )
+                    created.append(marker)
                     current += interval
                     count += 1
 
@@ -1401,14 +1423,11 @@ class FCPXMLModifier:
             List of fixed flash frames with details
         """
         spine = self._get_spine()
-        spine_children = list(spine)
         fixed = []
 
         # Collect flash frames first (can't modify while iterating)
         flash_frames = []
-        for i, clip in enumerate(spine_children):
-            if clip.tag not in CLIP_TAGS:
-                continue
+        for i, clip in self._iter_spine_clips():
             duration = self._parse_time(clip.get('duration', '0s'))
             duration_frames = duration.to_frames(self.fps)
 
@@ -1503,15 +1522,12 @@ class FCPXMLModifier:
         Returns:
             List of trimmed clips with before/after durations
         """
-        spine = self._get_spine()
         trimmed = []
 
         max_dur = self._parse_time(max_duration) if max_duration else None
         self._parse_time(min_duration) if min_duration else None
 
-        for clip in list(spine):
-            if clip.tag not in CLIP_TAGS:
-                continue
+        for _i, clip in self._iter_spine_clips():
 
             clip_name = clip.get('name') or clip.get('id') or 'Unknown'
 
@@ -1556,7 +1572,7 @@ class FCPXMLModifier:
                 })
 
         # Recalculate offsets
-        self._recalculate_offsets(spine)
+        self._recalculate_offsets(self._get_spine())
 
         return trimmed
 
