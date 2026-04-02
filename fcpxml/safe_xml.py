@@ -66,7 +66,48 @@ def safe_parse_string(text: str) -> Document:
     even when re-parsing XML that was already produced by safe_parse().
 
     Why this matters: if a future refactor passes unsanitized XML through
-    _pretty_write(), stdlib minidom would silently process external
+    serialize_xml(), stdlib minidom would silently process external
     entities and DTD bombs. Using defusedxml.minidom closes that gap.
     """
     return _safe_minidom.parseString(text)
+
+
+def serialize_xml(root: ET.Element, filepath: str, doctype: str = "") -> str:
+    """Pretty-print an ElementTree root and write to disk.
+
+    Single serialization pipeline shared by all XML output paths
+    (write_fcpxml for FCPXML, DaVinciExporter for XMEML / simplified exports).
+    Consolidates the ET.tostring → minidom → toprettyxml → strip blanks →
+    replace declaration → write-to-file sequence that was previously
+    duplicated across writer.py and export.py.
+
+    Args:
+        root: The XML root Element to serialize.
+        filepath: Destination file path.
+        doctype: DOCTYPE declaration to insert after the XML declaration.
+            Example: ``'<!DOCTYPE fcpxml>'`` or ``'<!DOCTYPE xmeml>'``.
+            If empty, no DOCTYPE is inserted.
+
+    Returns:
+        The filepath written to.
+    """
+    xml_str = ET.tostring(root, encoding='unicode')
+    dom = safe_parse_string(xml_str)
+    pretty_xml = dom.toprettyxml(indent="    ")
+    lines = [line for line in pretty_xml.split('\n') if line.strip()]
+    final_xml = '\n'.join(lines)
+
+    if doctype:
+        final_xml = final_xml.replace(
+            '<?xml version="1.0" ?>',
+            f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype}',
+        )
+    else:
+        final_xml = final_xml.replace(
+            '<?xml version="1.0" ?>',
+            '<?xml version="1.0" encoding="UTF-8"?>',
+        )
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(final_xml)
+    return filepath

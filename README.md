@@ -337,7 +337,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
-│   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection)
+│   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection) + serialize_xml()
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
 ├── tests/                 759 tests across 18 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts

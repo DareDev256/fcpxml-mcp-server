@@ -11,7 +11,8 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from fcpxml.export import DaVinciExporter, _pretty_write
+from fcpxml.export import DaVinciExporter
+from fcpxml.safe_xml import serialize_xml
 
 BASE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE fcpxml>
@@ -278,14 +279,14 @@ class TestNoTimelineError:
 
 
 class TestDoctypeInjection:
-    """_pretty_write should inject DOCTYPE correctly."""
+    """serialize_xml should inject DOCTYPE correctly."""
 
     def test_doctype_inserted(self):
         root = ET.Element('fcpxml')
         root.set('version', '1.9')
         out = _out()
         try:
-            _pretty_write(root, out, '<!DOCTYPE fcpxml>')
+            serialize_xml(root, out, '<!DOCTYPE fcpxml>')
             with open(out) as f:
                 content = f.read()
             assert '<!DOCTYPE fcpxml>' in content
@@ -297,7 +298,7 @@ class TestDoctypeInjection:
         root = ET.Element('test')
         out = _out()
         try:
-            _pretty_write(root, out, '')
+            serialize_xml(root, out, '')
             with open(out) as f:
                 content = f.read()
             assert '<!DOCTYPE' not in content

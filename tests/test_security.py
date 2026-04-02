@@ -851,17 +851,17 @@ class TestMinidomDefenseInDepth:
         with pytest.raises(Exception):
             safe_parse_string(bomb)
 
-    def test_export_pretty_write_uses_safe_minidom(self, tmp_path):
-        """export._pretty_write roundtrips through defusedxml.minidom."""
+    def test_serialize_xml_uses_safe_minidom(self, tmp_path):
+        """safe_xml.serialize_xml roundtrips through defusedxml.minidom."""
         import xml.etree.ElementTree as ET  # noqa: I001
 
-        from fcpxml.export import _pretty_write
+        from fcpxml.safe_xml import serialize_xml
 
         root = ET.Element("fcpxml")
         root.set("version", "1.11")
         ET.SubElement(root, "resources")
         out = str(tmp_path / "out.fcpxml")
-        result = _pretty_write(root, out, "<!DOCTYPE fcpxml>")
+        result = serialize_xml(root, out, "<!DOCTYPE fcpxml>")
         assert result == out
         content = open(out).read()
         assert "<fcpxml" in content

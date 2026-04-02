@@ -354,20 +354,9 @@ def write_fcpxml(
         for e in errors:
             _log.error("FCPXML validation: %s", e.message)
 
-    from .safe_xml import safe_parse_string
+    from .safe_xml import serialize_xml
 
-    xml_str = ET.tostring(root, encoding='unicode')
-    dom = safe_parse_string(xml_str)
-    pretty_xml = dom.toprettyxml(indent="    ")
-    lines = [line for line in pretty_xml.split('\n') if line.strip()]
-    final_xml = '\n'.join(lines)
-    final_xml = final_xml.replace(
-        '<?xml version="1.0" ?>',
-        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>'
-    )
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(final_xml)
-    return filepath
+    return serialize_xml(root, filepath, doctype='<!DOCTYPE fcpxml>')
 
 
 # ============================================================================

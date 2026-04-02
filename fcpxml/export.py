@@ -10,29 +10,7 @@ import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
 
 from .parser import FCPXMLParser
-from .safe_xml import safe_parse_string
-
-
-def _pretty_write(root: ET.Element, filepath: str, doctype: str = "") -> str:
-    """Write pretty-printed XML to file."""
-    xml_str = ET.tostring(root, encoding='unicode')
-    dom = safe_parse_string(xml_str)
-    pretty_xml = dom.toprettyxml(indent="    ")
-    lines = [line for line in pretty_xml.split('\n') if line.strip()]
-    final_xml = '\n'.join(lines)
-    if doctype:
-        final_xml = final_xml.replace(
-            '<?xml version="1.0" ?>',
-            f'<?xml version="1.0" encoding="UTF-8"?>\n{doctype}'
-        )
-    else:
-        final_xml = final_xml.replace(
-            '<?xml version="1.0" ?>',
-            '<?xml version="1.0" encoding="UTF-8"?>'
-        )
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write(final_xml)
-    return filepath
+from .safe_xml import serialize_xml
 
 
 class DaVinciExporter:
@@ -88,7 +66,7 @@ class DaVinciExporter:
                         if attr not in ('ref', 'offset', 'duration', 'start', 'name', 'format'):
                             del ref_clip.attrib[attr]
 
-        return _pretty_write(root, output_path, '<!DOCTYPE fcpxml>')
+        return serialize_xml(root, output_path, '<!DOCTYPE fcpxml>')
 
     def export_xmeml(self, output_path: str) -> str:
         """Generate FCP7 XML (XMEML) for maximum NLE compatibility.
@@ -162,7 +140,7 @@ class DaVinciExporter:
                 if clip_data.get('has_audio', True):
                     self._add_xmeml_clipitem(track, clip_data, tl.frame_rate)
 
-        return _pretty_write(xmeml, output_path, '<!DOCTYPE xmeml>')
+        return serialize_xml(xmeml, output_path, '<!DOCTYPE xmeml>')
 
     def _spine_to_tracks(self) -> tuple:
         """Convert spine + connected clips to track-based model.

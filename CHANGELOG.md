@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.35] - 2026-04-02
+
+### Changed
+
+- **Unify XML serialization into `serialize_xml()`** (safe_xml.py): Extracted the duplicated pretty-print pipeline (ET.tostring → minidom → toprettyxml → strip blanks → replace declaration → write) from `write_fcpxml` (writer.py) and `_pretty_write` (export.py) into a single `serialize_xml()` function in `safe_xml.py`. Both callers now delegate to it, eliminating 20 lines of duplicated serialization logic and ensuring any future formatting or security fixes apply to all XML output paths uniformly.
+
 ## [0.6.34] - 2026-04-02
 
 ### Changed
