@@ -334,11 +334,10 @@ def test_duration_to_seconds_zero_denominator():
 
 
 def test_duration_to_seconds_multiple_slashes():
-    """Malformed rational with extra slashes doesn't crash (uses maxsplit=1)."""
-    # "10/20/30s" → num="10", denom="20/30" → float("20/30") raises ValueError
-    # which is correct — it should reject truly malformed input, not silently unpack wrong
-    with pytest.raises(ValueError):
-        FCPXMLParser()._parse_duration_to_seconds("10/20/30s")
+    """Malformed rational with extra slashes returns 0.0 (unparseable)."""
+    # "10/20/30s" → int("20/30") raises ValueError inside TimeValue.from_timecode,
+    # which _parse_duration_to_seconds catches and returns 0.0
+    assert FCPXMLParser()._parse_duration_to_seconds("10/20/30s") == 0.0
 
 
 def test_parse_fcpxml_convenience():

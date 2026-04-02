@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.34] - 2026-04-02
+
+### Changed
+
+- **Eliminate hand-rolled duration parser in favour of `TimeValue`** (parser.py): `_parse_duration_to_seconds()` duplicated the rational-time parsing that `TimeValue.from_timecode()` already handles. Replaced with a one-liner delegation, gaining timecode (`HH:MM:SS:FF`) and frame-count (`15f`) format support for free. Malformed input now returns 0.0 consistently instead of raising on some edge cases.
+- **Consolidate `MarkerType` alias tests** (test_models.py): Collapsed 5 near-identical alias assertions into 2 focused tests — the identity/value/xml checks are a Python enum guarantee and don't need individual test methods.
+
 ## [0.6.33] - 2026-04-01
 
 ### Fixed

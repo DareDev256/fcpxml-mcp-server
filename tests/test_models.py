@@ -637,25 +637,18 @@ class TestTimeValueArithmeticEdgeCases:
 
 
 class TestMarkerTypeAliasSemantics:
-    """MarkerType.INCOMPLETE is canonical; .TODO is a backward-compat alias."""
+    """MarkerType.TODO is a backward-compat alias for INCOMPLETE (Python enum identity)."""
 
-    def test_aliases_are_identical(self):
+    def test_todo_alias_resolves_to_incomplete(self):
+        """All alias properties match — identity, value, xml_tag, xml_attrs."""
         assert MarkerType.INCOMPLETE is MarkerType.TODO
-
-    def test_alias_value_matches(self):
-        assert MarkerType.INCOMPLETE.value == MarkerType.TODO.value == "todo"
-
-    def test_alias_xml_tag_matches(self):
-        assert MarkerType.INCOMPLETE.xml_tag == MarkerType.TODO.xml_tag == "marker"
-
-    def test_alias_xml_attrs_matches(self):
-        assert MarkerType.INCOMPLETE.xml_attrs == MarkerType.TODO.xml_attrs
+        assert MarkerType.INCOMPLETE.value == "todo"
+        assert MarkerType.INCOMPLETE.xml_tag == "marker"
+        assert MarkerType.INCOMPLETE.xml_attrs == {'completed': '0'}
 
     def test_from_string_returns_canonical(self):
-        """from_string('todo') returns the canonical enum member (INCOMPLETE)."""
-        result = MarkerType.from_string("todo")
-        assert result is MarkerType.INCOMPLETE
-        assert result is MarkerType.TODO  # alias resolves to the same canonical object
+        """from_string('todo') returns the canonical INCOMPLETE member."""
+        assert MarkerType.from_string("todo") is MarkerType.INCOMPLETE
 
     def test_from_xml_element_numeric_completed_values(self):
         """Only exact '0' and '1' are recognised — '2', '-1', '00' are STANDARD."""

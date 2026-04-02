@@ -16,6 +16,7 @@ from .models import (
     Project,
     Timecode,
     Timeline,
+    TimeValue,
     Transition,
 )
 from .safe_xml import safe_fromstring, safe_parse
@@ -342,16 +343,17 @@ class FCPXMLParser:
         return connected
 
     def _parse_duration_to_seconds(self, duration_str: str) -> float:
-        """Convert FCPXML duration string to seconds."""
-        if duration_str.endswith('s'):
-            duration_str = duration_str[:-1]
-        if '/' in duration_str:
-            num, denom = duration_str.split('/', 1)
-            d = float(denom)
-            if d == 0:
-                return 0.0
-            return float(num) / d
-        return float(duration_str)
+        """Convert FCPXML duration string to seconds.
+
+        Delegates to TimeValue.from_timecode() which handles rational
+        format (``"150/30s"``), plain seconds (``"10s"``), timecode
+        (``HH:MM:SS:FF``), and frame counts (``"15f"``).
+        """
+        try:
+            return TimeValue.from_timecode(duration_str).to_seconds()
+        except (ValueError, ZeroDivisionError):
+            # Zero-denominator or unparseable → 0.0 (matches prior behaviour)
+            return 0.0
 
 
 def parse_fcpxml(filepath: str) -> Project:
