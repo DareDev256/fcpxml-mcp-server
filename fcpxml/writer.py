@@ -1525,7 +1525,7 @@ class FCPXMLModifier:
         trimmed = []
 
         max_dur = self._parse_time(max_duration) if max_duration else None
-        self._parse_time(min_duration) if min_duration else None
+        min_dur = self._parse_time(min_duration) if min_duration else None
 
         for _i, clip in self._iter_spine_clips():
 
@@ -1541,6 +1541,10 @@ class FCPXMLModifier:
 
             current_start, current_duration, _ = self._get_clip_times(clip)
             original_duration = current_duration.to_seconds()
+
+            # Skip clips shorter than min_duration (leave them alone)
+            if min_dur and current_duration < min_dur:
+                continue
 
             # Check max duration
             if max_dur and current_duration > max_dur:

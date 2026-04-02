@@ -253,6 +253,27 @@ def test_fill_gaps_returns_list(temp_fcpxml):
     assert isinstance(result, list)
 
 
+def test_rapid_trim_skips_clips_below_min_duration(temp_fcpxml):
+    """rapid_trim with min_duration should skip clips shorter than the minimum.
+
+    Note: duplicate clip names exist in the sample data, so we compare
+    result counts rather than names (a name can appear for both a short
+    and a long clip).
+    """
+    # Without min_duration — trims everything over 0.5s.
+    modifier1 = FCPXMLModifier(temp_fcpxml)
+    result_all = modifier1.rapid_trim(max_duration='0.5s')
+
+    # With min_duration=3s — clips under 3s are left alone, so fewer trims.
+    modifier2 = FCPXMLModifier(temp_fcpxml)
+    result_filtered = modifier2.rapid_trim(max_duration='0.5s', min_duration='3s')
+
+    assert len(result_filtered) < len(result_all), (
+        f"min_duration filter should reduce trims: "
+        f"got {len(result_filtered)} vs {len(result_all)} without filter"
+    )
+
+
 def test_rapid_trim_saves_correctly(temp_fcpxml):
     """rapid_trim changes should persist after save."""
     modifier = FCPXMLModifier(temp_fcpxml)

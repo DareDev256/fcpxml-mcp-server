@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.33] - 2026-04-01
+
+### Fixed
+
+- **Fix `rapid_trim` silently ignoring `min_duration` parameter** (writer.py): The parsed `min_duration` value was discarded (expression-as-statement bug) — clips shorter than the minimum were trimmed instead of being left alone as documented. Now correctly skips clips with duration below `min_duration`. Added regression test.
+
 ## [0.6.32] - 2026-04-01
 
 ### Changed
