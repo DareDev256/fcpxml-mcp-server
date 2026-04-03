@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.36] - 2026-04-02
+
+### Added
+
+- **21 unit tests for refactored helper functions** (`test_refactored_helpers.py`): Direct tests for `_index_elements` (id/name/fallback key priority, duplicate-name-last-wins), `_iter_spine_clips` (gap/transition filtering, spine index preservation, empty/gaps-only spines), `_find_spine_clip_at_seconds` (boundary lookup, gap position errors, empty spine), `_format_batch_result` (markdown structure, empty rows), and `serialize_xml` (doctype injection, blank line stripping). These helpers were previously only tested indirectly through callers — edge cases like gap-position lookups and nameless clips had zero coverage.
+
 ## [0.6.35] - 2026-04-02
 
 ### Changed
