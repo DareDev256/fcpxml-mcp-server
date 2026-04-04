@@ -711,8 +711,35 @@ def test_add_marker_at_timeline_invalid_position(temp_fcpxml):
     """Adding a marker past the timeline end raises ValueError."""
     modifier = FCPXMLModifier(temp_fcpxml)
 
-    with pytest.raises(ValueError, match="No clip found"):
+    with pytest.raises(ValueError, match="No spine clip at position"):
         modifier.add_marker_at_timeline(timecode='99:00:00:00', name='Way past end')
+
+
+def test_add_marker_at_timeline_duplicate_clip_names(temp_fcpxml):
+    """Marker lands on the correct clip even when multiple clips share a name.
+
+    The sample has 4 clips named 'Interview_A'. The old implementation used
+    the name-indexed ``self.clips`` dict which only kept the *last* one,
+    so markers targeting earlier Interview_A clips would silently fail.
+    The fix uses ``_find_spine_clip_at_seconds`` which walks the spine
+    directly.
+    """
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # First Interview_A: offset=0s, duration=72/24s (3s) → timeline 0–3s
+    marker = modifier.add_marker_at_timeline(
+        timecode='00:00:01:00', name='First interview marker'
+    )
+    assert marker is not None
+    assert marker.get('value') == 'First interview marker'
+
+    # The marker should be a child of the FIRST spine clip (offset=0s),
+    # not the last Interview_A clip (offset=1122/24s=46.75s).
+    spine = modifier._get_spine()
+    first_clip = list(spine)[0]
+    assert first_clip.get('offset') == '0s'
+    marker_values = [m.get('value') for m in first_clip.findall('marker')]
+    assert 'First interview marker' in marker_values
 
 
 # ============================================================

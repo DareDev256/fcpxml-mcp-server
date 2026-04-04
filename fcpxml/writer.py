@@ -835,30 +835,28 @@ class FCPXMLModifier:
         color: Optional[MarkerColor] = None,
         note: Optional[str] = None
     ) -> ET.Element:
-        """Add a marker at a timeline position (finds the containing clip)."""
+        """Add a marker at a timeline position (finds the containing clip).
+
+        Uses ``_find_spine_clip_at_seconds`` to walk the spine directly,
+        avoiding the name-indexed ``self.clips`` dict which silently drops
+        duplicate-named clips.
+        """
         if isinstance(marker_type, str):
             marker_type = MarkerType.from_string(marker_type)
         time_value = self._parse_time(timecode)
         target_seconds = time_value.to_seconds()
 
-        # Find clip at this timecode
-        for clip_id, clip in self.clips.items():
-            offset_str = clip.get('offset', '0s')
-            duration_str = clip.get('duration', '0s')
+        clip, relative_seconds = self._find_spine_clip_at_seconds(target_seconds)
+        relative_tc = TimeValue.from_seconds(relative_seconds, self.fps)
 
-            offset = self._parse_time(offset_str).to_seconds()
-            duration = self._parse_time(duration_str).to_seconds()
-
-            if offset <= target_seconds < offset + duration:
-                # Calculate time relative to clip start
-                relative_time = target_seconds - offset
-                relative_tc = TimeValue.from_seconds(relative_time, self.fps)
-                return self.add_marker(
-                    clip_id, relative_tc.to_fcpxml(), name,
-                    marker_type, color, note
-                )
-
-        raise ValueError(f"No clip found at timecode: {timecode}")
+        return build_marker_element(
+            parent=clip,
+            marker_type=marker_type,
+            start=relative_tc.to_fcpxml(),
+            duration=f"1/{int(self.fps)}s",
+            name=name,
+            note=note,
+        )
 
     def batch_add_markers(
         self,

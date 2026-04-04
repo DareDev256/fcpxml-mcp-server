@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.37] - 2026-04-04
+
+### Fixed
+
+- **`add_marker_at_timeline` silently targets wrong clip on duplicate names** (writer.py): The method iterated `self.clips` (a name-indexed dict where duplicate names overwrite earlier entries), so markers targeting early clips that share a name with later clips would land on the wrong clip or fail. Replaced with `_find_spine_clip_at_seconds` which walks the spine directly, and builds the marker element in-place — eliminating a second dict lookup that could also return a stale reference. Added regression test with the sample timeline's 4 `Interview_A` clips.
+
 ## [0.6.36] - 2026-04-02
 
 ### Added
