@@ -1346,6 +1346,11 @@ class FCPXMLModifier:
         """
         Delete clips from timeline.
 
+        Uses spine iteration instead of the name-indexed dict so that
+        duplicate-named clips (e.g. four ``Interview_A``) are resolved
+        correctly — always targeting the *first* spine match rather than
+        the last-indexed entry.
+
         Args:
             clip_ids: Clips to delete
             ripple: If True, shift subsequent clips. If False, leave gaps.
@@ -1353,18 +1358,23 @@ class FCPXMLModifier:
         spine = self._get_spine()
 
         for clip_id in clip_ids:
-            clip = self.clips.get(clip_id)
-            if clip is None:
+            # Walk spine directly to find the first clip matching this name,
+            # avoiding the last-one-wins problem in self.clips.
+            target = None
+            for _spine_idx, spine_clip in self._iter_spine_clips():
+                name = spine_clip.get('id') or spine_clip.get('name') or ''
+                if name == clip_id:
+                    target = spine_clip
+                    break
+
+            if target is None:
                 continue
 
-            if clip not in list(spine):
-                continue
-
-            _, clip_duration, clip_offset = self._get_clip_times(clip)
-            clip_index = list(spine).index(clip)
+            _, clip_duration, clip_offset = self._get_clip_times(target)
+            clip_index = list(spine).index(target)
 
             if ripple:
-                spine.remove(clip)
+                spine.remove(target)
                 # Shift subsequent clips
                 for child in list(spine)[clip_index:]:
                     if child.tag in SPINE_ELEMENT_TAGS:
@@ -1378,11 +1388,19 @@ class FCPXMLModifier:
                 gap.set('offset', clip_offset.to_fcpxml())
                 gap.set('duration', clip_duration.to_fcpxml())
 
-                spine.remove(clip)
+                spine.remove(target)
                 spine.insert(clip_index, gap)
 
-            # Remove from index
-            del self.clips[clip_id]
+            # Re-index: if other spine clips share this name, point the
+            # dict entry at the next one; otherwise remove entirely.
+            remaining = [
+                sc for _, sc in self._iter_spine_clips()
+                if (sc.get('id') or sc.get('name') or '') == clip_id
+            ]
+            if remaining:
+                self.clips[clip_id] = remaining[0]
+            else:
+                self.clips.pop(clip_id, None)
 
     # ========================================================================
     # SPEED CUTTING OPERATIONS (v0.3.0)

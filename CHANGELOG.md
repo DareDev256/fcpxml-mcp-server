@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.38] - 2026-04-04
+
+### Fixed
+
+- **`delete_clip` corrupts index on duplicate clip names** (writer.py): When deleting a clip whose name is shared by multiple spine clips (e.g. `Interview_A` ×4), the old code used `self.clips.get()` which returns only the last-indexed clip, then `del self.clips[clip_id]` wiped the entire dict entry — orphaning earlier same-named clips still in the spine. Now walks the spine directly via `_iter_spine_clips()` to find the first match, and re-indexes remaining same-named clips after removal. Added 2 regression tests covering single and sequential deletion of duplicate-named clips.
+
 ## [0.6.37] - 2026-04-04
 
 ### Fixed

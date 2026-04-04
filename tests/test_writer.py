@@ -436,12 +436,19 @@ def test_delete_clip_ripple(temp_fcpxml):
     """Delete a clip with ripple (shifts subsequent clips)."""
     modifier = FCPXMLModifier(temp_fcpxml)
     initial_count = len(list(modifier._get_spine()))
+    broll_before = sum(
+        1 for c in modifier._get_spine() if c.get('name') == 'Broll_City'
+    )
 
     modifier.delete_clip(clip_ids=['Broll_City'], ripple=True)
 
     final_count = len(list(modifier._get_spine()))
     assert final_count == initial_count - 1
-    assert 'Broll_City' not in modifier.clips
+    # One fewer Broll_City in spine; index still valid if duplicates remain
+    broll_after = sum(
+        1 for c in modifier._get_spine() if c.get('name') == 'Broll_City'
+    )
+    assert broll_after == broll_before - 1
 
 
 def test_delete_clip_no_ripple_leaves_gap(temp_fcpxml):
@@ -470,6 +477,55 @@ def test_delete_nonexistent_clip_is_noop(temp_fcpxml):
 
     final_count = len(list(modifier._get_spine()))
     assert final_count == initial_count
+
+
+def test_delete_clip_duplicate_names_targets_first(temp_fcpxml):
+    """Deleting a duplicate-named clip removes the first spine match, not the last-indexed."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+
+    # Sample has 4 Interview_A clips; collect their offsets before deletion
+    interview_clips_before = [
+        c for c in spine if c.get('name') == 'Interview_A'
+    ]
+    assert len(interview_clips_before) == 4, "fixture should have 4 Interview_A clips"
+    first_offset = interview_clips_before[0].get('offset')
+
+    modifier.delete_clip(clip_ids=['Interview_A'], ripple=False)
+
+    # The first Interview_A (by spine order) should be gone
+    interview_clips_after = [
+        c for c in modifier._get_spine() if c.get('name') == 'Interview_A'
+    ]
+    assert len(interview_clips_after) == 3
+    # The removed clip was the one at first_offset
+    remaining_offsets = {c.get('offset') for c in interview_clips_after}
+    assert first_offset not in remaining_offsets
+
+    # Index should still point to a remaining Interview_A (not orphaned)
+    assert 'Interview_A' in modifier.clips
+    assert modifier.clips['Interview_A'] in interview_clips_after
+
+
+def test_delete_clip_duplicate_names_sequential(temp_fcpxml):
+    """Deleting duplicate-named clips one by one removes them in spine order."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # Delete all 4 Interview_A clips one at a time
+    for expected_remaining in [3, 2, 1, 0]:
+        remaining = [
+            c for c in modifier._get_spine() if c.get('name') == 'Interview_A'
+        ]
+        if not remaining:
+            break
+        modifier.delete_clip(clip_ids=['Interview_A'], ripple=False)
+        after = [
+            c for c in modifier._get_spine() if c.get('name') == 'Interview_A'
+        ]
+        assert len(after) == expected_remaining
+
+    # All gone, index entry removed
+    assert 'Interview_A' not in modifier.clips
 
 
 # ============================================================
