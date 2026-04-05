@@ -7,9 +7,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-758_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-19-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~8.7k_LOC-informational.svg)](#architecture)
+[![Tests](https://img.shields.io/badge/tests-760_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
+[![Source](https://img.shields.io/badge/source-~8.8k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -321,7 +321,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ## Architecture
 
 ```
-fcp-mcp-server/           ~8.7k lines Python
+fcp-mcp-server/           ~8.8k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
@@ -339,7 +339,7 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection) + serialize_xml()
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 768 tests across 18 suites
+├── tests/                 760 tests across 17 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -355,9 +355,8 @@ fcp-mcp-server/           ~8.7k lines Python
 │   ├── test_security.py   Input validation, XML sanitization, XXE protection
 │   ├── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
 │   ├── test_diversity.py  Boundary conditions across diff, models, validation
-│   ├── test_server_helpers.py  _resolve_io_paths, _setup_generator composition
-│   ├── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
-│   └── test_validation_gaps.py  Input validation, XML priority, diff edge paths
+│   ├── test_refactored_helpers.py  _index_elements, _iter_spine_clips, serialize_xml edges
+│   └── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
 ├── docs/
 │   └── WORKFLOWS.md       8 production workflow recipes
 └── examples/
@@ -467,7 +466,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-768 tests across 18 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, recent fix regressions (rapid_trim directions, min_duration, offset recalculation, interval timing accuracy, gap skipping), security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+760 tests across 17 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions (_index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, serialize_xml), recent fix regressions (rapid_trim directions, min_duration, offset recalculation, interval timing accuracy, gap skipping, duplicate-name clip deletion, marker targeting), security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
@@ -504,6 +503,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 | **Still images crash FCP** | PNG/JPEG assets referenced directly in FCPXML crash Final Cut Pro on import (`addAssetClip` null pointer). Confirmed across multiple format configurations, dimension matching, and element types. | Convert stills to short MOVs before referencing: `ffmpeg -loop 1 -i image.png -c:v libx264 -t 2 -pix_fmt yuv420p -r 24 output.mov`. This is an FCP limitation, not an FCPXML spec issue. |
 | **Non-standard timebases** | FCP rejects time values with denominators outside its standard set (e.g. `100800/57600s`). Cross-denominator arithmetic previously produced these. | Fixed in v0.5.29 — TimeValue arithmetic now uses LCM, and speed changes snap to frame boundaries in 2400-tick timebase. |
 | **Malformed frameDuration crash** | A `frameDuration` with zero or negative denominator (e.g. `"0/0s"`) in the writer's `_detect_fps` would silently produce 0.0 fps, causing downstream ZeroDivisionError in speed/trim operations. The parser already validated this correctly. | Fixed in v0.6.23 — writer now validates both numerator and denominator, falling back to 30.0 fps. |
+| **Duplicate clip names corrupt edits** | When multiple spine clips share the same name (e.g. `Interview_A` ×4), `delete_clip` would orphan same-named siblings and `add_marker_at_timeline` would target the wrong clip. Both used the name-indexed dict where later clips overwrite earlier ones. | Fixed in v0.6.37–0.6.38 — both methods now walk the spine directly via `_iter_spine_clips()` / `_find_spine_clip_at_seconds()`, bypassing the name-indexed dict. |
 
 ---
 
