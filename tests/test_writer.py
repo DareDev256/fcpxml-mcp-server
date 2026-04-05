@@ -866,3 +866,64 @@ def test_select_by_keyword_all_mode(temp_fcpxml):
         keywords=['Interview', 'B-Roll'], match_mode='all'
     )
     assert matches == []
+
+
+# ============================================================
+# _absorb_into_neighbor Tests
+# ============================================================
+
+def test_absorb_into_prev_extends_duration(temp_fcpxml):
+    """Absorbing a clip into its previous neighbor grows the neighbor's duration."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    clips = list(modifier._iter_spine_clips())
+    assert len(clips) >= 3
+
+    target_idx, target = clips[1]
+    prev_idx, prev_clip = clips[0]
+    prev_dur_before = modifier._parse_time(prev_clip.get('duration', '0s')).to_seconds()
+    target_dur = modifier._parse_time(target.get('duration', '0s')).to_seconds()
+
+    result = modifier._absorb_into_neighbor(spine, target, 'prev')
+    assert result is prev_clip
+    prev_dur_after = modifier._parse_time(prev_clip.get('duration', '0s')).to_seconds()
+    assert abs(prev_dur_after - (prev_dur_before + target_dur)) < 0.001
+    assert target not in list(spine)
+
+
+def test_absorb_into_next_extends_duration(temp_fcpxml):
+    """Absorbing a clip into its next neighbor grows the neighbor and adjusts start."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    clips = list(modifier._iter_spine_clips())
+    assert len(clips) >= 3
+
+    target_idx, target = clips[1]
+    next_idx, next_clip = clips[2]
+    next_dur_before = modifier._parse_time(next_clip.get('duration', '0s')).to_seconds()
+    next_start_before = modifier._parse_time(next_clip.get('start', '0s')).to_seconds()
+    target_dur = modifier._parse_time(target.get('duration', '0s')).to_seconds()
+
+    result = modifier._absorb_into_neighbor(spine, target, 'next')
+    assert result is next_clip
+    next_dur_after = modifier._parse_time(next_clip.get('duration', '0s')).to_seconds()
+    assert abs(next_dur_after - (next_dur_before + target_dur)) < 0.001
+    assert target not in list(spine)
+
+    # Start should be pulled earlier (if it was >= absorbed duration)
+    if next_start_before >= target_dur:
+        next_start_after = modifier._parse_time(next_clip.get('start', '0s')).to_seconds()
+        assert abs(next_start_after - (next_start_before - target_dur)) < 0.001
+
+
+def test_absorb_no_neighbor_returns_none(temp_fcpxml):
+    """Returns None when there's no neighbor in the requested direction."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    clips = list(modifier._iter_spine_clips())
+
+    first_clip = clips[0][1]
+    result = modifier._absorb_into_neighbor(spine, first_clip, 'prev')
+    assert result is None
+    # Element should NOT have been removed
+    assert first_clip in list(spine)

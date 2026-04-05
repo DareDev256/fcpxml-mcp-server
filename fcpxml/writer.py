@@ -709,6 +709,55 @@ class FCPXMLModifier:
                     return spine_list[j]
         return None
 
+    def _absorb_into_neighbor(
+        self,
+        spine: ET.Element,
+        element: ET.Element,
+        direction: str,
+    ) -> Optional[ET.Element]:
+        """Extend a neighbor clip to absorb *element*'s duration, then remove *element*.
+
+        Shared by ``fix_flash_frames`` (absorbing flash-frame clips) and
+        ``fill_gaps`` (absorbing gap elements).  Both operations find the
+        nearest clip in *direction*, grow it by the absorbed element's
+        duration, and remove the absorbed element from the spine.
+
+        When extending backward (``direction='next'``), the neighbor's
+        source in-point is also pulled earlier so the extra frames come
+        from before the original cut, not after.
+
+        Does **not** call ``_recalculate_offsets`` — callers decide when to
+        recalculate (per-iteration vs. once at the end).
+
+        Args:
+            spine: The primary storyline ``<spine>`` element.
+            element: The clip or gap to absorb (will be removed).
+            direction: ``'prev'`` to extend the previous clip forward,
+                ``'next'`` to extend the next clip backward.
+
+        Returns:
+            The neighbor clip that absorbed the duration, or ``None`` if
+            no suitable neighbor exists.
+        """
+        spine_list = list(spine)
+        element_index = spine_list.index(element)
+        neighbor = self._find_neighbor_clip(spine_list, element_index, direction)
+        if neighbor is None:
+            return None
+
+        absorbed_dur = self._parse_time(element.get('duration', '0s'))
+        neighbor_dur = self._parse_time(neighbor.get('duration', '0s'))
+
+        if direction == 'next':
+            neighbor_start = self._parse_time(neighbor.get('start', '0s'))
+            new_start = neighbor_start - absorbed_dur
+            if new_start.to_seconds() >= 0:
+                neighbor.set('start', new_start.to_fcpxml())
+
+        neighbor.set('duration', (neighbor_dur + absorbed_dur).to_fcpxml())
+        spine.remove(element)
+        return neighbor
+
     def _resolve_insert_position(
         self, position: str, spine_children: list
     ) -> tuple:
@@ -1449,8 +1498,7 @@ class FCPXMLModifier:
         # Process in reverse order to maintain indices
         for ff in reversed(flash_frames):
             clip = ff['clip']
-            clip_index = list(spine).index(clip)
-            _, clip_duration, clip_offset = self._get_clip_times(clip)
+            _, _, clip_offset = self._get_clip_times(clip)
 
             # Determine actual mode
             actual_mode = mode
@@ -1467,36 +1515,15 @@ class FCPXMLModifier:
                 'timecode': clip_offset.to_timecode(self.fps)
             }
 
-            spine_list = list(spine)
-
-            if actual_mode == 'extend_previous' and clip_index > 0:
-                prev_clip = self._find_neighbor_clip(spine_list, clip_index, 'prev')
-
-                if prev_clip is not None:
-                    prev_duration = self._parse_time(prev_clip.get('duration', '0s'))
-                    new_duration = prev_duration + clip_duration
-                    prev_clip.set('duration', new_duration.to_fcpxml())
+            direction = {'extend_previous': 'prev', 'extend_next': 'next'}.get(actual_mode)
+            if direction:
+                neighbor = self._absorb_into_neighbor(spine, clip, direction)
+                if neighbor is not None:
+                    self._recalculate_offsets(spine)
+                    result['extended_clip'] = neighbor.get('name', direction.title())
+                else:
                     spine.remove(clip)
                     self._recalculate_offsets(spine)
-                    result['extended_clip'] = prev_clip.get('name', 'Previous')
-
-            elif actual_mode == 'extend_next' and clip_index < len(spine_list) - 1:
-                next_clip = self._find_neighbor_clip(spine_list, clip_index, 'next')
-
-                if next_clip is not None:
-                    next_duration = self._parse_time(next_clip.get('duration', '0s'))
-                    next_start = self._parse_time(next_clip.get('start', '0s'))
-                    new_duration = next_duration + clip_duration
-                    new_start = next_start - clip_duration
-                    if new_start.to_seconds() >= 0:
-                        next_clip.set('duration', new_duration.to_fcpxml())
-                        next_clip.set('start', new_start.to_fcpxml())
-                    else:
-                        next_clip.set('duration', new_duration.to_fcpxml())
-                    spine.remove(clip)
-                    self._recalculate_offsets(spine)
-                    result['extended_clip'] = next_clip.get('name', 'Next')
-
             else:  # delete
                 spine.remove(clip)
                 self._recalculate_offsets(spine)
@@ -1628,11 +1655,9 @@ class FCPXMLModifier:
         # Process in reverse to maintain indices
         for gap_info in reversed(gaps_to_process):
             gap = gap_info['element']
-            gap_index = list(spine).index(gap)
             gap_duration = gap_info['duration']
             gap_offset = gap_info['offset']
 
-            spine_list = list(spine)
             result = {
                 'timecode': gap_offset.to_timecode(self.fps),
                 'duration_frames': gap_duration.to_frames(self.fps),
@@ -1640,32 +1665,12 @@ class FCPXMLModifier:
                 'action': mode
             }
 
-            if mode == 'extend_previous' and gap_index > 0:
-                prev_clip = self._find_neighbor_clip(spine_list, gap_index, 'prev')
-
-                if prev_clip is not None:
-                    prev_duration = self._parse_time(prev_clip.get('duration', '0s'))
-                    new_duration = prev_duration + gap_duration
-                    prev_clip.set('duration', new_duration.to_fcpxml())
-                    spine.remove(gap)
-                    result['extended_clip'] = prev_clip.get('name', 'Previous')
+            direction = {'extend_previous': 'prev', 'extend_next': 'next'}.get(mode)
+            if direction:
+                neighbor = self._absorb_into_neighbor(spine, gap, direction)
+                if neighbor is not None:
+                    result['extended_clip'] = neighbor.get('name', direction.title())
                     filled.append(result)
-
-            elif mode == 'extend_next' and gap_index < len(spine_list) - 1:
-                next_clip = self._find_neighbor_clip(spine_list, gap_index, 'next')
-
-                if next_clip is not None:
-                    next_duration = self._parse_time(next_clip.get('duration', '0s'))
-                    next_start = self._parse_time(next_clip.get('start', '0s'))
-                    new_duration = next_duration + gap_duration
-                    new_start = next_start - gap_duration
-                    if new_start.to_seconds() >= 0:
-                        next_clip.set('start', new_start.to_fcpxml())
-                    next_clip.set('duration', new_duration.to_fcpxml())
-                    spine.remove(gap)
-                    result['extended_clip'] = next_clip.get('name', 'Next')
-                    filled.append(result)
-
             else:  # delete
                 spine.remove(gap)
                 filled.append(result)

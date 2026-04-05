@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.39] - 2026-04-05
+
+### Changed
+
+- **Extract `_absorb_into_neighbor` helper** (writer.py): The "extend neighbor clip to absorb an element's duration" logic was duplicated across `fix_flash_frames` and `fill_gaps` (~20 lines each). Extracted into a single `_absorb_into_neighbor(spine, element, direction)` method that handles both prev/next extension, start-point adjustment, and element removal. Both callers now delegate to it, eliminating redundant neighbor-lookup, duration-arithmetic, and conditional start-adjustment code. Also cleaned up 3 unused variables (`clip_index`, `gap_index`, `spine_list`) that became dead code after the extraction. Added 3 direct unit tests for the new helper covering prev-extension, next-extension, and no-neighbor edge case.
+
 ## [0.6.38] - 2026-04-04
 
 ### Fixed
