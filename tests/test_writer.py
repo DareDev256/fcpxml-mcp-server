@@ -554,6 +554,32 @@ def test_split_clip_single_point(temp_fcpxml):
     assert dur1 + dur2 == pytest.approx(original_duration, abs=0.5)
 
 
+def test_split_clip_removes_stale_index_entry(temp_fcpxml):
+    """After splitting, the original clip_id must be removed from self.clips.
+
+    Previously, split_clip left the original key pointing at a detached
+    XML element, causing silent corruption on subsequent operations.
+    """
+    modifier = FCPXMLModifier(temp_fcpxml)
+    assert 'Interview_A' in modifier.clips
+
+    modifier.split_clip(
+        clip_id='Interview_A',
+        split_points=['00:00:03:00']
+    )
+
+    # Original key must be gone
+    assert 'Interview_A' not in modifier.clips
+    # Split keys must exist and reference live spine elements
+    assert 'Interview_A_split_0' in modifier.clips
+    assert 'Interview_A_split_1' in modifier.clips
+
+    spine = modifier._get_spine()
+    spine_elements = list(spine)
+    assert modifier.clips['Interview_A_split_0'] in spine_elements
+    assert modifier.clips['Interview_A_split_1'] in spine_elements
+
+
 def test_split_clip_invalid_clip(temp_fcpxml):
     """Splitting a nonexistent clip raises ValueError."""
     modifier = FCPXMLModifier(temp_fcpxml)

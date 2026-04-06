@@ -1342,7 +1342,6 @@ class FCPXMLModifier:
         # Get clip properties
         clip_start, clip_duration, clip_offset = self._get_clip_times(clip)
         clip_name = clip.get('name', 'Clip')
-        clip.get('ref')
 
         # Sort split points
         split_times = sorted([self._parse_time(sp) for sp in split_points])
@@ -1380,7 +1379,8 @@ class FCPXMLModifier:
             current_offset = current_offset + segment_duration
             current_start = current_start + segment_duration
 
-        # Update clip index
+        # Update clip index: remove stale original entry, add split entries
+        self.clips.pop(clip_id, None)
         for i, new_clip in enumerate(new_clips):
             new_id = f"{clip_id}_split_{i}"
             self.clips[new_id] = new_clip

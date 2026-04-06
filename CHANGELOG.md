@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.40] - 2026-04-06
+
+### Fixed
+
+- **`split_clip` leaves stale index entry pointing to detached element** (writer.py): After splitting a clip, the original `clip_id` key remained in `self.clips` referencing the removed XML element. Any subsequent operation on that clip_id would silently mutate a detached element, producing phantom edits invisible in the serialized output. Now removes the original key before adding `_split_N` entries. Also removed dead `clip.get('ref')` expression. Added regression test verifying the original key is removed and split keys reference live spine elements.
+
 ## [0.6.39] - 2026-04-05
 
 ### Changed
