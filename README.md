@@ -377,6 +377,9 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, depth-limited `rglob` (≤10 levels, 10K file cap), symlink-escape detection — prevents workspace enumeration and traversal DoS |
 | **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom`. Ruff `S314`/`S320` rules enforce safe parsing in CI |
 | **JSON depth limit** | Iterative BFS depth checker rejects payloads nested beyond 50 levels — immune to RecursionError even at ~1000 nesting |
+| **Batch limits** | Marker batch operations capped at 10,000 entries — prevents memory exhaustion from adversarial payloads with millions of markers |
+| **Inline text limits** | Inline transcript arguments capped at ~1 MB — file-based inputs go through `_validate_filepath`, but inline strings from MCP tool arguments bypass file checks |
+| **Symlink filtering** | `find_fcpxml_files` skips symlinks during discovery — prevents sandbox escape via symlink chains pointing outside the allowed project directory |
 | **Marker strings** | Sanitized via `_sanitize_xml_value()` — null bytes, control chars stripped before write |
 | **Role values** | Stripped of control characters before XML attribute assignment |
 | **URI parsing** | MCP resource URIs parsed via `urllib.parse.urlparse()` — rejects scheme confusion and handles percent-encoded paths correctly |
