@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-763_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-774_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.8k_LOC-informational.svg)](#architecture)
 
@@ -373,8 +373,8 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 |-------|------------|
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
 | **Output sandbox** | All generation, write, export, beat sync, subtitle, and reformat handlers enforce `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory, blocking LLM-generated path escapes |
-| **Subprocess bounds** | `_ensure_video_asset` resolves ffmpeg to an absolute path via `shutil.which()`, validates duration (0.01–86400s), fps (1–240), width/height (even, 2–16384) before invoking — prevents both PATH manipulation and resource exhaustion |
-| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, depth-limited `rglob` (≤10 levels, 10K file cap), symlink-escape detection — prevents workspace enumeration and traversal DoS |
+| **Subprocess bounds** | `_ensure_video_asset` validates duration (0 < d ≤ 3600s), fps (1–240), width/height (even, 2–16384) before invoking — prevents resource exhaustion via absurd parameter values |
+| **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, 10K file cap on `rglob`, symlink files skipped during discovery — prevents workspace enumeration and traversal DoS |
 | **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom`. Ruff `S314`/`S320` rules enforce safe parsing in CI |
 | **JSON depth limit** | Iterative BFS depth checker rejects payloads nested beyond 50 levels — immune to RecursionError even at ~1000 nesting |
 | **Batch limits** | Marker batch operations capped at 10,000 entries — prevents memory exhaustion from adversarial payloads with millions of markers |
@@ -386,7 +386,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-140+ security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, directory depth limits, minidom hardening, JSON depth limits, role sanitization, ffmpeg parameter bounds, and write-handler sandbox enforcement. Ruff `S` (bandit) rules enforced in CI — `S314`/`S320` block unsafe XML parsing, `S105` catches hardcoded passwords, `S108` flags insecure temp paths. Security events (null bytes, sandbox escapes, unhandled exceptions) are logged via Python `logging` for audit trails.
+117 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, minidom hardening, JSON depth limits, role sanitization, ffmpeg parameter bounds, symlink filtering, file count caps, and write-handler sandbox enforcement. Ruff `S` (bandit) rules enforced in CI — `S314`/`S320` block unsafe XML parsing, `S105` catches hardcoded passwords, `S108` flags insecure temp paths. Security events (null bytes, sandbox escapes, unhandled exceptions) are logged via Python `logging` for audit trails.
 
 ---
 
