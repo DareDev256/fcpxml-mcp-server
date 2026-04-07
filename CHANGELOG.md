@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.42] - 2026-04-07
+
+### Fixed
+
+- **False-positive TODO detection in test_models.py**: Annotated `MarkerType.TODO` enum alias references and `"TODO"` string literals in test parametrize data with inline comments (`# enum value, not an action item`, `# enum alias check`) so code debt scanners don't flag them as unresolved action items. Updated class docstring for `TestMarkerTypeAliasSemantics` to clarify these are enum aliases, not TODOs.
+
 ## [0.6.41] - 2026-04-06
 
 ### Changed

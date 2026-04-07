@@ -348,8 +348,8 @@ class TestValidationResult:
 class TestMarkerType:
 
     @pytest.mark.parametrize("value,expected", [
-        ("todo", MarkerType.INCOMPLETE),
-        ("TODO", MarkerType.INCOMPLETE),
+        ("todo", MarkerType.INCOMPLETE),       # enum value, not an action item
+        ("TODO", MarkerType.INCOMPLETE),       # enum value, not an action item  # noqa
         ("completed", MarkerType.COMPLETED),
         ("COMPLETED", MarkerType.COMPLETED),
         ("standard", MarkerType.STANDARD),
@@ -637,11 +637,11 @@ class TestTimeValueArithmeticEdgeCases:
 
 
 class TestMarkerTypeAliasSemantics:
-    """MarkerType.TODO is a backward-compat alias for INCOMPLETE (Python enum identity)."""
+    """MarkerType enum alias: TODO → INCOMPLETE (Python enum identity, not action items)."""
 
     def test_todo_alias_resolves_to_incomplete(self):
         """All alias properties match — identity, value, xml_tag, xml_attrs."""
-        assert MarkerType.INCOMPLETE is MarkerType.TODO
+        assert MarkerType.INCOMPLETE is MarkerType.TODO  # enum alias check  # noqa
         assert MarkerType.INCOMPLETE.value == "todo"
         assert MarkerType.INCOMPLETE.xml_tag == "marker"
         assert MarkerType.INCOMPLETE.xml_attrs == {'completed': '0'}
