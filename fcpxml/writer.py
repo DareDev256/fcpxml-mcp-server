@@ -709,6 +709,65 @@ class FCPXMLModifier:
                     return spine_list[j]
         return None
 
+    def _resolve_asset(
+        self, asset_id: Optional[str], asset_name: Optional[str]
+    ) -> tuple:
+        """Look up an asset by ID or name from ``self.resources``.
+
+        Returns:
+            ``(asset_dict, resolved_asset_id)`` tuple.
+
+        Raises:
+            ValueError: If neither ID nor name matches a known asset.
+        """
+        if asset_id and asset_id in self.resources:
+            return self.resources[asset_id], asset_id
+        if asset_name:
+            for res_id, res_data in self.resources.items():
+                if res_data.get('name') == asset_name:
+                    return res_data, res_id
+        raise ValueError(f"Asset not found: {asset_id or asset_name}")
+
+    @staticmethod
+    def _unique_resource_id(resources: ET.Element, prefix: str) -> str:
+        """Generate a unique resource ID with the given *prefix*.
+
+        Starts with ``prefix`` (e.g. ``'r_audio1'``), appending an
+        incrementing counter until no collision exists in *resources*.
+        """
+        existing_ids = {el.get('id', '') for el in resources}
+        candidate = prefix
+        counter = 2
+        while candidate in existing_ids:
+            # Strip trailing digits from prefix for the counter suffix
+            base = prefix.rstrip('0123456789')
+            candidate = f'{base}{counter}'
+            counter += 1
+        return candidate
+
+    def _find_spine_element_at_timecode(
+        self, spine: ET.Element, target_tc: str, *, require_clip: bool = False
+    ) -> Optional[ET.Element]:
+        """Find the first spine child whose offset matches *target_tc*.
+
+        Normalises both sides through ``TimeValue`` round-trip so format
+        differences (e.g. ``"3600/2400s"`` vs ``"1800/1200s"``) don't
+        cause false negatives.
+
+        Args:
+            spine: The ``<spine>`` element to search.
+            target_tc: Timecode string to match against each child's offset.
+            require_clip: If True, skip non-clip elements (gaps, etc.).
+        """
+        for child in spine:
+            offset_str = child.get('offset', '0s')
+            tc = TimeValue.from_timecode(offset_str, self.fps).to_timecode(self.fps)
+            if tc == target_tc:
+                if require_clip and child.tag not in CLIP_TAGS:
+                    continue
+                return child
+        return None
+
     def _absorb_into_neighbor(
         self,
         spine: ET.Element,
@@ -1197,13 +1256,7 @@ class FCPXMLModifier:
                         effect_ref_id = eff.get('id')
                         break
                 if effect_ref_id is None:
-                    # Generate a unique resource id
-                    existing_ids = {el.get('id', '') for el in resources}
-                    effect_ref_id = 'r_dissolve'
-                    counter = 2
-                    while effect_ref_id in existing_ids:
-                        effect_ref_id = f'r_dissolve{counter}'
-                        counter += 1
+                    effect_ref_id = self._unique_resource_id(resources, 'r_dissolve')
                     eff_el = ET.SubElement(resources, 'effect')
                     eff_el.set('id', effect_ref_id)
                     eff_el.set('name', effect_name)
@@ -1755,19 +1808,7 @@ class FCPXMLModifier:
         Returns:
             The created clip element
         """
-        # Find asset by ID or name
-        asset = None
-        if asset_id and asset_id in self.resources:
-            asset = self.resources[asset_id]
-        elif asset_name:
-            for res_id, res_data in self.resources.items():
-                if res_data.get('name') == asset_name:
-                    asset = res_data
-                    asset_id = res_id
-                    break
-
-        if asset is None:
-            raise ValueError(f"Asset not found: {asset_id or asset_name}")
+        asset, asset_id = self._resolve_asset(asset_id, asset_name)
 
         # Determine clip duration and start
         if in_point and out_point:
@@ -1853,18 +1894,7 @@ class FCPXMLModifier:
         if parent is None:
             raise ValueError(f"Parent clip not found: {parent_clip_id}")
 
-        asset = None
-        if asset_id and asset_id in self.resources:
-            asset = self.resources[asset_id]
-        elif asset_name:
-            for res_id, res_data in self.resources.items():
-                if res_data.get('name') == asset_name:
-                    asset = res_data
-                    asset_id = res_id
-                    break
-
-        if asset is None:
-            raise ValueError(f"Asset not found: {asset_id or asset_name}")
+        asset, asset_id = self._resolve_asset(asset_id, asset_name)
 
         clip_duration = (
             self._parse_time(duration) if duration
@@ -1928,12 +1958,7 @@ class FCPXMLModifier:
             resources = self.root.find('.//resources')
             if resources is None:
                 raise ValueError("No <resources> element found in FCPXML")
-            existing_ids = {el.get('id', '') for el in resources}
-            asset_id = 'r_audio1'
-            counter = 2
-            while asset_id in existing_ids:
-                asset_id = f'r_audio{counter}'
-                counter += 1
+            asset_id = self._unique_resource_id(resources, 'r_audio1')
             asset_elem = _create_asset_element(
                 resources, asset_id, Path(src).stem, src,
                 duration=duration or "0s",
@@ -2081,12 +2106,7 @@ class FCPXMLModifier:
             break
 
         # Create media resource with nested sequence
-        existing_ids = {el.get('id', '') for el in resources}
-        media_id = 'r_compound1'
-        counter = 2
-        while media_id in existing_ids:
-            media_id = f'r_compound{counter}'
-            counter += 1
+        media_id = self._unique_resource_id(resources, 'r_compound1')
 
         media = ET.SubElement(resources, 'media')
         media.set('id', media_id)
@@ -2400,39 +2420,36 @@ class FCPXMLModifier:
 
         if mode == "mark":
             for c in candidates:
-                # Find the element at this position and add a marker
-                for child in spine:
-                    offset_str = child.get('offset', '0s')
-                    tc = TimeValue.from_timecode(offset_str, self.fps).to_timecode(self.fps)
-                    if tc == c['start_timecode'] and child.tag in CLIP_TAGS:
-                        build_marker_element(
-                            parent=child,
-                            marker_type=MarkerType.STANDARD,
-                            start=child.get('start', '0s'),
-                            duration=f"1/{int(self.fps)}s",
-                            name=f"SILENCE: {c['reason']}",
-                        )
-                        actions.append({
-                            'action': 'marked',
-                            'clip_name': c.get('clip_name', 'gap'),
-                            'reason': c['reason'],
-                        })
-                        break
+                child = self._find_spine_element_at_timecode(
+                    spine, c['start_timecode'], require_clip=True
+                )
+                if child is not None:
+                    build_marker_element(
+                        parent=child,
+                        marker_type=MarkerType.STANDARD,
+                        start=child.get('start', '0s'),
+                        duration=f"1/{int(self.fps)}s",
+                        name=f"SILENCE: {c['reason']}",
+                    )
+                    actions.append({
+                        'action': 'marked',
+                        'clip_name': c.get('clip_name', 'gap'),
+                        'reason': c['reason'],
+                    })
 
         elif mode == "delete":
             elements_to_remove = []
             for c in candidates:
-                for child in spine:
-                    offset_str = child.get('offset', '0s')
-                    tc = TimeValue.from_timecode(offset_str, self.fps).to_timecode(self.fps)
-                    if tc == c['start_timecode']:
-                        elements_to_remove.append(child)
-                        actions.append({
-                            'action': 'deleted',
-                            'clip_name': c.get('clip_name', 'gap'),
-                            'reason': c['reason'],
-                        })
-                        break
+                child = self._find_spine_element_at_timecode(
+                    spine, c['start_timecode']
+                )
+                if child is not None:
+                    elements_to_remove.append(child)
+                    actions.append({
+                        'action': 'deleted',
+                        'clip_name': c.get('clip_name', 'gap'),
+                        'reason': c['reason'],
+                    })
 
             for elem in elements_to_remove:
                 spine.remove(elem)

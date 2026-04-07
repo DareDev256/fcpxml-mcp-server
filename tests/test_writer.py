@@ -953,3 +953,97 @@ def test_absorb_no_neighbor_returns_none(temp_fcpxml):
     assert result is None
     # Element should NOT have been removed
     assert first_clip in list(spine)
+
+
+# ============================================================
+# _resolve_asset Tests
+# ============================================================
+
+def test_resolve_asset_by_id(temp_fcpxml):
+    """Resolves an asset by its resource ID."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    first_id = next(iter(modifier.resources))
+    asset, resolved_id = modifier._resolve_asset(first_id, None)
+    assert resolved_id == first_id
+    assert asset is modifier.resources[first_id]
+
+
+def test_resolve_asset_by_name(temp_fcpxml):
+    """Resolves an asset by name when no ID is given."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    first_id = next(iter(modifier.resources))
+    expected_name = modifier.resources[first_id].get('name')
+    asset, resolved_id = modifier._resolve_asset(None, expected_name)
+    assert resolved_id == first_id
+    assert asset.get('name') == expected_name
+
+
+def test_resolve_asset_not_found(temp_fcpxml):
+    """Raises ValueError when neither ID nor name matches."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises(ValueError, match="Asset not found"):
+        modifier._resolve_asset('r_nonexistent', None)
+
+
+# ============================================================
+# _unique_resource_id Tests
+# ============================================================
+
+def test_unique_resource_id_no_collision(temp_fcpxml):
+    """Returns the prefix as-is when no collision exists."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    resources = modifier.root.find('.//resources')
+    result = modifier._unique_resource_id(resources, 'r_fresh1')
+    assert result == 'r_fresh1'
+
+
+def test_unique_resource_id_with_collision(temp_fcpxml):
+    """Increments the counter suffix until no collision."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    resources = modifier.root.find('.//resources')
+    # The first resource ID should already exist
+    existing_id = next(iter(modifier.resources))
+    result = modifier._unique_resource_id(resources, existing_id)
+    assert result != existing_id
+    assert result not in {el.get('id', '') for el in resources}
+
+
+# ============================================================
+# _find_spine_element_at_timecode Tests
+# ============================================================
+
+def test_find_spine_element_at_timecode_match(temp_fcpxml):
+    """Finds a spine element whose offset matches the given timecode."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    first_child = list(spine)[0]
+    offset_str = first_child.get('offset', '0s')
+    from fcpxml.models import TimeValue
+    tc = TimeValue.from_timecode(offset_str, modifier.fps).to_timecode(modifier.fps)
+
+    found = modifier._find_spine_element_at_timecode(spine, tc)
+    assert found is first_child
+
+
+def test_find_spine_element_at_timecode_no_match(temp_fcpxml):
+    """Returns None when no element has a matching offset."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    result = modifier._find_spine_element_at_timecode(spine, '99999/1s')
+    assert result is None
+
+
+def test_find_spine_element_require_clip(temp_fcpxml):
+    """With require_clip=True, skips non-clip elements like gaps."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    # Insert a gap at the beginning to test filtering
+    import xml.etree.ElementTree as ET
+    gap = ET.Element('gap')
+    gap.set('offset', '0s')
+    gap.set('duration', '100/2400s')
+    spine.insert(0, gap)
+
+    # require_clip=True should skip the gap
+    result = modifier._find_spine_element_at_timecode(spine, '0s', require_clip=True)
+    assert result is None or result.tag != 'gap'

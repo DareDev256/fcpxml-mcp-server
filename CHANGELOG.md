@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.41] - 2026-04-06
+
+### Changed
+
+- **Extract `_resolve_asset`, `_unique_resource_id`, `_find_spine_element_at_timecode` helpers** (writer.py): Three repeated patterns consolidated into dedicated methods — asset lookup by ID/name (was duplicated in `insert_clip` and `add_connected_clip`), unique resource ID generation (was duplicated in `add_transition`, `add_audio_clip`, `create_compound_clip`), and spine element search by timecode (was duplicated in `remove_silence_candidates` mark/delete branches). Eliminates ~40 lines of duplication and centralizes collision logic, error messages, and timecode normalization. Added 8 unit tests covering all three helpers.
+
 ## [0.6.40] - 2026-04-06
 
 ### Fixed
