@@ -7,9 +7,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-764_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-772_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~8.8k_LOC-informational.svg)](#architecture)
+[![Source](https://img.shields.io/badge/source-~8.9k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -321,7 +321,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ## Architecture
 
 ```
-fcp-mcp-server/           ~8.8k lines Python
+fcp-mcp-server/           ~8.9k lines Python
 ├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
@@ -329,10 +329,11 @@ fcp-mcp-server/           ~8.8k lines Python
 │                          _detect_flash_frames() / _detect_gaps() / _detect_duplicate_groups()
 │                          consolidate path validation, QC detection, rendering, handler boilerplate
 ├── fcpxml/
-│   ├── README.md          Developer guide — TimeValue, clip hierarchy, type reference
+│   ├── README.md          Developer guide — TimeValue, clip hierarchy, modifier patterns
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
+│   │                       _resolve_asset() / _absorb_into_neighbor() / _find_spine_element_at_timecode()
 │   │                       _resolve_insert_position() / _find_neighbor_clip() / _index_elements()
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
@@ -469,7 +470,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-762 tests across 17 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions (_index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _resolve_clip, serialize_xml), recent fix regressions (rapid_trim directions, min_duration, offset recalculation, interval timing accuracy, gap skipping, duplicate-name clip operations across trim/speed/split/delete/markers), security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+772 tests across 17 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions (_index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _resolve_clip, serialize_xml), recent fix regressions (rapid_trim directions, min_duration, offset recalculation, interval timing accuracy, gap skipping, duplicate-name clip operations across trim/speed/split/delete/markers), security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
 
 ---
 
