@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.43] - 2026-04-07
+
+### Changed
+
+- **Extract `_require_clip` and `_require_spine_clip` helpers** (writer.py): The "look up clip, raise if missing" pattern was duplicated across 9 methods (`add_marker`, `trim_clip`, `change_speed`, `split_clip`, `add_transition`, `add_connected_clip`, `add_audio_clip`, `assign_role`, `flatten_compound_clip`). Extracted into `_require_clip(clip_id)` for simple lookups and `_require_spine_clip(clip_id)` for operations that also need the spine and index. Eliminates ~30 lines of boilerplate and centralizes error messages. Added 5 unit tests covering both helpers.
+
 ## [0.6.42] - 2026-04-07
 
 ### Fixed

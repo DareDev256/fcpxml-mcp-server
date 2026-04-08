@@ -1047,3 +1047,60 @@ def test_find_spine_element_require_clip(temp_fcpxml):
     # require_clip=True should skip the gap
     result = modifier._find_spine_element_at_timecode(spine, '0s', require_clip=True)
     assert result is None or result.tag != 'gap'
+
+
+# ============================================================
+# _require_clip / _require_spine_clip Tests
+# ============================================================
+
+def test_require_clip_returns_element(temp_fcpxml):
+    """_require_clip returns the clip element for a valid ID."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    clip_id = next(iter(modifier.clips))
+    result = modifier._require_clip(clip_id)
+    assert result is modifier.clips[clip_id]
+
+
+def test_require_clip_raises_on_missing(temp_fcpxml):
+    """_require_clip raises ValueError for a non-existent ID."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises(ValueError, match="Clip not found: no_such_clip"):
+        modifier._require_clip("no_such_clip")
+
+
+def test_require_spine_clip_returns_tuple(temp_fcpxml):
+    """_require_spine_clip returns (spine, clip, index) for a spine clip."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    spine_children = list(spine)
+    # Find a clip_id that's actually in the spine
+    target_id = None
+    for cid, elem in modifier.clips.items():
+        if elem in spine_children:
+            target_id = cid
+            break
+    assert target_id is not None, "No clip in spine for this test"
+
+    result_spine, result_clip, result_idx = modifier._require_spine_clip(target_id)
+    assert result_spine is spine
+    assert result_clip is modifier.clips[target_id]
+    assert spine_children[result_idx] is result_clip
+
+
+def test_require_spine_clip_raises_for_missing(temp_fcpxml):
+    """_require_spine_clip raises ValueError for a non-existent clip."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises(ValueError, match="Clip not found"):
+        modifier._require_spine_clip("nonexistent_clip")
+
+
+def test_require_spine_clip_raises_for_non_spine(temp_fcpxml):
+    """_require_spine_clip raises ValueError for a clip not in the spine."""
+    import xml.etree.ElementTree as ET
+    modifier = FCPXMLModifier(temp_fcpxml)
+    # Inject a clip into the index that isn't in the spine
+    fake = ET.Element('clip')
+    fake.set('name', 'orphan')
+    modifier.clips['orphan'] = fake
+    with pytest.raises(ValueError, match="Clip not in spine: orphan"):
+        modifier._require_spine_clip("orphan")

@@ -678,6 +678,34 @@ class FCPXMLModifier:
             self._parse_time(clip.get('offset', '0s')),
         )
 
+    def _require_clip(self, clip_id: str) -> ET.Element:
+        """Look up a clip by ID/name, raising if not found.
+
+        Centralises the get-or-raise pattern used by every clip-mutating
+        method so the error message stays consistent and future
+        enhancements (fuzzy matching, suggestions) only need one site.
+        """
+        clip = self.clips.get(clip_id)
+        if clip is None:
+            raise ValueError(f"Clip not found: {clip_id}")
+        return clip
+
+    def _require_spine_clip(self, clip_id: str) -> tuple[ET.Element, ET.Element, int]:
+        """Look up a clip and verify it lives in the primary spine.
+
+        Returns:
+            ``(spine, clip, index_in_spine)`` tuple.
+
+        Raises:
+            ValueError: If the clip doesn't exist or isn't in the spine.
+        """
+        clip = self._require_clip(clip_id)
+        spine = self._get_spine()
+        clip_index = self._find_clip_index(spine, clip)
+        if clip_index is None:
+            raise ValueError(f"Clip not in spine: {clip_id}")
+        return spine, clip, clip_index
+
     def _find_clip_index(self, spine: ET.Element, clip: ET.Element) -> int | None:
         """Find the index of a clip in the spine. Returns None if not found."""
         for i, child in enumerate(spine):
@@ -917,9 +945,7 @@ class FCPXMLModifier:
         Returns:
             The created marker element
         """
-        clip = self.clips.get(clip_id)
-        if clip is None:
-            raise ValueError(f"Clip not found: {clip_id}")
+        clip = self._require_clip(clip_id)
 
         if isinstance(marker_type, str):
             marker_type = MarkerType.from_string(marker_type)
@@ -1064,9 +1090,7 @@ class FCPXMLModifier:
         Returns:
             Modified clip element
         """
-        clip = self.clips.get(clip_id)
-        if clip is None:
-            raise ValueError(f"Clip not found: {clip_id}")
+        clip = self._require_clip(clip_id)
 
         current_start, current_duration, _ = self._get_clip_times(clip)
 
@@ -1225,19 +1249,9 @@ class FCPXMLModifier:
         Returns:
             Created transition element(s)
         """
-        spine = self._get_spine()
-        clip = self.clips.get(clip_id)
-
-        if clip is None:
-            raise ValueError(f"Clip not found: {clip_id}")
+        spine, clip, clip_index = self._require_spine_clip(clip_id)
 
         trans_duration = self._parse_time(duration)
-
-        # Find clip index in spine
-        clip_index = self._find_clip_index(spine, clip)
-
-        if clip_index is None:
-            raise ValueError(f"Clip not in primary storyline: {clip_id}")
 
         # Effect name and FCP built-in effect UID lookup via registry
         effect_name, effect_uid = FCP_EFFECTS.get(
@@ -1309,9 +1323,7 @@ class FCPXMLModifier:
         if speed <= 0:
             raise ValueError(f"Speed must be positive, got {speed}")
 
-        clip = self.clips.get(clip_id)
-        if clip is None:
-            raise ValueError(f"Clip not found: {clip_id}")
+        clip = self._require_clip(clip_id)
 
         current_duration = self._parse_time(clip.get('duration', '0s'))
 
@@ -1380,17 +1392,7 @@ class FCPXMLModifier:
         Returns:
             List of resulting clip elements
         """
-        spine = self._get_spine()
-        clip = self.clips.get(clip_id)
-
-        if clip is None:
-            raise ValueError(f"Clip not found: {clip_id}")
-
-        # Find clip in spine
-        clip_index = self._find_clip_index(spine, clip)
-
-        if clip_index is None:
-            raise ValueError(f"Clip not in spine: {clip_id}")
+        spine, clip, clip_index = self._require_spine_clip(clip_id)
 
         # Get clip properties
         clip_start, clip_duration, clip_offset = self._get_clip_times(clip)
@@ -1890,9 +1892,7 @@ class FCPXMLModifier:
         Returns:
             The created connected clip element
         """
-        parent = self.clips.get(parent_clip_id)
-        if parent is None:
-            raise ValueError(f"Parent clip not found: {parent_clip_id}")
+        parent = self._require_clip(parent_clip_id)
 
         asset, asset_id = self._resolve_asset(asset_id, asset_name)
 
@@ -1946,9 +1946,7 @@ class FCPXMLModifier:
         Returns:
             The created audio clip element.
         """
-        parent = self.clips.get(parent_clip_id)
-        if parent is None:
-            raise ValueError(f"Parent clip not found: {parent_clip_id}")
+        parent = self._require_clip(parent_clip_id)
 
         # Resolve or create asset
         if asset_id and asset_id in self.resources:
@@ -2076,12 +2074,11 @@ class FCPXMLModifier:
             raise ValueError("No <resources> element found in FCPXML")
 
         # Collect clips and validate they're in spine
+        spine_children = list(spine)
         clips_to_group = []
         for cid in clip_ids:
-            clip = self.clips.get(cid)
-            if clip is None:
-                raise ValueError(f"Clip not found: {cid}")
-            if clip not in list(spine):
+            clip = self._require_clip(cid)
+            if clip not in spine_children:
                 raise ValueError(f"Clip not in spine: {cid}")
             clips_to_group.append((cid, clip))
 
@@ -2169,9 +2166,7 @@ class FCPXMLModifier:
             List of extracted clip elements now in the main spine.
         """
         spine = self._get_spine()
-        ref_clip = self.clips.get(ref_clip_id)
-        if ref_clip is None:
-            raise ValueError(f"Ref-clip not found: {ref_clip_id}")
+        ref_clip = self._require_clip(ref_clip_id)
         if ref_clip.tag != 'ref-clip':
             raise ValueError(f"Element is not a ref-clip: {ref_clip_id}")
 
@@ -2246,9 +2241,7 @@ class FCPXMLModifier:
         Returns:
             The modified clip element
         """
-        clip = self.clips.get(clip_id)
-        if clip is None:
-            raise ValueError(f"Clip not found: {clip_id}")
+        clip = self._require_clip(clip_id)
 
         if audio_role is not None:
             clip.set('audioRole', _sanitize_xml_value(audio_role, 256))
