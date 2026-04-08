@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.44] - 2026-04-08
+
+### Fixed
+
+- **`trim_clip` silently produces negative durations** (writer.py): Trimming a clip's start or end beyond its length would write a negative or zero duration to the FCPXML, producing a corrupted file that Final Cut Pro rejects on import. Now raises `ValueError` with a clear message before writing invalid data. Added 3 regression tests.
+- **`add_transition` produces negative offset at spine start** (writer.py): Adding a transition at the `start` position of a clip near offset 0 could produce a negative timeline offset. Now raises `ValueError` when the computed offset would be negative. Added 1 regression test.
+- **`_absorb_into_neighbor` creates inconsistent clip state** (writer.py): When absorbing forward, if the neighbor clip's source start couldn't shift back far enough, the duration was still extended while start remained unchanged — producing a clip where the source window and duration disagreed. Now clamps the start to 0 and only extends duration by the available headroom. Added 1 regression test.
+
 ## [0.6.43] - 2026-04-07
 
 ### Changed

@@ -1,7 +1,9 @@
 """Tests for FCPXML writer/modifier."""
 
+import os
 import shutil
 import tempfile
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -953,6 +955,93 @@ def test_absorb_no_neighbor_returns_none(temp_fcpxml):
     assert result is None
     # Element should NOT have been removed
     assert first_clip in list(spine)
+
+
+def test_trim_clip_rejects_negative_duration(temp_fcpxml):
+    """Trimming beyond clip length must raise, not silently write negative duration."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # Broll_Studio has 5s duration — trimming end by 6s would give -1s
+    with pytest.raises(ValueError, match="non-positive duration"):
+        modifier.trim_clip(clip_id='Broll_Studio', trim_end='-6s', ripple=False)
+
+
+def test_trim_clip_rejects_zero_duration(temp_fcpxml):
+    """Trimming to exactly zero must also raise."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    # Broll_Studio has 5s duration — trimming end by exactly 5s gives 0s
+    with pytest.raises(ValueError, match="non-positive duration"):
+        modifier.trim_clip(clip_id='Broll_Studio', trim_end='-5s', ripple=False)
+
+
+def test_trim_clip_start_rejects_over_trim(temp_fcpxml):
+    """Moving start forward by more than duration must raise."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+
+    with pytest.raises(ValueError, match="non-positive duration"):
+        modifier.trim_clip(clip_id='Broll_Studio', trim_start='+6s', ripple=False)
+
+
+def test_add_transition_rejects_negative_offset():
+    """Transition at start of first clip must raise when offset would go negative."""
+    xml = textwrap.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+          <resources>
+            <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>
+            <asset id="r2" src="file:///clip.mov" hasVideo="1" hasAudio="1"/>
+          </resources>
+          <library>
+            <event name="Test">
+              <project name="Test">
+                <sequence format="r1">
+                  <spine>
+                    <asset-clip name="FirstClip" ref="r2" offset="0s"
+                                start="0s" duration="120/24s"/>
+                    <asset-clip name="SecondClip" ref="r2" offset="120/24s"
+                                start="0s" duration="120/24s"/>
+                  </spine>
+                </sequence>
+              </project>
+            </event>
+          </library>
+        </fcpxml>
+    """)
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+
+    # FirstClip offset=0, half of 20s transition = 10s → offset -10s
+    with pytest.raises(ValueError, match="negative offset"):
+        modifier.add_transition(clip_id='FirstClip', duration='20s', position='start')
+
+    os.unlink(f.name)
+
+
+def test_absorb_next_clamps_when_start_insufficient(temp_fcpxml):
+    """When absorbing forward, if neighbor start < absorbed duration, clamp to 0."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    clips = list(modifier._iter_spine_clips())
+
+    # Find a neighbor whose start is 0 (or very small)
+    target_idx, target = clips[1]
+    next_idx, next_clip = clips[2]
+    # Force next_clip start to 0 so absorb can't shift it further back
+    next_clip.set('start', '0s')
+    next_dur_before = modifier._parse_time(next_clip.get('duration', '0s')).to_seconds()
+
+    result = modifier._absorb_into_neighbor(spine, target, 'next')
+    assert result is next_clip
+    # Start should be clamped to 0, not negative
+    next_start_after = modifier._parse_time(next_clip.get('start', '0s')).to_seconds()
+    assert next_start_after == 0.0
+    # Duration only extended by available headroom (0), so unchanged
+    next_dur_after = modifier._parse_time(next_clip.get('duration', '0s')).to_seconds()
+    assert next_dur_after == pytest.approx(next_dur_before, abs=0.001)
 
 
 # ============================================================

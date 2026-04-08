@@ -840,8 +840,14 @@ class FCPXMLModifier:
             new_start = neighbor_start - absorbed_dur
             if new_start.to_seconds() >= 0:
                 neighbor.set('start', new_start.to_fcpxml())
-
-        neighbor.set('duration', (neighbor_dur + absorbed_dur).to_fcpxml())
+                neighbor.set('duration', (neighbor_dur + absorbed_dur).to_fcpxml())
+            else:
+                # Can't shift start negative — only extend by what's available
+                available = neighbor_start
+                neighbor.set('start', TimeValue(0, 1).to_fcpxml())
+                neighbor.set('duration', (neighbor_dur + available).to_fcpxml())
+        else:
+            neighbor.set('duration', (neighbor_dur + absorbed_dur).to_fcpxml())
         spine.remove(element)
         return neighbor
 
@@ -1131,6 +1137,12 @@ class FCPXMLModifier:
 
             current_duration = new_duration
 
+        if current_duration.to_seconds() <= 0:
+            raise ValueError(
+                f"Trim would produce non-positive duration "
+                f"({current_duration.to_seconds():.3f}s) for clip '{clip_id}'"
+            )
+
         clip.set('duration', current_duration.to_fcpxml())
 
         # Ripple subsequent clips if needed
@@ -1291,6 +1303,11 @@ class FCPXMLModifier:
 
         if position in ('start', 'both'):
             start_offset = clip_offset - half_dur
+            if start_offset.to_seconds() < 0:
+                raise ValueError(
+                    f"Transition at start would produce negative offset "
+                    f"({start_offset.to_seconds():.3f}s) for clip '{clip_id}'"
+                )
             transition = self._make_transition_element(
                 effect_name, start_offset, trans_duration, effect_ref_id
             )
