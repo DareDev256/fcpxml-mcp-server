@@ -1193,3 +1193,219 @@ def test_require_spine_clip_raises_for_non_spine(temp_fcpxml):
     modifier.clips['orphan'] = fake
     with pytest.raises(ValueError, match="Clip not in spine: orphan"):
         modifier._require_spine_clip("orphan")
+
+
+# ============================================================
+# _ripple_from_index Tests
+# ============================================================
+
+def test_ripple_from_index_shifts_offsets(temp_fcpxml):
+    """Shifts offsets of spine elements from start_index onward by positive delta."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    children = list(spine)
+    assert len(children) >= 3, "Need at least 3 clips for this test"
+
+    from fcpxml.models import TimeValue
+    original_offsets = [c.get('offset', '0s') for c in children]
+    delta = TimeValue(240, 24)  # +10 seconds
+
+    modifier._ripple_from_index(spine, 1, delta)
+
+    updated = list(spine)
+    # First element unchanged
+    assert updated[0].get('offset') == original_offsets[0]
+    # Elements from index 1 onward shifted by delta
+    for i in range(1, len(updated)):
+        orig = modifier._parse_time(original_offsets[i])
+        shifted = modifier._parse_time(updated[i].get('offset', '0s'))
+        assert shifted == orig + delta
+
+
+def test_ripple_from_index_negative_delta(temp_fcpxml):
+    """Shifts offsets backward with a negative delta."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    children = list(spine)
+
+    from fcpxml.models import TimeValue
+    # Use a small negative delta that won't go below zero for later clips
+    delta = TimeValue(-24, 24)  # -1 second
+    original_offset_2 = modifier._parse_time(children[2].get('offset', '0s'))
+
+    modifier._ripple_from_index(spine, 2, delta)
+
+    new_offset_2 = modifier._parse_time(list(spine)[2].get('offset', '0s'))
+    assert new_offset_2 == original_offset_2 + delta
+
+
+def test_ripple_from_index_past_end_is_noop(temp_fcpxml):
+    """Rippling from an index beyond children count does nothing."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    children = list(spine)
+    original_offsets = [c.get('offset') for c in children]
+
+    from fcpxml.models import TimeValue
+    modifier._ripple_from_index(spine, len(children) + 10, TimeValue(100, 1))
+
+    for i, child in enumerate(spine):
+        assert child.get('offset') == original_offsets[i]
+
+
+def test_ripple_from_index_skips_non_spine_tags(temp_fcpxml):
+    """Non-spine-element tags (e.g. <note>) are left unchanged."""
+    import xml.etree.ElementTree as ET
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+
+    note = ET.SubElement(spine, 'note')
+    note.text = 'test note'
+    note.set('offset', '0s')
+
+    from fcpxml.models import TimeValue
+    modifier._ripple_from_index(spine, 0, TimeValue(48, 24))
+
+    # <note> is not in SPINE_ELEMENT_TAGS, so its offset stays
+    assert note.get('offset') == '0s'
+
+
+# ============================================================
+# _timeline_duration Tests
+# ============================================================
+
+def test_timeline_duration_from_sequence(temp_fcpxml):
+    """Reads duration from <sequence> element when present."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    seq = modifier.root.find('.//sequence')
+    assert seq is not None, "Sample must have a <sequence>"
+    expected = modifier._parse_time(seq.get('duration'))
+
+    result = modifier._timeline_duration()
+    assert result == expected
+
+
+def test_timeline_duration_fallback_to_spine_sum(temp_fcpxml):
+    """Falls back to summing spine durations when <sequence> has no duration attr."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    seq = modifier.root.find('.//sequence')
+    # Remove the duration attribute to force fallback
+    if seq is not None and 'duration' in seq.attrib:
+        del seq.attrib['duration']
+
+    from fcpxml.models import TimeValue
+    spine = modifier._get_spine()
+    expected = TimeValue.zero()
+    for child in spine:
+        if child.tag in ('clip', 'asset-clip', 'video', 'audio', 'gap',
+                         'transition', 'ref-clip'):
+            expected = expected + modifier._parse_time(child.get('duration', '0s'))
+
+    result = modifier._timeline_duration()
+    assert result == expected
+    assert result.numerator > 0  # sanity: non-empty timeline
+
+
+def test_timeline_duration_no_sequence_element():
+    """Returns spine sum when no <sequence> element exists at all."""
+    xml_str = textwrap.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" name="FFVideoFormat1080p24"
+                        frameDuration="100/2400s" width="1920" height="1080"/>
+            </resources>
+            <library>
+                <event name="Test">
+                    <project name="Test">
+                        <sequence format="r1">
+                            <spine>
+                                <asset-clip ref="r1" offset="0s" name="A"
+                                            start="0s" duration="2400/2400s"/>
+                                <asset-clip ref="r1" offset="2400/2400s" name="B"
+                                            start="0s" duration="1200/2400s"/>
+                            </spine>
+                        </sequence>
+                    </project>
+                </event>
+            </library>
+        </fcpxml>""")
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        # Remove duration from sequence to force fallback
+        seq = modifier.root.find('.//sequence')
+        if seq is not None and 'duration' in seq.attrib:
+            del seq.attrib['duration']
+        result = modifier._timeline_duration()
+        from fcpxml.models import TimeValue
+        assert result == TimeValue(3600, 2400)  # 2400 + 1200
+    Path(f.name).unlink(missing_ok=True)
+
+
+# ============================================================
+# _find_neighbor_clip Tests
+# ============================================================
+
+def test_find_neighbor_clip_prev(temp_fcpxml):
+    """Finds the previous clip in the spine."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    spine_list = list(spine)
+    assert len(spine_list) >= 2
+    result = FCPXMLModifier._find_neighbor_clip(spine_list, 1, 'prev')
+    assert result is spine_list[0]
+
+
+def test_find_neighbor_clip_next(temp_fcpxml):
+    """Finds the next clip in the spine."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    spine_list = list(spine)
+    result = FCPXMLModifier._find_neighbor_clip(spine_list, 0, 'next')
+    assert result is spine_list[1]
+
+
+def test_find_neighbor_clip_none_at_boundary(temp_fcpxml):
+    """Returns None when no neighbor exists in the given direction."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    spine_list = list(spine)
+    assert FCPXMLModifier._find_neighbor_clip(spine_list, 0, 'prev') is None
+    last = len(spine_list) - 1
+    assert FCPXMLModifier._find_neighbor_clip(spine_list, last, 'next') is None
+
+
+def test_find_neighbor_clip_skips_gaps():
+    """Skips gap elements when searching for neighbor clips."""
+    import xml.etree.ElementTree as ET
+    spine_list = [
+        ET.Element('asset-clip'),
+        ET.Element('gap'),
+        ET.Element('asset-clip'),
+    ]
+    # Searching next from index 0 should skip the gap at index 1
+    result = FCPXMLModifier._find_neighbor_clip(spine_list, 0, 'next')
+    assert result is spine_list[2]
+
+
+# ============================================================
+# _resolve_asset Edge Cases
+# ============================================================
+
+def test_resolve_asset_both_none(temp_fcpxml):
+    """Raises ValueError when both asset_id and asset_name are None."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    with pytest.raises(ValueError, match="Asset not found"):
+        modifier._resolve_asset(None, None)
+
+
+def test_resolve_asset_id_takes_precedence(temp_fcpxml):
+    """When both ID and name are given, ID lookup wins."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    first_id = next(iter(modifier.resources))
+    asset, resolved = modifier._resolve_asset(first_id, 'wrong_name')
+    assert resolved == first_id

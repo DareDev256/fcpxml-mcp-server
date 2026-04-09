@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.46] - 2026-04-09
+
+### Added
+
+- **Direct unit tests for `_ripple_from_index`** (test_writer.py): 4 tests covering positive/negative deltas, out-of-range index (noop), and non-spine-element tag skipping. Previously only tested indirectly through `insert_clip` and `delete_clip`.
+- **Direct unit tests for `_timeline_duration`** (test_writer.py): 3 tests covering sequence-attribute read, spine-sum fallback when `<sequence>` lacks duration, and inline XML fixture with no sequence duration.
+- **Unit tests for `_find_neighbor_clip`** (test_writer.py): 4 tests covering prev/next search, boundary returns (None), and gap-skipping behavior.
+- **Edge case tests for `_resolve_asset`** (test_writer.py): 2 tests covering both-args-None and ID-takes-precedence-over-name.
+
 ## [0.6.45] - 2026-04-09
 
 ### Changed
