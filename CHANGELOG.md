@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.45] - 2026-04-09
+
+### Changed
+
+- **Extract `_ripple_from_index` helper** (writer.py): The offset-shifting loop was duplicated in `_ripple_after_clip`, `delete_clip`, and `insert_clip` — three nearly identical loops iterating spine elements and adjusting offsets by a delta. Extracted into `_ripple_from_index(spine, start_index, delta)`. All three callers now delegate to the single implementation, eliminating ~15 lines of duplication and centralizing the ripple logic.
+- **Extract `_timeline_duration` helper** (writer.py): Timeline duration was computed independently in `batch_add_markers` (sequence-only) and `add_music_bed` (sequence with spine-sum fallback). Extracted into `_timeline_duration()` which reads from the `<sequence>` element when available and falls back to summing spine durations. Both callers simplified to one-liners.
+
 ## [0.6.44] - 2026-04-08
 
 ### Fixed

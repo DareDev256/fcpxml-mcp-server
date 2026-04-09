@@ -1044,11 +1044,8 @@ class FCPXMLModifier:
         # Auto-detect at intervals — place markers at regular time steps.
         if auto_at_intervals:
             interval = self._parse_time(auto_at_intervals).to_seconds()
-            sequence = self.root.find('.//sequence')
-            if sequence is not None:
-                total_duration = self._parse_time(
-                    sequence.get('duration', '0s')
-                ).to_seconds()
+            total_duration = self._timeline_duration().to_seconds()
+            if total_duration > 0:
 
                 current = interval
                 count = 1
@@ -1153,20 +1150,32 @@ class FCPXMLModifier:
 
         return clip
 
-    def _ripple_after_clip(self, target_clip: ET.Element, delta: TimeValue) -> None:
-        """Shift all clips after the given clip by delta."""
-        spine = self._get_spine()
-        found_clip = False
+    def _ripple_from_index(
+        self, spine: ET.Element, start_index: int, delta: 'TimeValue'
+    ) -> None:
+        """Shift the offset of every spine element from *start_index* onward by *delta*.
 
-        for child in spine:
-            if child == target_clip:
-                found_clip = True
-                continue
+        Consolidates the ripple loops previously duplicated across
+        ``_ripple_after_clip``, ``delete_clip``, and ``insert_clip``.
 
-            if found_clip and child.tag in SPINE_ELEMENT_TAGS:
+        Args:
+            spine: The primary storyline ``<spine>`` element.
+            start_index: First child index to adjust (inclusive).
+            delta: Signed time shift (positive = later, negative = earlier).
+        """
+        children = list(spine)
+        for child in children[start_index:]:
+            if child.tag in SPINE_ELEMENT_TAGS:
                 current_offset = self._parse_time(child.get('offset', '0s'))
                 new_offset = current_offset + delta
                 child.set('offset', new_offset.to_fcpxml())
+
+    def _ripple_after_clip(self, target_clip: ET.Element, delta: TimeValue) -> None:
+        """Shift all clips after the given clip by delta."""
+        spine = self._get_spine()
+        clip_index = self._find_clip_index(spine, target_clip)
+        if clip_index is not None:
+            self._ripple_from_index(spine, clip_index + 1, delta)
 
     # ========================================================================
     # REORDER OPERATIONS
@@ -1237,6 +1246,26 @@ class FCPXMLModifier:
                 duration_str = child.get('duration', '0s')
                 duration = self._parse_time(duration_str)
                 current_offset = current_offset + duration
+
+    def _timeline_duration(self) -> 'TimeValue':
+        """Return the total timeline duration as a TimeValue.
+
+        Reads from the ``<sequence>`` element when available, falling back
+        to summing all spine element durations.  Extracted from
+        ``add_music_bed`` and ``batch_add_markers`` which both computed
+        this independently.
+        """
+        sequence = self.root.find('.//sequence')
+        if sequence is not None:
+            dur_str = sequence.get('duration')
+            if dur_str:
+                return self._parse_time(dur_str)
+        spine = self._get_spine()
+        total = TimeValue.zero()
+        for child in spine:
+            if child.tag in SPINE_ELEMENT_TAGS:
+                total = total + self._parse_time(child.get('duration', '0s'))
+        return total
 
     # ========================================================================
     # TRANSITION OPERATIONS
@@ -1496,12 +1525,9 @@ class FCPXMLModifier:
 
             if ripple:
                 spine.remove(target)
-                # Shift subsequent clips
-                for child in list(spine)[clip_index:]:
-                    if child.tag in SPINE_ELEMENT_TAGS:
-                        child_offset = self._parse_time(child.get('offset', '0s'))
-                        new_offset = child_offset - clip_duration
-                        child.set('offset', new_offset.to_fcpxml())
+                self._ripple_from_index(
+                    spine, clip_index, TimeValue.zero() - clip_duration
+                )
             else:
                 # Replace with gap
                 gap = ET.Element('gap')
@@ -1871,11 +1897,7 @@ class FCPXMLModifier:
 
         # Ripple subsequent clips if needed
         if ripple and insert_index < len(spine_children):
-            for child in list(spine)[insert_index + 1:]:
-                if child.tag in SPINE_ELEMENT_TAGS:
-                    current_offset = self._parse_time(child.get('offset', '0s'))
-                    new_offset = current_offset + clip_duration
-                    child.set('offset', new_offset.to_fcpxml())
+            self._ripple_from_index(spine, insert_index + 1, clip_duration)
 
         # Add to clip index
         clip_id = f"inserted_{len(self.clips)}"
@@ -2042,16 +2064,7 @@ class FCPXMLModifier:
 
         # Calculate full timeline duration if not specified
         if not duration:
-            sequence = self.root.find('.//sequence')
-            if sequence is not None:
-                duration = sequence.get('duration', '0s')
-            else:
-                # Sum all spine clip durations
-                total = TimeValue.zero()
-                for child in spine:
-                    if child.tag in SPINE_ELEMENT_TAGS:
-                        total = total + self._parse_time(child.get('duration', '0s'))
-                duration = total.to_fcpxml()
+            duration = self._timeline_duration().to_fcpxml()
 
         return self.add_audio_clip(
             parent_clip_id=first_clip_id,
