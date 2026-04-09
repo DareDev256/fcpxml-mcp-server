@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.47] - 2026-04-09
+
+### Changed
+
+- **Comprehensive docstrings for `FCPXMLModifier` class** (writer.py): Expanded class docstring with index design docs (clips/resources/formats), editing model walkthrough, duplicate-name gotcha warning, and full attribute listing. Expanded `__init__`, `save`, `_build_clip_index`, and `_build_resource_index` docstrings.
+- **Expanded `FCPXMLWriter` class docstring** (writer.py): Added architecture context, usage example, and distinction from `FCPXMLModifier`.
+- **Module docstring rewrite** (writer.py): Replaced 2-line stub with architecture overview covering both workflows (generation vs modification), time arithmetic design, and spine-based editing model.
+- **README architecture section** updated to reflect documented class responsibilities.
+
 ## [0.6.46] - 2026-04-09
 
 ### Added

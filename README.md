@@ -333,8 +333,9 @@ fcp-mcp-server/           ~8.9k lines Python
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
-│   │                       _resolve_asset() / _absorb_into_neighbor() / _find_spine_element_at_timecode()
-│   │                       _resolve_insert_position() / _find_neighbor_clip() / _index_elements()
+│   │                       FCPXMLModifier: index-based editing (clips/resources/formats dicts)
+│   │                       FCPXMLWriter: generate new FCPXML from Python objects
+│   │                       Helpers: _resolve_asset, _absorb_into_neighbor, _ripple_from_index
 │   ├── rough_cut.py       Generate timelines (rough cuts, montages, A/B roll)
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export

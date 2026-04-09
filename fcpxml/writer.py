@@ -1,8 +1,30 @@
 """
-FCPXML Writer - Generate and modify Final Cut Pro XML files.
+FCPXML Writer — Generate and modify Final Cut Pro XML files.
 
-Provides both generation (from Python objects) and modification
-(load, edit, save) workflows for FCPXML documents.
+This module provides two complementary workflows for working with FCPXML:
+
+**Generation** (``FCPXMLWriter``):
+    Build a new FCPXML document from Python dataclass objects (``Project``,
+    ``Timeline``, ``Clip``, ``Marker``).  Useful for creating rough cuts,
+    montage exports, and template-based projects.
+
+**Modification** (``FCPXMLModifier``):
+    Load an existing FCPXML file, apply surgical edits (markers, trims,
+    reorders, transitions, speed changes, silence removal, etc.), and save.
+    This is the primary API used by the MCP server's 53 tool handlers.
+
+Architecture notes
+------------------
+- All time arithmetic uses ``TimeValue`` (rational fractions) — never floats —
+  to match FCPXML's native ``"600/2400s"`` format and avoid rounding drift.
+- The ``FCPXMLModifier`` builds three in-memory indices at init
+  (``clips``, ``resources``, ``formats``) so lookups are O(1) by ID/name.
+- Spine-based editing: clips live inside a ``<spine>`` element (the primary
+  storyline).  Connected clips attach via ``lane`` attributes on spine clips.
+  Most editing methods find the target clip in the spine, mutate it, then
+  ripple offsets on subsequent siblings.
+- ``write_fcpxml()`` handles DTD-compliant serialisation and optional
+  timebase enforcement for all output paths.
 """
 
 import copy
@@ -540,18 +562,68 @@ def validate_fcpxml(root: ET.Element, fps: float = 24.0) -> List[ValidationIssue
 # ============================================================================
 
 class FCPXMLModifier:
-    """
-    Handles in-place modification of existing FCPXML files.
+    """Load an existing FCPXML file, apply edits, and save.
 
-    Usage:
+    This is the primary editing interface used by every MCP server write-tool
+    handler.  It wraps an ElementTree parsed from disk and maintains three
+    in-memory indices so that clip/asset lookups are fast.
+
+    Index design
+    ------------
+    ``clips``  : ``Dict[str, ET.Element]``
+        Every ``<clip>``, ``<asset-clip>``, and ``<video>`` element keyed by
+        its ``id`` attribute, falling back to ``name``, then a generated key.
+        **Gotcha**: duplicate clip names (e.g. multiple "Interview_A") mean
+        only the *last* element indexed under that name is accessible.  Use
+        unique ``id`` attributes when possible.
+
+    ``resources``  : ``Dict[str, Dict[str, Any]]``
+        Every ``<asset>`` element keyed by ``id``, with pre-extracted ``name``,
+        ``src``, ``start``, ``duration``, and a reference to the raw element.
+
+    ``formats``  : ``Dict[str, Dict[str, Any]]``
+        Every ``<format>`` element keyed by ``id``.
+
+    Editing model
+    -------------
+    1. Look up the target clip via ``_require_clip`` / ``_require_spine_clip``.
+    2. Mutate the clip's XML attributes (``start``, ``duration``, ``offset``).
+    3. If the edit changes duration, ripple subsequent spine siblings via
+       ``_ripple_from_index`` so downstream offsets stay contiguous.
+    4. Call ``save()`` to serialise the modified tree back to disk.
+
+    Example::
+
         modifier = FCPXMLModifier("project.fcpxml")
         modifier.add_marker("clip_0", "00:00:10:00", "Review", MarkerType.INCOMPLETE)
         modifier.trim_clip("clip_1", trim_end="-2s")
         modifier.save("project_modified.fcpxml")
+
+    Attributes:
+        path (Path): Filesystem path to the source FCPXML file.
+        tree (ET.ElementTree): Parsed XML tree (mutated in-place by edits).
+        root (ET.Element): Root ``<fcpxml>`` element.
+        fps (float): Detected frame rate from the first ``<format>`` resource.
+        clips (Dict[str, ET.Element]): Clip index — see *Index design* above.
+        resources (Dict[str, Dict]): Asset index.
+        formats (Dict[str, Dict]): Format index.
     """
 
     def __init__(self, fcpxml_path: str):
-        """Load an existing FCPXML file for modification."""
+        """Load *fcpxml_path*, parse its XML, and build lookup indices.
+
+        The constructor eagerly builds all three indices (clips, resources,
+        formats) and detects the project frame rate.  After construction the
+        modifier is ready for any editing operation.
+
+        Args:
+            fcpxml_path: Absolute or relative path to an ``.fcpxml`` file.
+
+        Raises:
+            FileNotFoundError: If *fcpxml_path* does not exist.
+            ET.ParseError: If the file is not valid XML.
+            ValueError: If no ``<spine>`` is found (checked lazily on first edit).
+        """
         self.path = Path(fcpxml_path)
         from .safe_xml import safe_parse
         self.tree = safe_parse(fcpxml_path)
@@ -573,7 +645,12 @@ class FCPXMLModifier:
         return 30.0
 
     def _build_resource_index(self) -> None:
-        """Build index of all resources (assets, formats)."""
+        """Build ``self.resources`` and ``self.formats`` from ``<asset>``/``<format>`` elements.
+
+        Called once during ``__init__``.  Each asset entry stores the raw
+        element plus pre-extracted metadata so callers don't need to
+        re-parse attributes on every access.
+        """
         self.resources: Dict[str, Dict[str, Any]] = {}
         self.formats: Dict[str, Dict[str, Any]] = {}
 
@@ -609,7 +686,16 @@ class FCPXMLModifier:
             self.clips[key] = elem
 
     def _build_clip_index(self) -> None:
-        """Build index of all clips for fast lookup."""
+        """Build ``self.clips`` index from all clip-type elements.
+
+        Indexes ``<clip>``, ``<asset-clip>``, and ``<video>`` tags.  Keys are
+        resolved by ``_index_elements`` (``id`` → ``name`` → generated).
+
+        .. warning::
+            Duplicate names cause last-one-wins overwrites.  If your project
+            has multiple clips named "Interview_A", only the last one parsed
+            will be reachable by name.  Prefer unique ``id`` attributes.
+        """
         self.clips: Dict[str, ET.Element] = {}
         for tag, prefix in (('clip', 'clip'), ('asset-clip', 'asset_clip'), ('video', 'video')):
             self._index_elements(tag, prefix)
@@ -920,7 +1006,15 @@ class FCPXMLModifier:
         return transition
 
     def save(self, output_path: Optional[str] = None) -> str:
-        """Write modified FCPXML to file."""
+        """Serialise the modified XML tree to disk.
+
+        Args:
+            output_path: Destination file path.  Defaults to overwriting the
+                original file loaded in ``__init__``.
+
+        Returns:
+            The absolute path written to.
+        """
         out_path = output_path or str(self.path)
         return write_fcpxml(self.root, out_path)
 
@@ -2488,7 +2582,23 @@ class FCPXMLModifier:
 # ============================================================================
 
 class FCPXMLWriter:
-    """Writer for generating Final Cut Pro FCPXML files from Python objects."""
+    """Generate a new FCPXML document from Python dataclass objects.
+
+    Converts a ``Project`` (containing ``Timeline`` → ``Clip`` → ``Marker``
+    hierarchies) into a spec-compliant FCPXML v1.11 element tree and writes
+    it to disk.  Used by ``RoughCutGenerator`` and the ``generate_*`` MCP
+    tools to create fresh timelines from scratch.
+
+    Unlike ``FCPXMLModifier`` (which mutates existing XML), this class
+    *creates* XML from structured Python objects.
+
+    Example::
+
+        from fcpxml.models import Project, Timeline, Clip, Timecode
+        project = Project(name="My Edit", timelines=[...])
+        writer = FCPXMLWriter()
+        writer.write_project(project, "output.fcpxml")
+    """
 
     def __init__(self, version: str = "1.11"):
         """Initialize writer targeting the given FCPXML version."""
