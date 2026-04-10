@@ -1409,3 +1409,404 @@ def test_resolve_asset_id_takes_precedence(temp_fcpxml):
     first_id = next(iter(modifier.resources))
     asset, resolved = modifier._resolve_asset(first_id, 'wrong_name')
     assert resolved == first_id
+
+
+# ============================================================
+# _find_clip_index Tests
+# ============================================================
+
+def test_find_clip_index_returns_position(temp_fcpxml):
+    """Returns correct index for a clip present in spine."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    children = list(spine)
+    for i, child in enumerate(children):
+        assert modifier._find_clip_index(spine, child) == i
+
+
+def test_find_clip_index_returns_none_for_missing():
+    """Returns None for an element not in the spine."""
+    import xml.etree.ElementTree as ET
+    xml_str = textwrap.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>
+            </resources>
+            <library><event name="T"><project name="T">
+                <sequence format="r1" duration="2400/2400s">
+                    <spine>
+                        <asset-clip ref="r1" offset="0s" name="A"
+                                    start="0s" duration="2400/2400s"/>
+                    </spine>
+                </sequence>
+            </project></event></library>
+        </fcpxml>""")
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        spine = modifier._get_spine()
+        orphan = ET.Element('asset-clip')
+        assert modifier._find_clip_index(spine, orphan) is None
+    Path(f.name).unlink(missing_ok=True)
+
+
+# ============================================================
+# _absorb_into_neighbor Tests
+# ============================================================
+
+def _make_absorb_modifier(clips):
+    """Build a modifier with a custom spine for absorption tests.
+
+    clips: list of (tag, name, offset, start, duration) tuples.
+    """
+    clip_xml = '\n'.join(
+        f'<{tag} ref="r1" offset="{off}" name="{n}" start="{st}" duration="{dur}"/>'
+        for tag, n, off, st, dur in clips
+    )
+    xml_str = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE fcpxml>\n'
+        '<fcpxml version="1.11">\n'
+        '  <resources>\n'
+        '    <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>\n'
+        '  </resources>\n'
+        '  <library><event name="T"><project name="T">\n'
+        '    <sequence format="r1" duration="9600/2400s">\n'
+        f'      <spine>{clip_xml}</spine>\n'
+        '    </sequence>\n'
+        '  </project></event></library>\n'
+        '</fcpxml>'
+    )
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        return FCPXMLModifier(f.name), f.name
+
+
+def test_absorb_into_neighbor_prev_extends_duration():
+    """Absorbing into previous clip extends its duration."""
+    modifier, path = _make_absorb_modifier([
+        ('asset-clip', 'A', '0s', '0s', '2400/2400s'),
+        ('gap', 'G', '2400/2400s', '0s', '600/2400s'),
+        ('asset-clip', 'B', '3000/2400s', '0s', '2400/2400s'),
+    ])
+    try:
+        spine = modifier._get_spine()
+        gap = list(spine)[1]
+        result = modifier._absorb_into_neighbor(spine, gap, 'prev')
+        assert result is not None
+        assert result.get('name') == 'A'
+        # A was 2400/2400s, absorbed gap of 600/2400s → 3000/2400s
+        assert modifier._parse_time(result.get('duration')).numerator == 3000
+        # Gap should be removed
+        assert len(list(spine)) == 2
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_absorb_into_neighbor_next_shifts_start():
+    """Absorbing into next clip shifts its start backward."""
+    modifier, path = _make_absorb_modifier([
+        ('asset-clip', 'A', '0s', '0s', '2400/2400s'),
+        ('gap', 'G', '2400/2400s', '0s', '600/2400s'),
+        ('asset-clip', 'B', '3000/2400s', '2400/2400s', '2400/2400s'),
+    ])
+    try:
+        spine = modifier._get_spine()
+        gap = list(spine)[1]
+        result = modifier._absorb_into_neighbor(spine, gap, 'next')
+        assert result is not None
+        assert result.get('name') == 'B'
+        # B start was 2400/2400s, shifted back by 600/2400s → 1800/2400s
+        assert modifier._parse_time(result.get('start')).numerator == 1800
+        # B duration was 2400/2400s + 600/2400s → 3000/2400s
+        assert modifier._parse_time(result.get('duration')).numerator == 3000
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_absorb_into_neighbor_next_clamps_negative_start():
+    """When absorbing would push start below zero, clamp to 0."""
+    modifier, path = _make_absorb_modifier([
+        ('asset-clip', 'A', '0s', '0s', '2400/2400s'),
+        ('gap', 'G', '2400/2400s', '0s', '1200/2400s'),
+        # B starts at 0s in source — can't go negative
+        ('asset-clip', 'B', '3600/2400s', '0s', '2400/2400s'),
+    ])
+    try:
+        spine = modifier._get_spine()
+        gap = list(spine)[1]
+        result = modifier._absorb_into_neighbor(spine, gap, 'next')
+        assert result is not None
+        # Start clamped to 0
+        from fcpxml.models import TimeValue
+        assert modifier._parse_time(result.get('start')) == TimeValue(0, 1)
+        # available = neighbor_start (0s) → only extends by 0, so duration unchanged
+        assert modifier._parse_time(result.get('duration')).to_seconds() == 1.0
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def test_absorb_into_neighbor_no_neighbor_returns_none():
+    """Returns None when no neighbor clip exists in given direction."""
+    modifier, path = _make_absorb_modifier([
+        ('gap', 'G', '0s', '0s', '600/2400s'),
+    ])
+    try:
+        spine = modifier._get_spine()
+        gap = list(spine)[0]
+        assert modifier._absorb_into_neighbor(spine, gap, 'prev') is None
+        assert modifier._absorb_into_neighbor(spine, gap, 'next') is None
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+# ============================================================
+# _resolve_insert_position Tests
+# ============================================================
+
+def test_resolve_insert_position_start(temp_fcpxml):
+    """'start' returns zero offset and index 0."""
+    from fcpxml.models import TimeValue
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    offset, idx = modifier._resolve_insert_position('start', list(spine))
+    assert offset == TimeValue(0, 1)
+    assert idx == 0
+
+
+def test_resolve_insert_position_end(temp_fcpxml):
+    """'end' returns offset past last clip and index at end."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    children = list(spine)
+    offset, idx = modifier._resolve_insert_position('end', children)
+    assert idx == len(children)
+    # Offset should equal last clip offset + last clip duration
+    last = children[-1]
+    expected = (modifier._parse_time(last.get('offset', '0s'))
+                + modifier._parse_time(last.get('duration', '0s')))
+    assert offset == expected
+
+
+def test_resolve_insert_position_end_empty_spine():
+    """'end' on empty spine returns zero offset and index 0."""
+    from fcpxml.models import TimeValue
+    xml_str = textwrap.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>
+            </resources>
+            <library><event name="T"><project name="T">
+                <sequence format="r1" duration="0s">
+                    <spine/>
+                </sequence>
+            </project></event></library>
+        </fcpxml>""")
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        offset, idx = modifier._resolve_insert_position('end', [])
+        assert offset == TimeValue(0, 1)
+        assert idx == 0
+    Path(f.name).unlink(missing_ok=True)
+
+
+def test_resolve_insert_position_after_clip():
+    """'after:ClipName' resolves to offset+duration of named clip."""
+    from fcpxml.models import TimeValue
+    xml_str = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE fcpxml>\n'
+        '<fcpxml version="1.11">\n'
+        '  <resources>\n'
+        '    <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>\n'
+        '  </resources>\n'
+        '  <library><event name="T"><project name="T">\n'
+        '    <sequence format="r1" duration="4800/2400s">\n'
+        '      <spine>\n'
+        '        <asset-clip ref="r1" offset="0s" name="UniqueA"'
+        ' start="0s" duration="2400/2400s"/>\n'
+        '        <asset-clip ref="r1" offset="2400/2400s" name="UniqueB"'
+        ' start="0s" duration="2400/2400s"/>\n'
+        '      </spine>\n'
+        '    </sequence>\n'
+        '  </project></event></library>\n'
+        '</fcpxml>'
+    )
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        spine = modifier._get_spine()
+        children = list(spine)
+        offset, idx = modifier._resolve_insert_position('after:UniqueA', children)
+        assert offset == TimeValue(2400, 2400)
+        assert idx == 1
+    Path(f.name).unlink(missing_ok=True)
+
+
+def test_resolve_insert_position_before_clip():
+    """'before:ClipName' resolves to offset of named clip."""
+    from fcpxml.models import TimeValue
+    xml_str = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE fcpxml>\n'
+        '<fcpxml version="1.11">\n'
+        '  <resources>\n'
+        '    <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>\n'
+        '  </resources>\n'
+        '  <library><event name="T"><project name="T">\n'
+        '    <sequence format="r1" duration="4800/2400s">\n'
+        '      <spine>\n'
+        '        <asset-clip ref="r1" offset="0s" name="UniqueX"'
+        ' start="0s" duration="2400/2400s"/>\n'
+        '        <asset-clip ref="r1" offset="2400/2400s" name="UniqueY"'
+        ' start="0s" duration="2400/2400s"/>\n'
+        '      </spine>\n'
+        '    </sequence>\n'
+        '  </project></event></library>\n'
+        '</fcpxml>'
+    )
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        spine = modifier._get_spine()
+        children = list(spine)
+        offset, idx = modifier._resolve_insert_position('before:UniqueY', children)
+        assert offset == TimeValue(2400, 2400)
+        assert idx == 1
+    Path(f.name).unlink(missing_ok=True)
+
+
+def test_resolve_insert_position_invalid_ref_raises(temp_fcpxml):
+    """Invalid reference clip ID raises ValueError."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    with pytest.raises(ValueError, match="Reference clip not found"):
+        modifier._resolve_insert_position('after:nonexistent_clip_xyz', list(spine))
+
+
+def test_resolve_insert_position_timecode(temp_fcpxml):
+    """Timecode string resolves to correct index via binary search."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    spine = modifier._get_spine()
+    children = list(spine)
+    # Insert at the offset of the second clip — should get index 1
+    if len(children) >= 2:
+        second_offset = children[1].get('offset', '0s')
+        offset, idx = modifier._resolve_insert_position(second_offset, children)
+        assert idx == 1
+
+
+# ============================================================
+# _make_transition_element Tests
+# ============================================================
+
+def test_make_transition_element_with_effect_ref(temp_fcpxml):
+    """Creates transition with filter-video child when ref ID given."""
+    from fcpxml.models import TimeValue
+    modifier = FCPXMLModifier(temp_fcpxml)
+    t = modifier._make_transition_element(
+        'Cross Dissolve', TimeValue(0, 1), TimeValue(600, 2400), 'effect_1'
+    )
+    assert t.tag == 'transition'
+    assert t.get('name') == 'Cross Dissolve'
+    assert t.get('duration') == '600/2400s'
+    fv = t.find('filter-video')
+    assert fv is not None
+    assert fv.get('ref') == 'effect_1'
+    assert fv.get('name') == 'Cross Dissolve'
+
+
+def test_make_transition_element_without_effect_ref(temp_fcpxml):
+    """Creates transition without filter-video child when ref ID is None."""
+    from fcpxml.models import TimeValue
+    modifier = FCPXMLModifier(temp_fcpxml)
+    t = modifier._make_transition_element(
+        'Fade', TimeValue(0, 1), TimeValue(300, 2400), None
+    )
+    assert t.tag == 'transition'
+    assert t.get('name') == 'Fade'
+    assert t.find('filter-video') is None
+
+
+# ============================================================
+# _recalculate_offsets Tests
+# ============================================================
+
+def test_recalculate_offsets_sequential():
+    """Offsets are recalculated sequentially based on durations."""
+    from fcpxml.models import TimeValue
+    xml_str = textwrap.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>
+            </resources>
+            <library><event name="T"><project name="T">
+                <sequence format="r1" duration="4800/2400s">
+                    <spine>
+                        <asset-clip ref="r1" offset="9999/2400s" name="A"
+                                    start="0s" duration="2400/2400s"/>
+                        <asset-clip ref="r1" offset="9999/2400s" name="B"
+                                    start="0s" duration="1200/2400s"/>
+                        <asset-clip ref="r1" offset="9999/2400s" name="C"
+                                    start="0s" duration="1200/2400s"/>
+                    </spine>
+                </sequence>
+            </project></event></library>
+        </fcpxml>""")
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        spine = modifier._get_spine()
+        modifier._recalculate_offsets(spine)
+        children = list(spine)
+        # A: offset=0, B: offset=2400/2400, C: offset=3600/2400
+        assert modifier._parse_time(children[0].get('offset')) == TimeValue(0, 1)
+        assert modifier._parse_time(children[1].get('offset')) == TimeValue(2400, 2400)
+        assert modifier._parse_time(children[2].get('offset')) == TimeValue(3600, 2400)
+    Path(f.name).unlink(missing_ok=True)
+
+
+def test_recalculate_offsets_skips_non_spine_tags():
+    """Non-spine tags (e.g. <note>) are left untouched."""
+    import xml.etree.ElementTree as ET
+    xml_str = textwrap.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE fcpxml>
+        <fcpxml version="1.11">
+            <resources>
+                <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>
+            </resources>
+            <library><event name="T"><project name="T">
+                <sequence format="r1" duration="2400/2400s">
+                    <spine>
+                        <asset-clip ref="r1" offset="0s" name="A"
+                                    start="0s" duration="2400/2400s"/>
+                    </spine>
+                </sequence>
+            </project></event></library>
+        </fcpxml>""")
+    with tempfile.NamedTemporaryFile(suffix='.fcpxml', mode='w', delete=False) as f:
+        f.write(xml_str)
+        f.flush()
+        modifier = FCPXMLModifier(f.name)
+        spine = modifier._get_spine()
+        # Add a non-spine element
+        note = ET.SubElement(spine, 'note')
+        note.text = 'test'
+        modifier._recalculate_offsets(spine)
+        # Note should have no offset attribute
+        assert note.get('offset') is None
+    Path(f.name).unlink(missing_ok=True)
