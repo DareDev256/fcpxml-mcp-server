@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.49] - 2026-04-10
+
+### Security
+
+- **Sanitize XMEML export text nodes** (export.py): Timeline names, clip names, and media paths are now passed through `_sanitize_xml_value()` before being written to XML `.text` nodes in XMEML output. Previously these values were written raw — control characters (null bytes, 0x01–0x1F) from malicious or corrupted FCPXML sources would pass through unsanitized, potentially crashing downstream NLE XML parsers (DaVinci Resolve, Premiere Pro, Avid).
+
+### Added
+
+- **3 security tests for export sanitization** (test_security.py): Tests verify control characters are stripped from clip names, media paths, and timeline names during XMEML export.
+
 ## [0.6.48] - 2026-04-10
 
 ### Added

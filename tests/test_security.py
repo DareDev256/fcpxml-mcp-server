@@ -15,6 +15,7 @@ Covers:
 
 import sys
 import types
+import xml.etree.ElementTree as ET
 from unittest.mock import MagicMock
 
 import pytest
@@ -938,3 +939,91 @@ class TestJsonDepthLimit:
         from server import _check_json_depth
         for val in ["hello", 42, 3.14, None, True]:
             _check_json_depth(val)
+
+
+# ============================================================================
+# XMEML EXPORT SANITIZATION (v0.6.49)
+# ============================================================================
+
+class TestExportSanitization:
+    """Verify export.py sanitizes user-controlled strings in XMEML output.
+
+    The XMEML exporter writes timeline names, clip names, and media paths
+    into XML text nodes.  Prior to v0.6.49 these were written raw — control
+    characters and null bytes in a malicious FCPXML would pass through to
+    the exported XMEML, potentially crashing downstream NLE parsers.
+    """
+
+    def test_xmeml_clipitem_name_sanitized(self, tmp_path):
+        """Control chars in clip names are stripped by _add_xmeml_clipitem."""
+        track = ET.Element('track')
+        clip_data = {
+            'name': "Evil\x00Clip\x01Name\x02",
+            'duration_seconds': 10.0,
+            'start_seconds': 0.0,
+            'source_start_seconds': 0.0,
+            'media_path': "/path/to\x00/bad\x03.mov",
+            'has_audio': True,
+        }
+        # Call the clipitem builder directly — no file needed
+        DaVinciExporter._add_xmeml_clipitem(None, track, clip_data, 24.0)
+
+        clipitem = track.find('clipitem')
+        name_text = clipitem.find('name').text
+        assert "\x00" not in name_text
+        assert "\x01" not in name_text
+        assert "\x02" not in name_text
+        assert name_text == "EvilClipName"
+
+    def test_xmeml_media_path_sanitized(self, tmp_path):
+        """Control chars in media paths stripped from pathurl output."""
+        track = ET.Element('track')
+        clip_data = {
+            'name': "CleanName",
+            'duration_seconds': 5.0,
+            'start_seconds': 0.0,
+            'source_start_seconds': 0.0,
+            'media_path': "/videos/clip\x00inject\x03.mov",
+            'has_audio': True,
+        }
+        DaVinciExporter._add_xmeml_clipitem(None, track, clip_data, 24.0)
+
+        pathurl = track.find('.//pathurl')
+        assert "\x00" not in pathurl.text
+        assert "\x03" not in pathurl.text
+        assert pathurl.text == "/videos/clipinject.mov"
+
+    def test_xmeml_sequence_name_sanitized(self, tmp_path):
+        """Timeline name sanitized during XMEML export."""
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.11">
+    <resources>
+        <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+        <asset id="r2" name="Clip" src="test.mov" start="0s" duration="240/24s"/>
+    </resources>
+    <library>
+        <event name="Test">
+            <project name="CleanProject">
+                <sequence format="r1" duration="240/24s">
+                    <spine>
+                        <asset-clip ref="r2" offset="0s" name="Clip"
+                                    start="0s" duration="240/24s" format="r1"/>
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>"""
+        src = tmp_path / "clean.fcpxml"
+        src.write_text(xml)
+        out = str(tmp_path / "out.xml")
+        exporter = DaVinciExporter(str(src))
+        # Inject control chars into the parsed timeline name post-parse
+        exporter.project.primary_timeline.name = "Bad\x00Name\x01Here"
+        exporter.export_xmeml(out)
+        with open(out) as f:
+            content = f.read()
+        assert "\x00" not in content
+        assert "\x01" not in content
+        assert "BadNameHere" in content

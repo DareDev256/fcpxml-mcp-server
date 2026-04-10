@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 
 from .parser import FCPXMLParser
 from .safe_xml import serialize_xml
+from .writer import _sanitize_xml_value
 
 
 class DaVinciExporter:
@@ -94,7 +95,7 @@ class DaVinciExporter:
         xmeml.set('version', '5')
 
         sequence = ET.SubElement(xmeml, 'sequence')
-        ET.SubElement(sequence, 'name').text = tl.name
+        ET.SubElement(sequence, 'name').text = _sanitize_xml_value(tl.name, 512)
 
         total_frames = int(tl.duration.seconds * tl.frame_rate)
         ET.SubElement(sequence, 'duration').text = str(total_frames)
@@ -198,7 +199,9 @@ class DaVinciExporter:
                              frame_rate: float):
         """Add a clipitem element to an XMEML track."""
         clipitem = ET.SubElement(track, 'clipitem')
-        ET.SubElement(clipitem, 'name').text = clip_data['name']
+        ET.SubElement(clipitem, 'name').text = _sanitize_xml_value(
+            clip_data['name'], 512
+        )
 
         duration_frames = int(clip_data['duration_seconds'] * frame_rate)
         ET.SubElement(clipitem, 'duration').text = str(duration_frames)
@@ -220,4 +223,4 @@ class DaVinciExporter:
         if clip_data.get('media_path'):
             file_elem = ET.SubElement(clipitem, 'file')
             pathurl = ET.SubElement(file_elem, 'pathurl')
-            pathurl.text = clip_data['media_path']
+            pathurl.text = _sanitize_xml_value(clip_data['media_path'], 2048)
