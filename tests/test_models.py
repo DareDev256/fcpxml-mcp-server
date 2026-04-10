@@ -587,6 +587,30 @@ class TestTimeValueArithmeticEdgeCases:
         halved = tv / 2
         assert halved.to_seconds() == pytest.approx(1.5, abs=1e-6)
 
+    def test_div_fractional_scalar_rounds_not_truncates(self):
+        """Division by fractional scalar must round denominator, not truncate.
+
+        int(2400 * 0.3333...) = 799 (truncation bug), round() = 800 (correct).
+        This was the root cause of silent time drift in speed-change operations.
+        """
+        tv = TimeValue(100, 2400)
+        result = tv / (1 / 3)  # divide by 0.333... → multiply duration by 3
+        assert result.denominator == 800  # round(2400 * 0.333...) = 800
+        assert result.to_seconds() == pytest.approx(0.125, abs=1e-6)
+
+    def test_div_by_zero_raises_not_corrupts(self):
+        """Division by zero must raise, not create zombie TimeValue(n, 0)."""
+        tv = TimeValue(100, 2400)
+        with pytest.raises(ZeroDivisionError):
+            tv / 0
+
+    def test_div_mul_roundtrip(self):
+        """Multiply then divide should approximately restore original value."""
+        tv = TimeValue(72, 24)  # 3 seconds
+        scaled = tv * 2.5
+        restored = scaled / 2.5
+        assert restored.to_seconds() == pytest.approx(tv.to_seconds(), abs=0.01)
+
     def test_add_mismatched_timebases_lcm(self):
         """24fps + 30fps values should use LCM denominator, not multiply."""
         a = TimeValue(24, 24)  # 1 second

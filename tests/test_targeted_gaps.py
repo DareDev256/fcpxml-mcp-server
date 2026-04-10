@@ -10,6 +10,8 @@ import os
 import tempfile
 import xml.etree.ElementTree as ET
 
+import pytest
+
 from fcpxml.diff import (
     TimelineDiff,
     _compare_clips,
@@ -214,11 +216,11 @@ class TestXmemlFrameMath:
 # ── TimeValue: division edge cases ────────────────────────────────────
 
 class TestTimeValueDivision:
-    def test_divide_by_zero_returns_zero_seconds(self):
-        """Division by zero in denominator → to_seconds returns 0.0."""
-        tv = TimeValue(100, 1) / 0.0  # denominator becomes 0
-        # to_seconds guards against zero denominator
-        assert tv.to_seconds() == 0.0
+    def test_divide_by_zero_raises(self):
+        """Division by zero must raise ZeroDivisionError, not silently corrupt."""
+        tv = TimeValue(100, 1)
+        with pytest.raises(ZeroDivisionError, match="Cannot divide TimeValue by zero"):
+            tv / 0.0
 
     def test_negative_timevalue_comparison(self):
         """Negative TimeValue should compare correctly."""

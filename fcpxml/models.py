@@ -379,7 +379,9 @@ class TimeValue:
         return TimeValue(new_num, self.denominator)
 
     def __truediv__(self, scalar: float) -> 'TimeValue':
-        new_denom = int(self.denominator * scalar)
+        if scalar == 0:
+            raise ZeroDivisionError("Cannot divide TimeValue by zero")
+        new_denom = round(self.denominator * scalar)
         return TimeValue(self.numerator, new_denom)
 
     def __lt__(self, other: 'TimeValue') -> bool:

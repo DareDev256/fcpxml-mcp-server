@@ -59,12 +59,11 @@ class TestTimeValueBoundaries:
         result = tv * 0
         assert result.to_seconds() == 0.0
 
-    def test_divide_by_zero_produces_zero_denominator(self):
-        """Division by zero scalar creates zero denominator — to_seconds guards it."""
+    def test_divide_by_zero_raises(self):
+        """Division by zero scalar must raise ZeroDivisionError, not corrupt silently."""
         tv = TimeValue(90, 30)
-        result = tv / 0
-        assert result.denominator == 0
-        assert result.to_seconds() == 0.0  # Guard prevents crash
+        with pytest.raises(ZeroDivisionError, match="Cannot divide TimeValue by zero"):
+            tv / 0
 
     def test_from_timecode_zero_denominator_rational(self):
         """Parsing '10/0s' must raise, not silently produce bad TimeValue."""

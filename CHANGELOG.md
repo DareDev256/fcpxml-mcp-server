@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.50] - 2026-04-10
+
+### Fixed
+
+- **TimeValue division truncation bug** (models.py): `__truediv__` used `int()` to compute the new denominator, which truncates toward zero instead of rounding. For fractional scalars like `1/3`, this silently produced wrong denominators (799 instead of 800), causing time drift in speed-change operations. Now uses `round()` to match `__mul__` behavior.
+- **TimeValue division by zero silent corruption** (models.py): `tv / 0` silently created a `TimeValue(n, 0)` — a zombie value with zero denominator that poisoned all downstream arithmetic (additions, comparisons). Now raises `ZeroDivisionError` with a clear message.
+
+### Changed
+
+- **Updated division-by-zero tests** (test_edge_cases.py, test_targeted_gaps.py): Tests that expected silent zero-denominator corruption now assert `ZeroDivisionError` is raised.
+
+### Added
+
+- **3 new TimeValue division tests** (test_models.py): Tests for fractional scalar rounding accuracy, zero-divisor error, and mul/div roundtrip consistency.
+
 ## [0.6.49] - 2026-04-10
 
 ### Security
