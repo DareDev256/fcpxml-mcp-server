@@ -764,6 +764,77 @@ class FCPXMLModifier:
             self._parse_time(clip.get('offset', '0s')),
         )
 
+    def _resolve_clip_duration(
+        self,
+        asset: dict,
+        duration: Optional[str] = None,
+        in_point: Optional[str] = None,
+        out_point: Optional[str] = None,
+    ) -> tuple['TimeValue', 'TimeValue']:
+        """Compute clip duration and source start from optional overrides.
+
+        Centralises the three-way fallback logic shared by insert_clip,
+        add_connected_clip, and add_audio_clip:
+
+        1. If *in_point* and *out_point* are given → subclip range.
+        2. Else if *duration* is given → explicit duration, source start = 0.
+        3. Else → full asset duration, source start = 0.
+
+        Returns:
+            ``(clip_duration, source_start)`` TimeValue pair.
+        """
+        if in_point and out_point:
+            in_time = self._parse_time(in_point)
+            out_time = self._parse_time(out_point)
+            return out_time - in_time, in_time
+        if duration:
+            return self._parse_time(duration), TimeValue.zero()
+        return self._parse_time(asset.get('duration', '0s')), TimeValue.zero()
+
+    def _make_asset_clip(
+        self,
+        asset_id: str,
+        name: str,
+        offset: 'TimeValue',
+        start: 'TimeValue',
+        duration: 'TimeValue',
+        *,
+        parent: Optional[ET.Element] = None,
+        **extra_attrs: str,
+    ) -> ET.Element:
+        """Build an ``<asset-clip>`` element with standard attributes.
+
+        Centralises the repeated element creation shared by insert_clip,
+        add_connected_clip, and add_audio_clip.  Each caller can pass
+        additional attributes (``lane``, ``audioRole``, ``format``) via
+        *extra_attrs*.
+
+        Args:
+            asset_id: Resource reference (e.g. ``'r3'``).
+            name: Human-readable clip name.
+            offset: Timeline offset (or offset within parent for connected clips).
+            start: Source media start point.
+            duration: Clip duration.
+            parent: If given, create the element as a SubElement of *parent*;
+                otherwise create a detached Element.
+            **extra_attrs: Additional XML attributes (``lane``, ``audioRole``).
+
+        Returns:
+            The new ``<asset-clip>`` Element.
+        """
+        if parent is not None:
+            elem = ET.SubElement(parent, 'asset-clip')
+        else:
+            elem = ET.Element('asset-clip')
+        elem.set('ref', asset_id)
+        elem.set('offset', offset.to_fcpxml())
+        elem.set('name', name)
+        elem.set('start', start.to_fcpxml())
+        elem.set('duration', duration.to_fcpxml())
+        for attr, val in extra_attrs.items():
+            elem.set(attr, val)
+        return elem
+
     def _require_clip(self, clip_id: str) -> ET.Element:
         """Look up a clip by ID/name, raising if not found.
 
@@ -1948,20 +2019,9 @@ class FCPXMLModifier:
             The created clip element
         """
         asset, asset_id = self._resolve_asset(asset_id, asset_name)
-
-        # Determine clip duration and start
-        if in_point and out_point:
-            in_time = self._parse_time(in_point)
-            out_time = self._parse_time(out_point)
-            clip_duration = out_time - in_time
-            source_start = in_time
-        elif duration:
-            clip_duration = self._parse_time(duration)
-            source_start = TimeValue.zero()
-        else:
-            # Use full asset duration
-            clip_duration = self._parse_time(asset.get('duration', '0s'))
-            source_start = TimeValue.zero()
+        clip_duration, source_start = self._resolve_clip_duration(
+            asset, duration, in_point, out_point
+        )
 
         # Get spine and calculate insert position
         spine = self._get_spine()
@@ -1970,21 +2030,17 @@ class FCPXMLModifier:
             position, spine_children
         )
 
-        # Create new asset-clip element
-        new_clip = ET.Element('asset-clip')
-        new_clip.set('ref', asset_id)
-        new_clip.set('offset', target_offset.to_fcpxml())
-        new_clip.set('name', asset.get('name', 'Untitled'))
-        new_clip.set('start', source_start.to_fcpxml())
-        new_clip.set('duration', clip_duration.to_fcpxml())
-
-        # Get format from existing clips or resources
-        format_id = None
+        # Build extra attrs — include format from first available format
+        extra: dict[str, str] = {}
         for fmt_id in self.formats:
-            format_id = fmt_id
+            extra['format'] = fmt_id
             break
-        if format_id:
-            new_clip.set('format', format_id)
+
+        new_clip = self._make_asset_clip(
+            asset_id, asset.get('name', 'Untitled'),
+            target_offset, source_start, clip_duration,
+            **extra,
+        )
 
         # Insert into spine
         spine.insert(insert_index, new_clip)
@@ -2026,23 +2082,14 @@ class FCPXMLModifier:
             The created connected clip element
         """
         parent = self._require_clip(parent_clip_id)
-
         asset, asset_id = self._resolve_asset(asset_id, asset_name)
+        clip_duration, source_start = self._resolve_clip_duration(asset, duration)
 
-        clip_duration = (
-            self._parse_time(duration) if duration
-            else self._parse_time(asset.get('duration', '0s'))
+        new_clip = self._make_asset_clip(
+            asset_id, asset.get('name', 'Untitled'),
+            self._parse_time(offset), source_start, clip_duration,
+            parent=parent, lane=str(lane),
         )
-        clip_offset = self._parse_time(offset)
-
-        new_clip = ET.SubElement(parent, 'asset-clip')
-        new_clip.set('ref', asset_id)
-        new_clip.set('lane', str(lane))
-        new_clip.set('offset', clip_offset.to_fcpxml())
-        new_clip.set('name', asset.get('name', 'Untitled'))
-        new_clip.set('start', '0s')
-        new_clip.set('duration', clip_duration.to_fcpxml())
-
         return new_clip
 
     # ========================================================================
@@ -2105,21 +2152,14 @@ class FCPXMLModifier:
         else:
             raise ValueError("Must provide either asset_id or src for audio clip")
 
-        clip_duration = (
-            self._parse_time(duration) if duration
-            else self._parse_time(asset.get('duration', '0s'))
+        clip_duration, source_start = self._resolve_clip_duration(asset, duration)
+
+        new_clip = self._make_asset_clip(
+            asset_id, asset.get('name', 'Audio'),
+            self._parse_time(offset), source_start, clip_duration,
+            lane=str(lane),
+            audioRole=_sanitize_xml_value(role, 256),
         )
-        clip_offset = self._parse_time(offset)
-
-        new_clip = ET.Element('asset-clip')
-        new_clip.set('ref', asset_id)
-        new_clip.set('lane', str(lane))
-        new_clip.set('offset', clip_offset.to_fcpxml())
-        new_clip.set('name', asset.get('name', 'Audio'))
-        new_clip.set('start', '0s')
-        new_clip.set('duration', clip_duration.to_fcpxml())
-        new_clip.set('audioRole', _sanitize_xml_value(role, 256))
-
         _dtd_insert(parent, new_clip)
         return new_clip
 

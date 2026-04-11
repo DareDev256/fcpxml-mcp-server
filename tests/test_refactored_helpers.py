@@ -1,10 +1,11 @@
 """Tests for recently refactored helper functions.
 
 Covers: _index_elements (writer), _iter_spine_clips (writer),
-_find_spine_clip_at_seconds (writer), _format_batch_result (server),
+_find_spine_clip_at_seconds (writer), _resolve_clip_duration (writer),
+_make_asset_clip (writer), _format_batch_result (server),
 and serialize_xml edge cases (safe_xml).
 
-These helpers were extracted in v0.6.30–0.6.35 to eliminate duplication.
+These helpers were extracted in v0.6.30–0.6.52 to eliminate duplication.
 Only tested indirectly through callers — these tests validate edge cases
 the callers never exercise.
 """
@@ -302,6 +303,122 @@ class TestFindSpineClipAtSeconds:
         mod = _make_modifier(EMPTY_SPINE)
         with pytest.raises(ValueError, match="No spine clip"):
             mod._find_spine_clip_at_seconds(0.0)
+
+
+# ===================================================================
+# _resolve_clip_duration & _make_asset_clip (v0.6.52)
+# ===================================================================
+
+ASSET_SPINE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.10">
+  <resources>
+    <format id="r1" frameDuration="100/2400s" width="1920" height="1080"/>
+    <asset id="r2" name="Interview" duration="4800/2400s" start="0s"
+           hasVideo="1" hasAudio="1" uid="AAAA"/>
+  </resources>
+  <library>
+    <event name="Test">
+      <project name="TestProject">
+        <sequence format="r1">
+          <spine>
+            <asset-clip ref="r2" name="Interview" offset="0/2400s"
+                        duration="4800/2400s" start="0s" format="r1"/>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>
+"""
+
+from fcpxml.models import TimeValue  # noqa: E402
+
+
+class TestResolveClipDuration:
+    """Tests for FCPXMLModifier._resolve_clip_duration."""
+
+    def test_uses_in_out_points(self):
+        mod = _make_modifier(ASSET_SPINE)
+        asset = mod.resources['r2']
+        dur, start = mod._resolve_clip_duration(
+            asset, in_point="1200/2400s", out_point="3600/2400s",
+        )
+        assert dur == TimeValue(2400, 2400)
+        assert start == TimeValue(1200, 2400)
+
+    def test_explicit_duration_overrides_asset(self):
+        mod = _make_modifier(ASSET_SPINE)
+        asset = mod.resources['r2']
+        dur, start = mod._resolve_clip_duration(asset, duration="1200/2400s")
+        assert dur == TimeValue(1200, 2400)
+        assert start == TimeValue.zero()
+
+    def test_falls_back_to_asset_duration(self):
+        mod = _make_modifier(ASSET_SPINE)
+        asset = mod.resources['r2']
+        dur, start = mod._resolve_clip_duration(asset)
+        assert dur == TimeValue(4800, 2400)
+        assert start == TimeValue.zero()
+
+    def test_in_out_takes_priority_over_duration(self):
+        """When both in/out and duration are given, in/out wins."""
+        mod = _make_modifier(ASSET_SPINE)
+        asset = mod.resources['r2']
+        dur, start = mod._resolve_clip_duration(
+            asset, duration="600/2400s",
+            in_point="0s", out_point="2400/2400s",
+        )
+        # in/out range = 2400/2400s, not the explicit 600/2400s
+        assert dur == TimeValue(2400, 2400)
+
+
+class TestMakeAssetClip:
+    """Tests for FCPXMLModifier._make_asset_clip."""
+
+    def test_creates_detached_element(self):
+        mod = _make_modifier(ASSET_SPINE)
+        dur = TimeValue(2400, 2400)
+        elem = mod._make_asset_clip(
+            'r2', 'TestClip',
+            TimeValue(0, 2400), TimeValue(0, 2400), dur,
+        )
+        assert elem.tag == 'asset-clip'
+        assert elem.get('ref') == 'r2'
+        assert elem.get('name') == 'TestClip'
+        assert elem.get('duration') == dur.to_fcpxml()
+
+    def test_creates_subelement_when_parent_given(self):
+        mod = _make_modifier(ASSET_SPINE)
+        parent = ET.Element('clip')
+        dur = TimeValue(1200, 2400)
+        elem = mod._make_asset_clip(
+            'r2', 'Child',
+            TimeValue(0, 2400), TimeValue(0, 2400), dur,
+            parent=parent,
+        )
+        assert elem in list(parent)
+        assert elem.get('name') == 'Child'
+        assert elem.get('duration') == dur.to_fcpxml()
+
+    def test_extra_attrs_applied(self):
+        mod = _make_modifier(ASSET_SPINE)
+        elem = mod._make_asset_clip(
+            'r2', 'Audio',
+            TimeValue(0, 2400), TimeValue(0, 2400), TimeValue(2400, 2400),
+            lane='-1', audioRole='music',
+        )
+        assert elem.get('lane') == '-1'
+        assert elem.get('audioRole') == 'music'
+
+    def test_format_attr_passthrough(self):
+        mod = _make_modifier(ASSET_SPINE)
+        elem = mod._make_asset_clip(
+            'r2', 'Formatted',
+            TimeValue(0, 2400), TimeValue(0, 2400), TimeValue(2400, 2400),
+            format='r1',
+        )
+        assert elem.get('format') == 'r1'
 
 
 # ===================================================================

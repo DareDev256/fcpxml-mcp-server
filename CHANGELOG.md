@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.52] - 2026-04-11
+
+### Changed
+
+- **Extract `_resolve_clip_duration` helper** (writer.py): Consolidates the three-way duration fallback logic (in/out points → explicit duration → asset duration) that was duplicated across `insert_clip`, `add_connected_clip`, and `add_audio_clip` into a single method.
+- **Extract `_make_asset_clip` helper** (writer.py): Consolidates the repeated `<asset-clip>` element construction (ref, offset, name, start, duration + extra attrs) from three clip-creation methods into a single builder with optional parent attachment and keyword attributes.
+- **Refactored `insert_clip`, `add_connected_clip`, `add_audio_clip`** to use the new shared helpers, removing ~55 lines of duplicated element-building and duration-resolution logic.
+
+### Added
+
+- **8 new tests for extracted helpers** (test_refactored_helpers.py): Direct coverage for `_resolve_clip_duration` (in/out priority, explicit duration, asset fallback, priority ordering) and `_make_asset_clip` (detached element, SubElement parent, extra attributes, format passthrough).
+
 ## [0.6.51] - 2026-04-11
 
 ### Fixed
