@@ -231,6 +231,13 @@ class TimeValue:
     numerator: int
     denominator: int = 1
 
+    def __post_init__(self):
+        if self.denominator == 0:
+            raise ValueError(
+                f"TimeValue denominator cannot be zero (got {self.numerator}/0). "
+                "This would corrupt all downstream time calculations."
+            )
+
     @classmethod
     def from_timecode(cls, tc: str, fps: float = 30.0) -> 'TimeValue':
         """
@@ -317,8 +324,6 @@ class TimeValue:
 
     def to_seconds(self) -> float:
         """Convert to decimal seconds."""
-        if self.denominator == 0:
-            return 0.0
         return self.numerator / self.denominator
 
     def to_timecode(self, fps: float = 30.0) -> str:
@@ -382,6 +387,10 @@ class TimeValue:
         if scalar == 0:
             raise ZeroDivisionError("Cannot divide TimeValue by zero")
         new_denom = round(self.denominator * scalar)
+        if new_denom == 0:
+            raise ZeroDivisionError(
+                f"Division by {scalar} rounds denominator {self.denominator} to zero"
+            )
         return TimeValue(self.numerator, new_denom)
 
     def __lt__(self, other: 'TimeValue') -> bool:

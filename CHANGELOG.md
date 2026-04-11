@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.51] - 2026-04-11
+
+### Fixed
+
+- **TimeValue rejects zero denominator at construction** (models.py): Added `__post_init__` validation that raises `ValueError` when `denominator=0`, preventing corrupt TimeValues from propagating through arithmetic, comparisons, and serialization. Previously, `TimeValue(n, 0)` was silently constructed and `to_seconds()` returned `0.0` — masking data corruption.
+- **TimeValue division rounding-to-zero guard** (models.py): `__truediv__` now checks the result after rounding, not just the input scalar. `TimeValue(1, 1) / 0.3` previously created a zombie `TimeValue(1, 0)` because `round(1 * 0.3) = 0`. Now raises `ZeroDivisionError`.
+- **Removed silent zero-denominator guard in `to_seconds()`** (models.py): The `if denominator == 0: return 0.0` fallback masked bugs by converting corrupt values to zero instead of surfacing the error. Now unreachable due to construction-time validation.
+
 ## [0.6.50] - 2026-04-10
 
 ### Fixed

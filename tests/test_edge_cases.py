@@ -30,18 +30,15 @@ class TestTimeValueBoundaries:
         assert result.numerator == -10
         assert result.to_seconds() < 0, "Negative time should report negative seconds"
 
-    def test_zero_denominator_to_seconds_returns_zero(self):
-        """Zero denominator is guarded — to_seconds returns 0.0 instead of ZeroDivisionError."""
-        tv = TimeValue(100, 0)
-        assert tv.to_seconds() == 0.0
+    def test_zero_denominator_rejected_at_construction(self):
+        """Zero denominator must be caught at construction, not silently propagated."""
+        with pytest.raises(ValueError, match="denominator cannot be zero"):
+            TimeValue(100, 0)
 
-    def test_zero_denominator_comparison_does_not_crash(self):
-        """Comparisons use to_seconds internally — must not crash on zero denominator."""
-        bad = TimeValue(100, 0)
-        good = TimeValue(10, 30)
-        # Should not raise — both convert to seconds first
-        assert not (bad > good)
-        assert bad == TimeValue(0, 1)  # Both resolve to 0.0 seconds
+    def test_zero_denominator_rejected_even_with_zero_numerator(self):
+        """TimeValue(0, 0) is still invalid — use TimeValue(0, 1) for zero time."""
+        with pytest.raises(ValueError, match="denominator cannot be zero"):
+            TimeValue(0, 0)
 
     def test_snap_to_frame_rejects_zero_fps(self):
         """snap_to_frame(0) would cause ZeroDivisionError without the guard."""

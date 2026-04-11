@@ -73,7 +73,8 @@ class TestTimeValueConversions:
 
     def test_to_seconds(self):
         assert TimeValue(72, 24).to_seconds() == pytest.approx(3.0)
-        assert TimeValue(5, 0).to_seconds() == 0.0  # zero denominator guard
+        with pytest.raises(ValueError, match="denominator cannot be zero"):
+            TimeValue(5, 0)  # zero denominator rejected at construction
 
     def test_to_timecode(self):
         assert TimeValue(2700, 30).to_timecode(fps=30.0) == "00:01:30:00"
@@ -603,6 +604,12 @@ class TestTimeValueArithmeticEdgeCases:
         tv = TimeValue(100, 2400)
         with pytest.raises(ZeroDivisionError):
             tv / 0
+
+    def test_div_rounding_to_zero_raises(self):
+        """Small scalars that round denominator to zero must raise, not corrupt."""
+        tv = TimeValue(1, 1)
+        with pytest.raises(ZeroDivisionError, match="rounds denominator"):
+            tv / 0.3  # round(1 * 0.3) = 0
 
     def test_div_mul_roundtrip(self):
         """Multiply then divide should approximately restore original value."""
