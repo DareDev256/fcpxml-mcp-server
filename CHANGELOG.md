@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.53] - 2026-04-12
+
+### Changed
+
+- **Extract `_text_result` helper** (server.py): Consolidates 82 instances of `[TextContent(type="text", text=...)]` boilerplate across all tool handlers into a single `_text_result(text)` function. Every handler now returns `_text_result(...)` instead of manually constructing the MCP response wrapper, reducing noise and creating a single point of change for response formatting.
+
 ## [0.6.52] - 2026-04-11
 
 ### Changed

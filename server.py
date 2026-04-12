@@ -295,9 +295,14 @@ def _parse_project(filepath: str):
     return project, project.primary_timeline
 
 
+def _text_result(text: str) -> list[TextContent]:
+    """Wrap a string in the MCP TextContent list that every tool handler returns."""
+    return [TextContent(type="text", text=text)]
+
+
 def _no_timeline():
     """Standard response when no timelines are found."""
-    return [TextContent(type="text", text="No timelines found")]
+    return _text_result("No timelines found")
 
 
 def _require_timeline(filepath: str):
@@ -1598,8 +1603,8 @@ async def handle_list_projects(arguments: dict) -> Sequence[TextContent]:
     )
     files = find_fcpxml_files(resolved_dir)
     if not files:
-        return [TextContent(type="text", text=f"No FCPXML files found in {directory}")]
-    return [TextContent(type="text", text=f"Found {len(files)} FCPXML file(s):\n" + "\n".join(f"  - {f}" for f in files))]
+        return _text_result(f"No FCPXML files found in {directory}")
+    return _text_result(f"Found {len(files)} FCPXML file(s):\n" + "\n".join(f"  - {f}" for f in files))
 
 
 async def handle_analyze_timeline(arguments: dict) -> Sequence[TextContent]:
@@ -1607,7 +1612,7 @@ async def handle_analyze_timeline(arguments: dict) -> Sequence[TextContent]:
     durs = [c.duration_seconds for c in tl.clips]
     avg, med, mn, mx = (0, 0, 0, 0) if not durs else (
         sum(durs)/len(durs), sorted(durs)[len(durs)//2], min(durs), max(durs))
-    return [TextContent(type="text", text=f"""# Timeline Analysis: {tl.name}
+    return _text_result(f"""# Timeline Analysis: {tl.name}
 
 ## Overview
 - **Duration**: {format_duration(tl.duration.seconds)}
@@ -1628,7 +1633,7 @@ async def handle_analyze_timeline(arguments: dict) -> Sequence[TextContent]:
 ## Markers
 - **Total**: {len(tl.markers)}
 - **Chapters**: {len([m for m in tl.markers if m.marker_type == MarkerType.CHAPTER])}
-""")]
+""")
 
 
 async def handle_list_clips(arguments: dict) -> Sequence[TextContent]:
@@ -1639,7 +1644,7 @@ async def handle_list_clips(arguments: dict) -> Sequence[TextContent]:
     for i, c in enumerate(clips, 1):
         kws = ", ".join(k.value for k in c.keywords) if c.keywords else "-"
         result += f"| {i} | {c.name} | {format_timecode(c.start)} | {format_duration(c.duration_seconds)} | {kws} |\n"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
@@ -1659,7 +1664,7 @@ async def handle_list_markers(arguments: dict) -> Sequence[TextContent]:
     else:
         result = f"# Markers ({len(markers)})\n\n| TC | Name | Type |\n|---|------|------|\n"
         result += "\n".join(f"| {format_timecode(m.start)} | {m.name} | {m.marker_type.value} |" for m in markers)
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_find_short_cuts(arguments: dict) -> Sequence[TextContent]:
@@ -1667,10 +1672,10 @@ async def handle_find_short_cuts(arguments: dict) -> Sequence[TextContent]:
     threshold = arguments.get("threshold_seconds", 0.5)
     short = tl.get_clips_shorter_than(threshold)
     if not short:
-        return [TextContent(type="text", text=f"No clips shorter than {threshold}s")]
-    return [TextContent(type="text", text=_format_clip_table(
+        return _text_result(f"No clips shorter than {threshold}s")
+    return _text_result(_format_clip_table(
         short, f"# Short Clips (< {threshold}s) - {len(short)} found",
-    ))]
+    ))
 
 
 async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
@@ -1678,10 +1683,10 @@ async def handle_find_long_clips(arguments: dict) -> Sequence[TextContent]:
     threshold = arguments.get("threshold_seconds", 10.0)
     long = tl.get_clips_longer_than(threshold)
     if not long:
-        return [TextContent(type="text", text=f"No clips longer than {threshold}s")]
-    return [TextContent(type="text", text=_format_clip_table(
+        return _text_result(f"No clips longer than {threshold}s")
+    return _text_result(_format_clip_table(
         long, f"# Long Clips (> {threshold}s) - {len(long)} found",
-    ))]
+    ))
 
 
 async def handle_list_keywords(arguments: dict) -> Sequence[TextContent]:
@@ -1691,11 +1696,11 @@ async def handle_list_keywords(arguments: dict) -> Sequence[TextContent]:
         for kw in clip.keywords:
             keywords.setdefault(kw.value, []).append(clip.name)
     if not keywords:
-        return [TextContent(type="text", text="No keywords found")]
+        return _text_result("No keywords found")
     result = f"# Keywords ({len(keywords)})\n\n"
     for kw, clips in sorted(keywords.items()):
         result += f"**{kw}** ({len(clips)} clips)\n"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_export_edl(arguments: dict) -> Sequence[TextContent]:
@@ -1704,7 +1709,7 @@ async def handle_export_edl(arguments: dict) -> Sequence[TextContent]:
     for i, c in enumerate(tl.clips, 1):
         edl += f"{i:03d}  AX       V     C        {format_timecode(c.source_start)} {format_timecode(c.end)} {format_timecode(c.start)} {format_timecode(c.end)}\n"
         edl += f"* FROM CLIP NAME: {c.name}\n\n"
-    return [TextContent(type="text", text=f"```edl\n{edl}```")]
+    return _text_result(f"```edl\n{edl}```")
 
 
 async def handle_export_csv(arguments: dict) -> Sequence[TextContent]:
@@ -1713,13 +1718,13 @@ async def handle_export_csv(arguments: dict) -> Sequence[TextContent]:
     for c in tl.clips:
         kws = "|".join(k.value for k in c.keywords)
         csv += f'"{c.name}",{format_timecode(c.start)},{format_timecode(c.end)},{c.duration_seconds:.3f},"{kws}"\n'
-    return [TextContent(type="text", text=f"```csv\n{csv}```")]
+    return _text_result(f"```csv\n{csv}```")
 
 
 async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
     project, tl = _require_timeline(arguments["filepath"])
     if not tl.clips:
-        return [TextContent(type="text", text="No clips to analyze")]
+        return _text_result("No clips to analyze")
     durs = [c.duration_seconds for c in tl.clips]
     avg = sum(durs) / len(durs)
     q_len = len(durs) // 4 or 1
@@ -1736,7 +1741,7 @@ async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
         suggestions.append("  Pacing accelerates toward end - good for building energy")
     elif len(seg_avgs) >= 4 and seg_avgs[3] > seg_avgs[0] * 1.3:
         suggestions.append("  Pacing slows toward end - consider tightening")
-    return [TextContent(type="text", text=f"""# Pacing Analysis: {tl.name}
+    return _text_result(f"""# Pacing Analysis: {tl.name}
 
 ## Overall
 - **Avg Cut**: {format_duration(avg)}
@@ -1749,7 +1754,7 @@ async def handle_analyze_pacing(arguments: dict) -> Sequence[TextContent]:
 
 ## Suggestions
 {_fmt_suggestions(suggestions)}
-""")]
+""")
 
 
 async def handle_list_library_clips(arguments: dict) -> Sequence[TextContent]:
@@ -1762,14 +1767,14 @@ async def handle_list_library_clips(arguments: dict) -> Sequence[TextContent]:
     if limit:
         library_clips = library_clips[:limit]
     if not library_clips:
-        return [TextContent(type="text", text="No library clips found")]
+        return _text_result("No library clips found")
     result = f"# Library Clips ({len(library_clips)} available)\n\n"
     result += "| ID | Name | Duration | Has Video | Has Audio |\n"
     result += "|----|------|----------|-----------|----------|\n"
     for c in library_clips:
         result += f"| {c['asset_id']} | {c['name']} | {format_duration(c['duration_seconds'])} | {'Y' if c['has_video'] else 'N'} | {'Y' if c['has_audio'] else 'N'} |\n"
     result += "\n*Use `insert_clip` to add these to your timeline.*"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- QC / VALIDATION HANDLERS -----
@@ -1784,7 +1789,7 @@ async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
     )
 
     if not flash_frames:
-        return [TextContent(type="text", text=f"No flash frames detected (threshold: {warning_threshold} frames)")]
+        return _text_result(f"No flash frames detected (threshold: {warning_threshold} frames)")
 
     critical = [f for f in flash_frames if f.severity == FlashFrameSeverity.CRITICAL]
     warnings = [f for f in flash_frames if f.severity == FlashFrameSeverity.WARNING]
@@ -1817,7 +1822,7 @@ async def handle_detect_flash_frames(arguments: dict) -> Sequence[TextContent]:
         result += "_None_\n"
 
     result += "\n*Use `fix_flash_frames` to automatically resolve these issues.*"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
@@ -1827,7 +1832,7 @@ async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
     duplicates = _detect_duplicate_groups(tl, mode=mode)
 
     if not duplicates:
-        return [TextContent(type="text", text=f"No duplicate clips found (mode: {mode})")]
+        return _text_result(f"No duplicate clips found (mode: {mode})")
 
     result = f"""# Duplicate Clip Detection
 
@@ -1844,7 +1849,7 @@ async def handle_detect_duplicates(arguments: dict) -> Sequence[TextContent]:
         for c in group.clips:
             result += f"| {c['name']} | {c['timecode']} | {format_duration(c['duration'])} |\n"
 
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
@@ -1854,7 +1859,7 @@ async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
     gaps = _detect_gaps(tl, min_gap_frames=min_gap_frames)
 
     if not gaps:
-        return [TextContent(type="text", text=f"No gaps detected (minimum: {min_gap_frames} frame(s))")]
+        return _text_result(f"No gaps detected (minimum: {min_gap_frames} frame(s))")
 
     result = f"""# Gap Detection
 
@@ -1872,7 +1877,7 @@ async def handle_detect_gaps(arguments: dict) -> Sequence[TextContent]:
     ) + "\n"
 
     result += "\n*Use `fill_gaps` to automatically close these gaps.*"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- WRITE HANDLERS -----
@@ -1885,7 +1890,7 @@ async def handle_add_marker(arguments: dict) -> Sequence[TextContent]:
         marker_type=marker_type, note=arguments.get("note"),
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"Added marker '{arguments['name']}' at {arguments['timecode']}\n\nSaved to: {output_path}")]
+    return _text_result(f"Added marker '{arguments['name']}' at {arguments['timecode']}\n\nSaved to: {output_path}")
 
 
 async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
@@ -1896,7 +1901,7 @@ async def handle_batch_add_markers(arguments: dict) -> Sequence[TextContent]:
         auto_at_intervals=arguments.get("auto_at_intervals"),
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"Added {len(markers_added)} markers\n\nSaved to: {output_path}")]
+    return _text_result(f"Added {len(markers_added)} markers\n\nSaved to: {output_path}")
 
 
 async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
@@ -1908,7 +1913,7 @@ async def handle_trim_clip(arguments: dict) -> Sequence[TextContent]:
         ripple=arguments.get("ripple", True),
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"Trimmed clip '{arguments['clip_id']}'\n\nSaved to: {output_path}")]
+    return _text_result(f"Trimmed clip '{arguments['clip_id']}'\n\nSaved to: {output_path}")
 
 
 async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
@@ -1920,7 +1925,7 @@ async def handle_reorder_clips(arguments: dict) -> Sequence[TextContent]:
     )
     modifier.save(output_path)
     clips_moved = ", ".join(arguments["clip_ids"])
-    return [TextContent(type="text", text=f"Moved clips [{clips_moved}] to {arguments['target_position']}\n\nSaved to: {output_path}")]
+    return _text_result(f"Moved clips [{clips_moved}] to {arguments['target_position']}\n\nSaved to: {output_path}")
 
 
 async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
@@ -1932,7 +1937,7 @@ async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
         duration=arguments.get("duration", "00:00:00:15"),
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"Added {arguments.get('transition_type', 'cross-dissolve')} to '{arguments['clip_id']}'\n\nSaved to: {output_path}")]
+    return _text_result(f"Added {arguments.get('transition_type', 'cross-dissolve')} to '{arguments['clip_id']}'\n\nSaved to: {output_path}")
 
 
 async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
@@ -1945,7 +1950,7 @@ async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
     modifier.save(output_path)
     speed = arguments["speed"]
     speed_desc = f"{speed}x" if speed >= 1 else f"{int(1/speed)}x slow motion"
-    return [TextContent(type="text", text=f"Changed speed of '{arguments['clip_id']}' to {speed_desc}\n\nSaved to: {output_path}")]
+    return _text_result(f"Changed speed of '{arguments['clip_id']}' to {speed_desc}\n\nSaved to: {output_path}")
 
 
 async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
@@ -1955,7 +1960,7 @@ async def handle_delete_clips(arguments: dict) -> Sequence[TextContent]:
         ripple=arguments.get("ripple", True),
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"Deleted {len(arguments['clip_ids'])} clip(s)\n\nSaved to: {output_path}")]
+    return _text_result(f"Deleted {len(arguments['clip_ids'])} clip(s)\n\nSaved to: {output_path}")
 
 
 async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
@@ -1965,7 +1970,7 @@ async def handle_split_clip(arguments: dict) -> Sequence[TextContent]:
         split_points=arguments["split_points"],
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"Split '{arguments['clip_id']}' into {len(new_clips)} clips\n\nSaved to: {output_path}")]
+    return _text_result(f"Split '{arguments['clip_id']}' into {len(new_clips)} clips\n\nSaved to: {output_path}")
 
 
 async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
@@ -1982,7 +1987,7 @@ async def handle_insert_clip(arguments: dict) -> Sequence[TextContent]:
     modifier.save(output_path)
     clip_name = new_clip.get('name', 'Unknown')
     pos = arguments["position"]
-    return [TextContent(type="text", text=f"Inserted '{clip_name}' at position '{pos}'\n\nSaved to: {output_path}")]
+    return _text_result(f"Inserted '{clip_name}' at position '{pos}'\n\nSaved to: {output_path}")
 
 
 # ----- BATCH FIX HANDLERS -----
@@ -1996,7 +2001,7 @@ async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
     modifier.save(output_path)
 
     if not fixed:
-        return [TextContent(type="text", text="No flash frames found to fix.")]
+        return _text_result("No flash frames found to fix.")
 
     result = _format_batch_result(
         title="Flash Frames Fixed",
@@ -2008,7 +2013,7 @@ async def handle_fix_flash_frames(arguments: dict) -> Sequence[TextContent]:
         ],
         output_path=output_path,
     )
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
@@ -2022,7 +2027,7 @@ async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
     modifier.save(output_path)
 
     if not trimmed:
-        return [TextContent(type="text", text=f"No clips exceeded {arguments['max_duration']} - nothing trimmed.")]
+        return _text_result(f"No clips exceeded {arguments['max_duration']} - nothing trimmed.")
 
     total_before = sum(t['original_duration'] for t in trimmed)
     total_after = sum(t['new_duration'] for t in trimmed)
@@ -2042,7 +2047,7 @@ async def handle_rapid_trim(arguments: dict) -> Sequence[TextContent]:
         ],
         output_path=output_path,
     )
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
@@ -2054,7 +2059,7 @@ async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
     modifier.save(output_path)
 
     if not filled:
-        return [TextContent(type="text", text="No gaps found to fill.")]
+        return _text_result("No gaps found to fill.")
 
     result = _format_batch_result(
         title="Gaps Filled",
@@ -2063,7 +2068,7 @@ async def handle_fill_gaps(arguments: dict) -> Sequence[TextContent]:
         rows=[[g['timecode'], f"{g['duration_frames']}f", g['action']] for g in filled],
         output_path=output_path,
     )
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
@@ -2130,7 +2135,7 @@ async def handle_validate_timeline(arguments: dict) -> Sequence[TextContent]:
         result += "_No issues found!_"
 
     result += "\n\n*Use `fix_flash_frames` and `fill_gaps` to automatically resolve issues.*"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- GENERATION HANDLERS -----
@@ -2160,7 +2165,7 @@ async def handle_auto_rough_cut(arguments: dict) -> Sequence[TextContent]:
         add_transitions=arguments.get("add_transitions", False),
     )
 
-    return [TextContent(type="text", text=f"""# Rough Cut Generated
+    return _text_result(f"""# Rough Cut Generated
 
 ## Summary
 - **Clips Used**: {result.clips_used} of {result.clips_available} available
@@ -2172,7 +2177,7 @@ async def handle_auto_rough_cut(arguments: dict) -> Sequence[TextContent]:
 Saved to: `{result.output_path}`
 
 **Next step**: Import this FCPXML into Final Cut Pro (File > Import > XML)
-""")]
+""")
 
 
 async def handle_generate_montage(arguments: dict) -> Sequence[TextContent]:
@@ -2194,7 +2199,7 @@ async def handle_generate_montage(arguments: dict) -> Sequence[TextContent]:
         'constant': 'same duration throughout',
     }
 
-    return [TextContent(type="text", text=f"""# Montage Generated
+    return _text_result(f"""# Montage Generated
 
 ## Summary
 - **Clips Used**: {result['clips_used']} of {result['clips_available']} available
@@ -2208,7 +2213,7 @@ async def handle_generate_montage(arguments: dict) -> Sequence[TextContent]:
 
 ## Output
 Saved to: `{result['output_path']}`
-""")]
+""")
 
 
 async def handle_generate_ab_roll(arguments: dict) -> Sequence[TextContent]:
@@ -2224,7 +2229,7 @@ async def handle_generate_ab_roll(arguments: dict) -> Sequence[TextContent]:
         add_transitions=arguments.get("add_transitions", True),
     )
 
-    return [TextContent(type="text", text=f"""# A/B Roll Edit Generated
+    return _text_result(f"""# A/B Roll Edit Generated
 
 ## Summary
 - **A-Roll Segments**: {result['a_segments']} (from {result['a_clips_available']} available)
@@ -2241,7 +2246,7 @@ async def handle_generate_ab_roll(arguments: dict) -> Sequence[TextContent]:
 Saved to: `{result['output_path']}`
 
 **Next step**: Import this FCPXML into Final Cut Pro (File > Import > XML)
-""")]
+""")
 
 
 # ----- BEAT SYNC HANDLERS -----
@@ -2286,7 +2291,7 @@ async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
     added = modifier.batch_add_markers(markers=markers)
     modifier.save(output_path)
 
-    return [TextContent(type="text", text=f"""# Beat Markers Imported
+    return _text_result(f"""# Beat Markers Imported
 
 ## Summary
 - **Beats Found**: {len(beat_times)}
@@ -2298,7 +2303,7 @@ async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
 Saved to: `{output_path}`
 
 *Use `snap_to_beats` to align your cuts to these markers.*
-""")]
+""")
 
 
 async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
@@ -2319,7 +2324,7 @@ async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
         markers.extend(clip.markers)
 
     if not markers:
-        return [TextContent(type="text", text="No markers found. Use `import_beat_markers` first.")]
+        return _text_result("No markers found. Use `import_beat_markers` first.")
 
     marker_times = sorted([m.start.seconds for m in markers])
 
@@ -2373,7 +2378,7 @@ async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
     modifier.save(output_path)
     avg_shift = total_shift / adjusted_count if adjusted_count > 0 else 0
 
-    return [TextContent(type="text", text=f"""# Cuts Snapped to Beats
+    return _text_result(f"""# Cuts Snapped to Beats
 
 ## Summary
 - **Cuts Adjusted**: {adjusted_count}
@@ -2385,7 +2390,7 @@ async def handle_snap_to_beats(arguments: dict) -> Sequence[TextContent]:
 Saved to: `{output_path}`
 
 Your edits are now synced to the beat!
-""")]
+""")
 
 
 # ----- SUBTITLE / TRANSCRIPT HANDLERS -----
@@ -2408,7 +2413,7 @@ async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
         fmt_name = "SRT"
 
     if not raw_markers:
-        return [TextContent(type="text", text=f"No subtitles found in {srt_path}")]
+        return _text_result(f"No subtitles found in {srt_path}")
 
     # Apply mode filtering
     filtered = []
@@ -2439,7 +2444,7 @@ async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
     added = modifier.batch_add_markers(markers=markers)
     modifier.save(output_path)
 
-    return [TextContent(type="text", text=f"""# Subtitle Markers Imported
+    return _text_result(f"""# Subtitle Markers Imported
 
 ## Summary
 - **Format**: {fmt_name}
@@ -2450,7 +2455,7 @@ async def handle_import_srt_markers(arguments: dict) -> Sequence[TextContent]:
 
 ## Output
 Saved to: `{output_path}`
-""")]
+""")
 
 
 async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextContent]:
@@ -2462,7 +2467,7 @@ async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextCont
     transcript_path = arguments.get("transcript_path")
 
     if not transcript and not transcript_path:
-        return [TextContent(type="text", text="Provide either 'transcript' (inline text) or 'transcript_path' (path to file)")]
+        return _text_result("Provide either 'transcript' (inline text) or 'transcript_path' (path to file)")
 
     if transcript_path:
         transcript_path = _validate_filepath(transcript_path, ('.txt', '.srt', '.vtt'))
@@ -2471,7 +2476,7 @@ async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextCont
     raw_markers = parse_transcript_timestamps(transcript or "")
 
     if not raw_markers:
-        return [TextContent(type="text", text="No timestamps found. Expected format: '0:00 Title' or 'HH:MM:SS Title', one per line.")]
+        return _text_result("No timestamps found. Expected format: '0:00 Title' or 'HH:MM:SS Title', one per line.")
 
     markers = _raw_markers_to_batch(raw_markers, marker_type)
 
@@ -2479,7 +2484,7 @@ async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextCont
     added = modifier.batch_add_markers(markers=markers)
     modifier.save(output_path)
 
-    return [TextContent(type="text", text=f"""# Transcript Markers Imported
+    return _text_result(f"""# Transcript Markers Imported
 
 ## Summary
 - **Timestamps Found**: {len(raw_markers)}
@@ -2491,7 +2496,7 @@ async def handle_import_transcript_markers(arguments: dict) -> Sequence[TextCont
 
 ## Output
 Saved to: `{output_path}`
-""")]
+""")
 
 
 # ----- CONNECTED CLIPS & COMPOUND CLIPS HANDLERS (v0.5.0) -----
@@ -2505,7 +2510,7 @@ async def handle_list_connected_clips(arguments: dict) -> Sequence[TextContent]:
         clips = [c for c in clips if c.lane == lane_filter]
 
     if not clips:
-        return [TextContent(type="text", text="No connected clips found in timeline.")]
+        return _text_result("No connected clips found in timeline.")
 
     result = f"# Connected Clips in {tl.name}\n\n**Total**: {len(clips)}\n\n"
     result += "| # | Name | Lane | Type | Duration | Parent | Role |\n"
@@ -2516,7 +2521,7 @@ async def handle_list_connected_clips(arguments: dict) -> Sequence[TextContent]:
             f"{format_duration(c.duration_seconds)} | {c.parent_clip_name} | "
             f"{c.role or '-'} |\n"
         )
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_add_connected_clip(arguments: dict) -> Sequence[TextContent]:
@@ -2530,17 +2535,17 @@ async def handle_add_connected_clip(arguments: dict) -> Sequence[TextContent]:
         lane=arguments.get("lane", 1),
     )
     modifier.save(output_path)
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"Connected clip added to '{arguments['parent_clip_id']}' on lane {arguments.get('lane', 1)}\n\n"
         f"Saved to: `{output_path}`"
-    ))]
+    ))
 
 
 async def handle_list_compound_clips(arguments: dict) -> Sequence[TextContent]:
     project, tl = _require_timeline(arguments["filepath"])
 
     if not tl.compound_clips:
-        return [TextContent(type="text", text="No compound clips found in timeline.")]
+        return _text_result("No compound clips found in timeline.")
 
     result = f"# Compound Clips in {tl.name}\n\n"
     for i, cc in enumerate(tl.compound_clips, 1):
@@ -2548,7 +2553,7 @@ async def handle_list_compound_clips(arguments: dict) -> Sequence[TextContent]:
         result += f"- **Ref ID**: {cc.ref_id}\n"
         result += f"- **Duration**: {format_duration(cc.duration_seconds)}\n"
         result += f"- **Clips inside**: {len(cc.clips)}\n\n"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- ROLES HANDLERS (v0.5.0) -----
@@ -2589,7 +2594,7 @@ async def handle_list_roles(arguments: dict) -> Sequence[TextContent]:
     else:
         result += "## Video Roles\n\nNo video roles assigned.\n"
 
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_assign_role(arguments: dict) -> Sequence[TextContent]:
@@ -2607,10 +2612,10 @@ async def handle_assign_role(arguments: dict) -> Sequence[TextContent]:
     if arguments.get("video_role"):
         roles_set.append(f"videoRole={arguments['video_role']}")
 
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"Set {', '.join(roles_set)} on '{arguments['clip_id']}'\n\n"
         f"Saved to: `{output_path}`"
-    ))]
+    ))
 
 
 async def handle_filter_by_role(arguments: dict) -> Sequence[TextContent]:
@@ -2627,13 +2632,13 @@ async def handle_filter_by_role(arguments: dict) -> Sequence[TextContent]:
             matches.append((clip.name, "video", clip.video_role, format_duration(clip.duration_seconds)))
 
     if not matches:
-        return [TextContent(type="text", text=f"No clips found with role '{role}'.")]
+        return _text_result(f"No clips found with role '{role}'.")
 
     result = f"# Clips with role '{role}'\n\n"
     result += "| Clip | Type | Role | Duration |\n|------|------|------|----------|\n"
     for name, rtype, rval, dur in matches:
         result += f"| {name} | {rtype} | {rval} | {dur} |\n"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_export_role_stems(arguments: dict) -> Sequence[TextContent]:
@@ -2656,7 +2661,7 @@ async def handle_export_role_stems(arguments: dict) -> Sequence[TextContent]:
             result += f"- {c.name} ({format_duration(c.duration_seconds)})\n"
         result += "\n"
 
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- TIMELINE DIFF HANDLER (v0.5.0) -----
@@ -2668,10 +2673,10 @@ async def handle_diff_timelines(arguments: dict) -> Sequence[TextContent]:
     diff = compare_timelines(filepath_a, filepath_b)
 
     if not diff.has_changes:
-        return [TextContent(type="text", text=(
+        return _text_result((
             f"# Timeline Diff: No Changes\n\n"
             f"**{diff.timeline_a_name}** vs **{diff.timeline_b_name}** are identical."
-        ))]
+        ))
 
     result = (
         f"# Timeline Diff\n\n"
@@ -2704,7 +2709,7 @@ async def handle_diff_timelines(arguments: dict) -> Sequence[TextContent]:
         for change in diff.transition_diffs:
             result += f"- {change}\n"
 
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- SOCIAL MEDIA REFORMAT HANDLER (v0.5.0) -----
@@ -2717,25 +2722,25 @@ async def handle_reformat_timeline(arguments: dict) -> Sequence[TextContent]:
         width = arguments.get("width")
         height = arguments.get("height")
         if not width or not height:
-            return [TextContent(type="text", text="Custom format requires both 'width' and 'height' parameters.")]
+            return _text_result("Custom format requires both 'width' and 'height' parameters.")
     else:
         formats = FCPXMLModifier.SOCIAL_FORMATS
         if fmt not in formats:
-            return [TextContent(type="text", text=f"Unknown format: {fmt}. Valid: {', '.join(formats.keys())}")]
+            return _text_result(f"Unknown format: {fmt}. Valid: {', '.join(formats.keys())}")
         width, height = formats[fmt]
 
     modifier = FCPXMLModifier(filepath)
     modifier.reformat_resolution(width, height)
     modifier.save(output_path)
 
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"# Timeline Reformatted\n\n"
         f"- **Format**: {fmt} ({width}x{height})\n"
         f"- **Aspect ratio**: {width}:{height}\n\n"
         f"Saved to: `{output_path}`\n\n"
         f"**Next step**: Import into FCP (File > Import > XML). "
         f"FCP will handle spatial conforming automatically."
-    ))]
+    ))
 
 
 # ----- SILENCE DETECTION HANDLERS (v0.5.0) -----
@@ -2749,7 +2754,7 @@ async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextCont
     )
 
     if not candidates:
-        return [TextContent(type="text", text="No silence candidates detected.")]
+        return _text_result("No silence candidates detected.")
 
     result = f"# Silence Candidates Detected\n\n**Found**: {len(candidates)}\n\n"
     result += "| # | Timecode | Duration | Reason | Confidence | Clip |\n"
@@ -2763,7 +2768,7 @@ async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextCont
         "\n**Note**: Detection uses timeline heuristics (gaps, ultra-short clips, name patterns). "
         "Review candidates before removing — some may be intentional."
     )
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 async def handle_remove_silence_candidates(arguments: dict) -> Sequence[TextContent]:
@@ -2776,7 +2781,7 @@ async def handle_remove_silence_candidates(arguments: dict) -> Sequence[TextCont
     modifier.save(output_path)
 
     if not actions:
-        return [TextContent(type="text", text="No silence candidates met the confidence threshold.")]
+        return _text_result("No silence candidates met the confidence threshold.")
 
     mode = arguments.get("mode", "mark")
     result = f"# Silence Candidates {'Marked' if mode == 'mark' else 'Removed'}\n\n"
@@ -2784,7 +2789,7 @@ async def handle_remove_silence_candidates(arguments: dict) -> Sequence[TextCont
     for a in actions:
         result += f"- **{a['action']}** {a.get('clip_name', 'gap')} ({a['reason']})\n"
     result += f"\nSaved to: `{output_path}`"
-    return [TextContent(type="text", text=result)]
+    return _text_result(result)
 
 
 # ----- NLE EXPORT HANDLERS (v0.5.0) -----
@@ -2796,26 +2801,26 @@ async def handle_export_resolve_xml(arguments: dict) -> Sequence[TextContent]:
         output_path,
         flatten_compounds=arguments.get("flatten_compounds", True),
     )
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"# Exported for DaVinci Resolve\n\n"
         f"- **Format**: Simplified FCPXML v1.9\n"
         f"- **Compound clips flattened**: {arguments.get('flatten_compounds', True)}\n\n"
         f"Saved to: `{output_path}`\n\n"
         f"**Next step**: In DaVinci Resolve, go to File > Import > Timeline > Import AAF/EDL/XML"
-    ))]
+    ))
 
 
 async def handle_export_fcp7_xml(arguments: dict) -> Sequence[TextContent]:
     filepath, output_path = _resolve_io_paths(arguments, "_fcp7")
     exporter = DaVinciExporter(filepath)
     exporter.export_xmeml(output_path)
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"# Exported as FCP7 XML (XMEML)\n\n"
         f"- **Format**: XMEML v5\n"
         f"- **Compatible with**: Premiere Pro, DaVinci Resolve, Avid Media Composer\n\n"
         f"Saved to: `{output_path}`\n\n"
         f"**Next step**: Import via File > Import in your target NLE"
-    ))]
+    ))
 
 
 # ----- v0.6.0 HANDLERS -----
@@ -2825,7 +2830,7 @@ async def handle_list_effects(arguments: dict) -> Sequence[TextContent]:
     lines = ["# Available FCP Transition Effects\n"]
     for eff in effects:
         lines.append(f"- **{eff['slug']}**: {eff['name']} (`{eff['uuid']}`)")
-    return [TextContent(type="text", text="\n".join(lines))]
+    return _text_result("\n".join(lines))
 
 
 async def handle_add_audio(arguments: dict) -> Sequence[TextContent]:
@@ -2853,7 +2858,7 @@ async def handle_add_audio(arguments: dict) -> Sequence[TextContent]:
         action = "Added music bed spanning full timeline"
 
     modifier.save(output_path)
-    return [TextContent(type="text", text=f"{action}\nSaved to: `{output_path}`")]
+    return _text_result(f"{action}\nSaved to: `{output_path}`")
 
 
 async def handle_create_compound_clip(arguments: dict) -> Sequence[TextContent]:
@@ -2862,10 +2867,10 @@ async def handle_create_compound_clip(arguments: dict) -> Sequence[TextContent]:
     name = arguments.get("name", "Compound Clip")
     modifier.create_compound_clip(clip_ids, name)
     modifier.save(output_path)
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"Created compound clip '{name}' from {len(clip_ids)} clips.\n"
         f"Saved to: `{output_path}`"
-    ))]
+    ))
 
 
 async def handle_flatten_compound_clip(arguments: dict) -> Sequence[TextContent]:
@@ -2873,10 +2878,10 @@ async def handle_flatten_compound_clip(arguments: dict) -> Sequence[TextContent]
     ref_clip_id = arguments["ref_clip_id"]
     extracted = modifier.flatten_compound_clip(ref_clip_id)
     modifier.save(output_path)
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"Flattened compound clip '{ref_clip_id}' into {len(extracted)} clips.\n"
         f"Saved to: `{output_path}`"
-    ))]
+    ))
 
 
 async def handle_list_templates(arguments: dict) -> Sequence[TextContent]:
@@ -2893,7 +2898,7 @@ async def handle_list_templates(arguments: dict) -> Sequence[TextContent]:
                 f"| {s['lane']} | {'Yes' if s['required'] else 'No'} |"
             )
         lines.append("")
-    return [TextContent(type="text", text="\n".join(lines))]
+    return _text_result("\n".join(lines))
 
 
 async def handle_apply_template(arguments: dict) -> Sequence[TextContent]:
@@ -2914,10 +2919,10 @@ async def handle_apply_template(arguments: dict) -> Sequence[TextContent]:
             )
 
     result_path = apply_template(template_name, clips_map, output_path, fps)
-    return [TextContent(type="text", text=(
+    return _text_result((
         f"Applied template '{template_name}' with {len(clips_map)} clips.\n"
         f"Saved to: `{result_path}`"
-    ))]
+    ))
 
 
 # ============================================================================
@@ -2999,17 +3004,17 @@ TOOL_HANDLERS = {
 async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextContent]:
     handler = TOOL_HANDLERS.get(name)
     if not handler:
-        return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        return _text_result(f"Unknown tool: {name}")
     try:
         return await handler(arguments)
     except _NoTimelineError:
         return _no_timeline()
     except FileNotFoundError as e:
-        return [TextContent(type="text", text=f"File not found: {e}")]
+        return _text_result(f"File not found: {e}")
     except ValueError as e:
-        return [TextContent(type="text", text=f"Validation error: {e}")]
+        return _text_result(f"Validation error: {e}")
     except Exception as e:
-        return [TextContent(type="text", text=f"Error: {type(e).__name__}")]
+        return _text_result(f"Error: {type(e).__name__}")
 
 
 # ============================================================================
