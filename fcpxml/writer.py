@@ -1588,6 +1588,49 @@ class FCPXMLModifier:
     # SPLIT & DELETE OPERATIONS
     # ========================================================================
 
+    @staticmethod
+    def _filter_children_for_segment(
+        clip: ET.Element,
+        seg_start: 'TimeValue',
+        seg_duration: 'TimeValue',
+    ) -> None:
+        """Remove markers/keywords from *clip* that fall outside the segment range.
+
+        After ``split_clip`` deepcopy's the original clip into each segment, every
+        segment inherits all child elements.  Markers whose ``start`` falls outside
+        ``[seg_start, seg_start + seg_duration)`` are phantom duplicates and must be
+        removed.  Keywords that partially overlap get their ``start``/``duration``
+        clamped to the segment boundaries.
+        """
+        seg_end = seg_start + seg_duration
+        to_remove = []
+        for child in clip:
+            tag = child.tag
+            if tag in ('marker', 'chapter-marker'):
+                child_start_str = child.get('start', '0s')
+                child_start = TimeValue.from_timecode(child_start_str)
+                if child_start.to_seconds() < seg_start.to_seconds() \
+                        or child_start.to_seconds() >= seg_end.to_seconds():
+                    to_remove.append(child)
+            elif tag == 'keyword':
+                kw_start_str = child.get('start', '0s')
+                kw_dur_str = child.get('duration', '0s')
+                kw_start = TimeValue.from_timecode(kw_start_str)
+                kw_dur = TimeValue.from_timecode(kw_dur_str)
+                kw_end = kw_start + kw_dur
+                # Completely outside segment → remove
+                if kw_end.to_seconds() <= seg_start.to_seconds() \
+                        or kw_start.to_seconds() >= seg_end.to_seconds():
+                    to_remove.append(child)
+                else:
+                    # Clamp keyword range to segment boundaries
+                    clamped_start = kw_start if kw_start.to_seconds() >= seg_start.to_seconds() else seg_start
+                    clamped_end = kw_end if kw_end.to_seconds() <= seg_end.to_seconds() else seg_end
+                    child.set('start', clamped_start.to_fcpxml())
+                    child.set('duration', (clamped_end - clamped_start).to_fcpxml())
+        for child in to_remove:
+            clip.remove(child)
+
     def split_clip(
         self,
         clip_id: str,
@@ -1637,6 +1680,11 @@ class FCPXMLModifier:
             new_clip.set('offset', current_offset.to_fcpxml())
             new_clip.set('start', current_start.to_fcpxml())
             new_clip.set('duration', segment_duration.to_fcpxml())
+
+            # Remove markers/keywords that belong to other segments
+            self._filter_children_for_segment(
+                new_clip, current_start, segment_duration
+            )
 
             spine.insert(clip_index + len(new_clips), new_clip)
             new_clips.append(new_clip)

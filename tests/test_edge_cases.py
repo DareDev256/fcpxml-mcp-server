@@ -258,6 +258,110 @@ class TestSplitClipBoundaries:
 
 
 # ============================================================================
+# Split clip child-element filtering (markers, keywords)
+# ============================================================================
+
+SPLIT_MARKER_FCPXML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.11">
+<resources>
+    <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+    <asset id="r2" name="A" src="file:///a.mov" start="0s" duration="100s" format="r1"/>
+</resources>
+<library><event name="E"><project name="P">
+<sequence format="r1" duration="120/24s" tcStart="0s" tcFormat="NDF">
+<spine>
+    <asset-clip ref="r2" offset="0s" name="A" start="10s" duration="120/24s" format="r1">
+        <marker start="11s" duration="1/24s" value="Early mark"/>
+        <marker start="13s" duration="1/24s" value="Late mark"/>
+        <keyword start="10s" duration="120/24s" value="Interview"/>
+    </asset-clip>
+</spine>
+</sequence></project></event></library></fcpxml>
+"""
+
+
+class TestSplitClipChildFiltering:
+    """split_clip must filter markers/keywords so they only appear on the
+    segment whose source range actually contains them."""
+
+    def test_markers_land_on_correct_segment(self):
+        """Markers must appear only on the segment whose source range covers them."""
+        with tempfile.NamedTemporaryFile(suffix=".fcpxml", mode="w", delete=False) as f:
+            f.write(SPLIT_MARKER_FCPXML)
+            f.flush()
+            try:
+                mod = FCPXMLModifier(f.name)
+                # Clip starts at source 10s, duration 120/24s = 5s → source range [10s, 15s)
+                # Split at 60/24s = 2.5s into clip → source split at 12.5s
+                # Segment 0: source [10s, 12.5s) — "Early mark" at 11s ✓, "Late mark" at 13s ✗
+                # Segment 1: source [12.5s, 15s) — "Early mark" at 11s ✗, "Late mark" at 13s ✓
+                result = mod.split_clip("A", ["60/24s"])
+                assert len(result) == 2
+
+                seg0_markers = [c for c in result[0] if c.tag == 'marker']
+                seg1_markers = [c for c in result[1] if c.tag == 'marker']
+
+                assert len(seg0_markers) == 1
+                assert seg0_markers[0].get('value') == 'Early mark'
+
+                assert len(seg1_markers) == 1
+                assert seg1_markers[0].get('value') == 'Late mark'
+            finally:
+                os.unlink(f.name)
+
+    def test_keyword_clamped_to_segment_boundaries(self):
+        """Keywords spanning the full clip get clamped to each segment's range."""
+        with tempfile.NamedTemporaryFile(suffix=".fcpxml", mode="w", delete=False) as f:
+            f.write(SPLIT_MARKER_FCPXML)
+            f.flush()
+            try:
+                mod = FCPXMLModifier(f.name)
+                result = mod.split_clip("A", ["60/24s"])
+                assert len(result) == 2
+
+                seg0_kw = [c for c in result[0] if c.tag == 'keyword']
+                seg1_kw = [c for c in result[1] if c.tag == 'keyword']
+
+                # Both segments should have the keyword (it spans the whole clip)
+                assert len(seg0_kw) == 1
+                assert len(seg1_kw) == 1
+
+                # Segment 0: keyword clamped to [10s, 12.5s) → duration = 60/24s
+                seg0_dur = TimeValue.from_timecode(seg0_kw[0].get('duration'))
+                assert seg0_dur.to_seconds() == pytest.approx(2.5, abs=0.05)
+
+                # Segment 1: keyword clamped to [12.5s, 15s) → duration = 60/24s
+                seg1_dur = TimeValue.from_timecode(seg1_kw[0].get('duration'))
+                assert seg1_dur.to_seconds() == pytest.approx(2.5, abs=0.05)
+            finally:
+                os.unlink(f.name)
+
+    def test_marker_outside_all_segments_removed(self):
+        """A marker exactly at the segment boundary end is excluded."""
+        with tempfile.NamedTemporaryFile(suffix=".fcpxml", mode="w", delete=False) as f:
+            # Marker at source 15s, clip source range [10s, 15s) — at boundary = excluded
+            xml = SPLIT_MARKER_FCPXML.replace(
+                '<marker start="13s"', '<marker start="15s"'
+            )
+            f.write(xml)
+            f.flush()
+            try:
+                mod = FCPXMLModifier(f.name)
+                result = mod.split_clip("A", ["60/24s"])
+                # Marker at 15s is at clip end, should not appear on any segment
+                all_markers = []
+                for seg in result:
+                    all_markers.extend(c for c in seg if c.tag == 'marker')
+                # Only "Early mark" at 11s should survive
+                assert len(all_markers) == 1
+                assert all_markers[0].get('value') == 'Early mark'
+            finally:
+                os.unlink(f.name)
+
+
+# ============================================================================
 # Diff identity rounding
 # ============================================================================
 

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.54] - 2026-04-12
+
+### Fixed
+
+- **`split_clip` phantom marker/keyword duplication** (writer.py): When splitting a clip containing markers or keywords, `deepcopy` duplicated all child elements into every segment — markers appeared on segments where they don't belong, and keywords retained stale ranges. Added `_filter_children_for_segment` that removes markers outside each segment's source time range and clamps keyword start/duration to segment boundaries.
+
+### Added
+
+- **3 new tests for split child filtering** (test_edge_cases.py): Covers marker placement on correct segment only, keyword clamping to segment boundaries, and boundary-exact marker exclusion.
+
 ## [0.6.53] - 2026-04-12
 
 ### Changed
