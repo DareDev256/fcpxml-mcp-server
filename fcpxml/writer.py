@@ -1557,6 +1557,12 @@ class FCPXMLModifier:
         new_num = dur_ticks
         new_denom = 2400
 
+        # Remove any existing timeMap/conform-rate from a prior speed change
+        # to prevent duplicate children that produce invalid FCPXML.
+        for stale_tag in ('timeMap', 'conform-rate'):
+            for stale in clip.findall(stale_tag):
+                clip.remove(stale)
+
         # Create timeMap for speed change (DTD-ordered insertion)
         timemap = ET.Element('timeMap')
         _dtd_insert(clip, timemap)

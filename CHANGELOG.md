@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.56] - 2026-04-13
+
+### Fixed
+
+- **`change_speed` duplicate element corruption** (writer.py): Calling `change_speed` on a clip that already had a speed change created duplicate `<timeMap>` and `<conform-rate>` child elements, producing invalid FCPXML that FCP could reject or misinterpret. Now strips existing speed-related elements before inserting new ones.
+
+### Added
+
+- **Test for repeated speed changes** (test_writer.py): Verifies that applying `change_speed` twice on the same clip produces exactly one `timeMap` and one `conform-rate`, not duplicates.
+
 ## [0.6.55] - 2026-04-12
 
 ### Added

@@ -648,6 +648,32 @@ def test_change_speed_negative_raises(temp_fcpxml):
         modifier.change_speed(clip_id='Broll_Studio', speed=-1.0)
 
 
+def test_change_speed_twice_no_duplicate_elements(temp_fcpxml):
+    """Calling change_speed twice must not create duplicate timeMap/conform-rate."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    modifier.change_speed(clip_id='Broll_Studio', speed=2.0)
+    modifier.change_speed(clip_id='Broll_Studio', speed=0.5)
+
+    clip = modifier.clips['Broll_Studio']
+    timemaps = clip.findall('timeMap')
+    conform_rates = clip.findall('conform-rate')
+
+    assert len(timemaps) == 1, (
+        f"Expected 1 timeMap after two speed changes, got {len(timemaps)}"
+    )
+    assert len(conform_rates) == 1, (
+        f"Expected 1 conform-rate after two speed changes, got {len(conform_rates)}"
+    )
+
+    # Verify the final speed is 0.5x (duration should double)
+    duration_str = clip.get('duration')
+    duration = modifier._parse_time(duration_str)
+    original = modifier._parse_time('2400/2400s')  # 1s original
+    assert duration.to_seconds() > original.to_seconds(), (
+        "0.5x speed should produce longer duration than original"
+    )
+
+
 # ============================================================
 # DTD Element Ordering Tests
 # ============================================================
