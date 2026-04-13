@@ -632,11 +632,11 @@ class TestTimeValueArithmeticEdgeCases:
         assert TimeValue(24, 24) == TimeValue(30, 30) == TimeValue(2400, 2400)
 
     def test_inequality_near_boundary(self):
-        """Values differing by less than 0.0001s are considered equal (see __eq__)."""
+        """Integer-exact comparison: different rational values are never equal."""
         a = TimeValue(24000, 24000)  # exactly 1s
         b = TimeValue(24001, 24000)  # 1.0000417s
-        # This tests the 0.0001s epsilon in __eq__
-        assert a == b  # within epsilon
+        # Cross-multiplication gives exact comparison — no epsilon
+        assert a != b  # genuinely different values
 
     def test_mul_fractional_scalar_rounds_correctly(self):
         """Multiplying by 0.5 must round, not truncate — avoids half-tick loss."""

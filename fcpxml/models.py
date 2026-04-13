@@ -394,16 +394,20 @@ class TimeValue:
         return TimeValue(self.numerator, new_denom)
 
     def __lt__(self, other: 'TimeValue') -> bool:
-        return self.to_seconds() < other.to_seconds()
+        # Cross-multiply to compare without float conversion:
+        # a/b < c/d  ↔  a*d < c*b  (denominators are always positive)
+        return self.numerator * other.denominator < other.numerator * self.denominator
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TimeValue):
             return False
-        return abs(self.to_seconds() - other.to_seconds()) < 0.0001
+        # Cross-multiply for exact integer comparison
+        return self.numerator * other.denominator == other.numerator * self.denominator
 
     def __hash__(self) -> int:
-        # Round to epsilon precision so equal values hash the same
-        return hash(round(self.to_seconds(), 4))
+        # Reduce to lowest terms so equal values hash identically
+        g = gcd(abs(self.numerator), self.denominator) if self.denominator else 1
+        return hash((self.numerator // g, self.denominator // g))
 
     def snap_to_frame(self, fps: float) -> 'TimeValue':
         """Round this time value to the nearest frame boundary at the given fps.

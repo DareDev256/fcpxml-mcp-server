@@ -995,7 +995,7 @@ class FCPXMLModifier:
         if direction == 'next':
             neighbor_start = self._parse_time(neighbor.get('start', '0s'))
             new_start = neighbor_start - absorbed_dur
-            if new_start.to_seconds() >= 0:
+            if new_start >= TimeValue.zero():
                 neighbor.set('start', new_start.to_fcpxml())
                 neighbor.set('duration', (neighbor_dur + absorbed_dur).to_fcpxml())
             else:
@@ -1052,7 +1052,7 @@ class FCPXMLModifier:
         insert_index = 0
         for i, child in enumerate(spine_children):
             child_offset = self._parse_time(child.get('offset', '0s'))
-            if child_offset.to_seconds() >= target_offset.to_seconds():
+            if child_offset >= target_offset:
                 insert_index = i
                 break
             insert_index = i + 1
@@ -1299,7 +1299,7 @@ class FCPXMLModifier:
 
             current_duration = new_duration
 
-        if current_duration.to_seconds() <= 0:
+        if current_duration <= TimeValue.zero():
             raise ValueError(
                 f"Trim would produce non-positive duration "
                 f"({current_duration.to_seconds():.3f}s) for clip '{clip_id}'"
@@ -1310,7 +1310,7 @@ class FCPXMLModifier:
         # Ripple subsequent clips if needed
         if ripple:
             duration_change = current_duration - original_duration
-            if duration_change.to_seconds() != 0:
+            if duration_change != TimeValue.zero():
                 self._ripple_after_clip(clip, duration_change)
 
         return clip
@@ -1497,7 +1497,7 @@ class FCPXMLModifier:
 
         if position in ('start', 'both'):
             start_offset = clip_offset - half_dur
-            if start_offset.to_seconds() < 0:
+            if start_offset < TimeValue.zero():
                 raise ValueError(
                     f"Transition at start would produce negative offset "
                     f"({start_offset.to_seconds():.3f}s) for clip '{clip_id}'"
@@ -1613,25 +1613,20 @@ class FCPXMLModifier:
         for child in clip:
             tag = child.tag
             if tag in ('marker', 'chapter-marker'):
-                child_start_str = child.get('start', '0s')
-                child_start = TimeValue.from_timecode(child_start_str)
-                if child_start.to_seconds() < seg_start.to_seconds() \
-                        or child_start.to_seconds() >= seg_end.to_seconds():
+                child_start = TimeValue.from_timecode(child.get('start', '0s'))
+                if child_start < seg_start or child_start >= seg_end:
                     to_remove.append(child)
             elif tag == 'keyword':
-                kw_start_str = child.get('start', '0s')
-                kw_dur_str = child.get('duration', '0s')
-                kw_start = TimeValue.from_timecode(kw_start_str)
-                kw_dur = TimeValue.from_timecode(kw_dur_str)
+                kw_start = TimeValue.from_timecode(child.get('start', '0s'))
+                kw_dur = TimeValue.from_timecode(child.get('duration', '0s'))
                 kw_end = kw_start + kw_dur
                 # Completely outside segment → remove
-                if kw_end.to_seconds() <= seg_start.to_seconds() \
-                        or kw_start.to_seconds() >= seg_end.to_seconds():
+                if kw_end <= seg_start or kw_start >= seg_end:
                     to_remove.append(child)
                 else:
                     # Clamp keyword range to segment boundaries
-                    clamped_start = kw_start if kw_start.to_seconds() >= seg_start.to_seconds() else seg_start
-                    clamped_end = kw_end if kw_end.to_seconds() <= seg_end.to_seconds() else seg_end
+                    clamped_start = max(kw_start, seg_start)
+                    clamped_end = min(kw_end, seg_end)
                     child.set('start', clamped_start.to_fcpxml())
                     child.set('duration', (clamped_end - clamped_start).to_fcpxml())
         for child in to_remove:
@@ -1677,7 +1672,7 @@ class FCPXMLModifier:
             else:
                 segment_duration = split_time - split_times[i - 1]
 
-            if segment_duration.to_seconds() <= 0:
+            if segment_duration <= TimeValue.zero():
                 continue
 
             # Create new clip
@@ -2305,7 +2300,7 @@ class FCPXMLModifier:
 
         # Sort by offset so the compound maintains order
         clips_to_group.sort(
-            key=lambda c: self._parse_time(c[1].get('offset', '0s')).to_seconds()
+            key=lambda c: self._parse_time(c[1].get('offset', '0s'))
         )
 
         # Calculate compound duration and starting offset

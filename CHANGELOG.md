@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.57] - 2026-04-13
+
+### Changed
+
+- **Integer-exact `TimeValue` comparison** (models.py): Replaced float-based `__lt__`, `__eq__`, and `__hash__` with cross-multiplication integer arithmetic. Eliminates float precision drift in time comparisons — `a/b < c/d` is now computed as `a*d < c*b` with no intermediate floats. Hash uses GCD-reduced form so equivalent fractions hash identically.
+- **Rational comparisons in writer.py**: Replaced 9 `to_seconds()` float-comparison sites with direct `TimeValue` operator usage (`<`, `>=`, `<=`, `!=`). Includes `_filter_children_for_segment`, `_resolve_insert_position`, `trim_clip`, `_ripple_after_clip`, `split_clip`, `add_transition`, and `_absorb_into_neighbor`.
+
 ## [0.6.56] - 2026-04-13
 
 ### Fixed

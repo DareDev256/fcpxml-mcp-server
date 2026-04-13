@@ -87,16 +87,22 @@ class TestTimeValueBoundaries:
         assert simplified.numerator == -2
         assert simplified.denominator == 1
 
-    def test_equality_tolerance(self):
-        """Two TimeValues within 0.0001s tolerance are equal."""
+    def test_equality_exact_rational(self):
+        """Equivalent fractions are equal via cross-multiplication."""
+        a = TimeValue(600, 2400)   # 0.25s
+        b = TimeValue(300, 1200)   # 0.25s — same value, different representation
+        assert a == b
+
+    def test_equality_different_values(self):
+        """Genuinely different rational values are NOT equal."""
         a = TimeValue(30000, 30000)  # Exactly 1.0s
-        b = TimeValue(10000, 10001)  # 0.9999... ≈ 1.0s
-        assert a == b  # Within tolerance
+        b = TimeValue(10000, 10001)  # 0.99990001s — different value
+        assert a != b
 
     def test_equality_beyond_tolerance(self):
-        """TimeValues differing by more than 0.0001s are NOT equal."""
+        """TimeValues differing by any amount are NOT equal."""
         a = TimeValue(1000, 1000)  # 1.0s
-        b = TimeValue(999, 1000)   # 0.999s — 0.001s apart
+        b = TimeValue(999, 1000)   # 0.999s
         assert a != b
 
 
