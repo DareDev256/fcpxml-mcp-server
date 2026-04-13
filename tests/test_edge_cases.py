@@ -7,6 +7,7 @@ and to_fcpxml round-trip fidelity for non-standard timebases.
 
 import os
 import tempfile
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -410,3 +411,200 @@ class TestDiffIdentityRounding:
         )
         assert diff.total_changes == 2
         assert diff.has_changes is True
+
+
+# ============================================================================
+# _filter_children_for_segment (direct unit tests)
+# ============================================================================
+
+
+class TestFilterChildrenForSegment:
+    """Direct unit tests for _filter_children_for_segment in isolation."""
+
+    @staticmethod
+    def _make_clip_with_children(*children_specs):
+        """Build a minimal <asset-clip>. Each spec is (tag, attrs_dict)."""
+        clip = ET.Element('asset-clip')
+        clip.set('start', '0s')
+        clip.set('duration', '240/24s')  # 10s
+        for tag, attrs in children_specs:
+            child = ET.SubElement(clip, tag)
+            for k, v in attrs.items():
+                child.set(k, v)
+        return clip
+
+    def test_chapter_marker_filtered_same_as_regular_marker(self):
+        """chapter-marker elements must be filtered identically to markers."""
+        clip = self._make_clip_with_children(
+            ('chapter-marker', {'start': '1s', 'duration': '1/24s', 'value': 'Ch1'}),
+            ('chapter-marker', {'start': '8s', 'duration': '1/24s', 'value': 'Ch2'}),
+        )
+        seg_start = TimeValue(0, 1)      # 0s
+        seg_dur = TimeValue(120, 24)     # 5s  → segment [0s, 5s)
+        FCPXMLModifier._filter_children_for_segment(clip, seg_start, seg_dur)
+
+        remaining = [c for c in clip if c.tag == 'chapter-marker']
+        assert len(remaining) == 1
+        assert remaining[0].get('value') == 'Ch1'
+
+    def test_keyword_completely_before_segment_removed(self):
+        """Keyword ending before segment start is removed entirely."""
+        clip = self._make_clip_with_children(
+            ('keyword', {'start': '0s', 'duration': '48/24s', 'value': 'Early'}),  # 0-2s
+        )
+        seg_start = TimeValue(120, 24)   # 5s
+        seg_dur = TimeValue(120, 24)     # 5s  → segment [5s, 10s)
+        FCPXMLModifier._filter_children_for_segment(clip, seg_start, seg_dur)
+
+        assert len([c for c in clip if c.tag == 'keyword']) == 0
+
+    def test_keyword_completely_after_segment_removed(self):
+        """Keyword starting at or after segment end is removed."""
+        clip = self._make_clip_with_children(
+            ('keyword', {'start': '6s', 'duration': '48/24s', 'value': 'Late'}),  # 6-8s
+        )
+        seg_start = TimeValue(0, 1)      # 0s
+        seg_dur = TimeValue(120, 24)     # 5s  → segment [0s, 5s)
+        FCPXMLModifier._filter_children_for_segment(clip, seg_start, seg_dur)
+
+        assert len([c for c in clip if c.tag == 'keyword']) == 0
+
+    def test_keyword_zero_duration_inside_segment_kept(self):
+        """Zero-duration keyword at a point inside segment survives filter."""
+        clip = self._make_clip_with_children(
+            ('keyword', {'start': '3s', 'duration': '0s', 'value': 'Point'}),
+        )
+        seg_start = TimeValue(0, 1)
+        seg_dur = TimeValue(120, 24)     # 5s
+        FCPXMLModifier._filter_children_for_segment(clip, seg_start, seg_dur)
+
+        remaining = [c for c in clip if c.tag == 'keyword']
+        assert len(remaining) == 1
+
+    def test_keyword_zero_duration_at_segment_end_removed(self):
+        """Zero-duration keyword exactly at segment end boundary is removed."""
+        clip = self._make_clip_with_children(
+            ('keyword', {'start': '5s', 'duration': '0s', 'value': 'Boundary'}),
+        )
+        seg_start = TimeValue(0, 1)
+        seg_dur = TimeValue(120, 24)     # 5s → segment [0s, 5s)
+        FCPXMLModifier._filter_children_for_segment(clip, seg_start, seg_dur)
+
+        # kw_start(5s) >= seg_end(5s) → removed
+        assert len([c for c in clip if c.tag == 'keyword']) == 0
+
+    def test_non_marker_children_preserved(self):
+        """Elements other than marker/keyword/chapter-marker are untouched."""
+        clip = self._make_clip_with_children(
+            ('conform-rate', {'scaleEnabled': '1'}),
+            ('marker', {'start': '99s', 'duration': '1/24s', 'value': 'Outside'}),
+        )
+        seg_start = TimeValue(0, 1)
+        seg_dur = TimeValue(24, 24)      # 1s
+        FCPXMLModifier._filter_children_for_segment(clip, seg_start, seg_dur)
+
+        # Marker at 99s removed, but conform-rate must survive
+        assert len([c for c in clip if c.tag == 'conform-rate']) == 1
+        assert len([c for c in clip if c.tag == 'marker']) == 0
+
+    def test_keyword_partial_overlap_clamped_to_segment(self):
+        """Keyword [2s,8s) in segment [5s,10s) → clamped to [5s,8s)."""
+        clip = self._make_clip_with_children(
+            ('keyword', {'start': '2s', 'duration': '6s', 'value': 'Wide'}),
+        )
+        FCPXMLModifier._filter_children_for_segment(
+            clip, TimeValue(120, 24), TimeValue(120, 24))  # seg [5s, 10s)
+
+        kw = [c for c in clip if c.tag == 'keyword'][0]
+        assert TimeValue.from_timecode(kw.get('start')).to_seconds() == pytest.approx(5.0, abs=0.01)
+        assert TimeValue.from_timecode(kw.get('duration')).to_seconds() == pytest.approx(3.0, abs=0.01)
+
+
+# ============================================================================
+# Multi-point split with distributed children
+# ============================================================================
+
+
+MULTI_SPLIT_FCPXML = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.11">
+<resources>
+    <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+    <asset id="r2" name="A" src="file:///a.mov" start="0s" duration="100s" format="r1"/>
+</resources>
+<library><event name="E"><project name="P">
+<sequence format="r1" duration="240/24s" tcStart="0s" tcFormat="NDF">
+<spine>
+    <asset-clip ref="r2" offset="0s" name="A" start="0s" duration="240/24s" format="r1">
+        <marker start="1s" duration="1/24s" value="M1"/>
+        <marker start="4s" duration="1/24s" value="M2"/>
+        <marker start="8s" duration="1/24s" value="M3"/>
+        <keyword start="0s" duration="10s" value="FullSpan"/>
+    </asset-clip>
+</spine>
+</sequence></project></event></library></fcpxml>
+"""
+
+
+class TestMultiPointSplit:
+    """Splitting at 3+ points: marker distribution + keyword clamping."""
+
+    def test_three_way_split_markers_and_keywords(self):
+        """Each marker lands on exactly one segment; keyword spans all three."""
+        with tempfile.NamedTemporaryFile(suffix=".fcpxml", mode="w", delete=False) as f:
+            f.write(MULTI_SPLIT_FCPXML)
+            f.flush()
+            try:
+                mod = FCPXMLModifier(f.name)
+                # Split at 3s and 6s into a 10s clip → [0-3), [3-6), [6-10)
+                result = mod.split_clip("A", ["72/24s", "144/24s"])
+                assert len(result) == 3
+
+                # Markers: M1@1s→seg0, M2@4s→seg1, M3@8s→seg2
+                markers = [[c.get('value') for c in s if c.tag == 'marker'] for s in result]
+                assert markers[0] == ['M1']
+                assert markers[1] == ['M2']
+                assert markers[2] == ['M3']
+
+                # Full-span keyword appears on all segments, durations sum to 10s
+                total_kw_dur = sum(
+                    TimeValue.from_timecode(
+                        [c for c in seg if c.tag == 'keyword'][0].get('duration')
+                    ).to_seconds()
+                    for seg in result
+                )
+                assert total_kw_dur == pytest.approx(10.0, abs=0.05)
+            finally:
+                os.unlink(f.name)
+
+
+# ============================================================================
+# TimeValue division edge cases
+# ============================================================================
+
+
+class TestTimeValueDivision:
+    """Division edge cases for speed-change and time arithmetic."""
+
+    def test_negative_scalar_flips_playback_direction(self):
+        """Dividing by negative scalar produces negative denominator (valid for reverse)."""
+        tv = TimeValue(100, 30)
+        result = tv / -2
+        assert result.numerator == 100
+        assert result.denominator == -60
+        # Seconds should be negative (reverse playback)
+        assert result.to_seconds() < 0
+
+    def test_very_small_scalar_rounds_denom_to_zero_raises(self):
+        """When scalar is so small that denom * scalar rounds to 0, raise."""
+        # 24 * 0.01 = 0.24 → rounds to 0 → ZeroDivisionError
+        with pytest.raises(ZeroDivisionError, match="rounds denominator.*to zero"):
+            TimeValue(100, 24) / 0.01
+
+    def test_division_mul_roundtrip(self):
+        """(tv / k) * k ≈ tv for non-pathological scalars."""
+        tv = TimeValue(120, 24)
+        k = 3.0
+        result = (tv / k) * k
+        assert result.to_seconds() == pytest.approx(tv.to_seconds(), abs=0.01)

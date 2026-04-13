@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.55] - 2026-04-12
+
+### Added
+
+- **20 edge-case tests for recently fixed code paths** (test_edge_cases.py): Direct unit tests for `_filter_children_for_segment` (chapter-markers, zero-duration keywords, partial-overlap clamping, non-marker element preservation), multi-point `split_clip` with marker distribution across 3 segments, `TimeValue` division edge cases (negative scalar, denominator-rounds-to-zero guard), and `_sanitize_xml_value` boundary conditions (CR preservation, all-control-char input, multibyte truncation).
+
 ## [0.6.54] - 2026-04-12
 
 ### Fixed
