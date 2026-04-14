@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.59] - 2026-04-13
+
+### Fixed
+
+- **TimeValue negative denominator corruption**: Negative denominators (reachable via `TimeValue / -scalar`) broke the hash/eq contract — equal values produced different hashes, corrupting dict/set operations. Ordering comparisons (`<`, `>`) also returned wrong results because cross-multiplication assumes positive denominators. Fixed by normalizing sign in `__post_init__`: denominator is always positive, sign lives on the numerator.
+
+### Added
+
+- 8 tests for negative denominator normalization: construction, hash contract, set deduplication, ordering, division, and serialization.
+
 ## [0.6.58] - 2026-04-13
 
 ### Security

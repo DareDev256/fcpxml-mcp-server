@@ -237,6 +237,14 @@ class TimeValue:
                 f"TimeValue denominator cannot be zero (got {self.numerator}/0). "
                 "This would corrupt all downstream time calculations."
             )
+        # Normalize sign: denominator must always be positive.
+        # Cross-multiplication in __lt__/__eq__ assumes positive denominators;
+        # __hash__ assumes canonical form.  Without this, TimeValue(1, -2)
+        # compares/hashes incorrectly against TimeValue(-1, 2).
+        if self.denominator < 0:
+            # Use object.__setattr__ because dataclass may be frozen-like
+            object.__setattr__(self, 'numerator', -self.numerator)
+            object.__setattr__(self, 'denominator', -self.denominator)
 
     @classmethod
     def from_timecode(cls, tc: str, fps: float = 30.0) -> 'TimeValue':

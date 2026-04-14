@@ -713,6 +713,45 @@ class TestTimecodeEdgeCases:
         assert tv.to_seconds() == pytest.approx(tc.seconds, abs=1e-6)
 
 
+class TestTimeValueNegativeDenominator:
+    """Negative denominators must be normalized to preserve hash/eq/ordering."""
+
+    def test_negative_denom_normalized_at_construction(self):
+        tv = TimeValue(1, -2)
+        assert tv.numerator == -1
+        assert tv.denominator == 2
+
+    def test_negative_denom_both_negative(self):
+        tv = TimeValue(-3, -4)
+        assert tv.numerator == 3
+        assert tv.denominator == 4
+
+    def test_hash_contract_negative_denom(self):
+        """Equal values must produce identical hashes (Python data model)."""
+        a = TimeValue(-1, 1)
+        b = TimeValue(1, -1)
+        assert a == b
+        assert hash(a) == hash(b)
+
+    def test_set_dedup_negative_denom(self):
+        s = {TimeValue(-1, 1), TimeValue(1, -1)}
+        assert len(s) == 1
+
+    def test_lt_negative_denom(self):
+        assert TimeValue(1, -2) < TimeValue(1, 2)   # -0.5 < 0.5
+        assert not (TimeValue(1, 2) < TimeValue(1, -2))
+
+    def test_division_by_negative_normalizes(self):
+        tv = TimeValue(100, 2400) / -2.0
+        assert tv.denominator > 0
+        assert tv.to_seconds() == pytest.approx(-100 / 4800, abs=1e-9)
+
+    def test_to_fcpxml_negative_denom(self):
+        """Normalized negative should serialize cleanly."""
+        tv = TimeValue(1, -2400)
+        assert tv.to_fcpxml() == "-1/2400s"
+
+
 class TestPacingConfig:
 
     def test_pacing_ranges(self):

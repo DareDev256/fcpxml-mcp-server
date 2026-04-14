@@ -594,11 +594,12 @@ class TestTimeValueDivision:
     """Division edge cases for speed-change and time arithmetic."""
 
     def test_negative_scalar_flips_playback_direction(self):
-        """Dividing by negative scalar produces negative denominator (valid for reverse)."""
+        """Dividing by negative scalar normalizes sign onto numerator."""
         tv = TimeValue(100, 30)
         result = tv / -2
-        assert result.numerator == 100
-        assert result.denominator == -60
+        # Denominator normalized to positive; sign moves to numerator
+        assert result.numerator == -100
+        assert result.denominator == 60
         # Seconds should be negative (reverse playback)
         assert result.to_seconds() < 0
 
