@@ -752,6 +752,74 @@ class TestTimeValueNegativeDenominator:
         assert tv.to_fcpxml() == "-1/2400s"
 
 
+class TestTimeValueCrossMultiplicationEdgeCases:
+    """Verify integer-exact comparison survives edge cases that broke float-based comparison."""
+
+    def test_eq_non_timevalue_returns_false(self):
+        """__eq__ with non-TimeValue must return False, not raise."""
+        assert TimeValue(1, 1) != 1
+        assert TimeValue(1, 1) != 1.0
+        assert TimeValue(1, 1) != "1/1s"
+        assert TimeValue(0, 1) != None  # noqa: E711
+
+    def test_total_ordering_le_gt_ge(self):
+        """@total_ordering derives __le__/__gt__/__ge__ from __lt__+__eq__.
+        If the decorator were removed, these would raise TypeError."""
+        a, b = TimeValue(1, 3), TimeValue(2, 3)
+        assert a <= b
+        assert a <= TimeValue(1, 3)  # equal case
+        assert b > a
+        assert b >= a
+        assert b >= TimeValue(2, 3)  # equal case
+
+    def test_large_numerator_cross_multiply(self):
+        """Python arbitrary precision means cross-multiplication never overflows,
+        but verify the comparison is actually correct with big numbers."""
+        big = TimeValue(2**60, 1)
+        small = TimeValue(1, 2**60)
+        assert small < big
+        assert big > small
+        assert big != small
+
+    def test_hash_contract_different_denominators(self):
+        """Equivalent fractions must hash identically for dict/set correctness."""
+        a = TimeValue(100, 2400)
+        b = TimeValue(50, 1200)
+        c = TimeValue(1, 24)
+        assert a == b == c
+        assert hash(a) == hash(b) == hash(c)
+        assert len({a, b, c}) == 1
+
+    def test_zero_numerator_negative_denom(self):
+        """Zero with negative denominator normalizes cleanly."""
+        tv = TimeValue(0, -1)
+        assert tv.numerator == 0
+        assert tv.denominator == 1
+        assert tv == TimeValue(0, 1)
+        assert hash(tv) == hash(TimeValue(0, 1))
+
+    def test_comparison_transitivity(self):
+        """If a < b and b < c then a < c — cross-multiplication must be transitive."""
+        a = TimeValue(1, 7)
+        b = TimeValue(1, 5)
+        c = TimeValue(1, 3)
+        assert a < b < c
+        assert a < c  # transitive
+
+    def test_sorted_rational_sequence(self):
+        """Sort a sequence of TimeValues and verify order matches float values."""
+        vals = [TimeValue(n, 24) for n in [72, 12, 48, 24, 36]]
+        sorted_vals = sorted(vals)
+        sorted_seconds = [v.to_seconds() for v in sorted_vals]
+        assert sorted_seconds == sorted(sorted_seconds)
+
+    def test_simplify_preserves_positive_denom(self):
+        """After simplify(), denominator must remain positive (regression guard)."""
+        tv = TimeValue(-600, 2400).simplify()
+        assert tv.denominator > 0
+        assert tv.to_seconds() == pytest.approx(-0.25, abs=1e-9)
+
+
 class TestPacingConfig:
 
     def test_pacing_ranges(self):

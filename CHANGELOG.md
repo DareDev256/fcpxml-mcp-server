@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.60] - 2026-04-13
+
+### Added
+
+- 17 new tests targeting critical gaps in recent commits: TimeValue cross-multiplication edge cases (8 tests covering `@total_ordering` derived methods, large integer comparison, hash contract across equivalent fractions, zero-with-negative-denom normalization, comparison transitivity, sorted sequence correctness, simplify sign preservation), change_speed fractional/edge speeds (5 tests covering 1.5x/0.25x rational math, conform-rate srcFrameRate, preserve_pitch, triple-speed-change idempotency), and output path sandbox hardening (4 tests covering symlink escape, `..` normalization, direct-in-anchor, null byte with anchor_dir).
+
 ## [0.6.59] - 2026-04-13
 
 ### Fixed

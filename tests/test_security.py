@@ -660,6 +660,39 @@ class TestOutputPathValidation:
         result = _validate_output_path(str(tmp_path / "anywhere.fcpxml"))
         assert "anywhere.fcpxml" in result
 
+    def test_symlink_escape_blocked(self, tmp_path):
+        """Symlink pointing outside anchor_dir is caught after resolve()."""
+        safe = tmp_path / "safe"
+        safe.mkdir()
+        target = tmp_path / "secret.fcpxml"
+        link = safe / "link.fcpxml"
+        link.symlink_to(target)
+        with pytest.raises(ValueError, match="escapes allowed directory"):
+            _validate_output_path(str(link), anchor_dir=str(safe))
+
+    def test_double_dot_normalization(self, tmp_path):
+        """Path with .. components resolved before anchor check."""
+        safe = tmp_path / "a" / "b"
+        safe.mkdir(parents=True)
+        # a/b/../b/out.fcpxml resolves to a/b/out.fcpxml — inside anchor
+        dotted = str(safe / ".." / "b" / "out.fcpxml")
+        result = _validate_output_path(dotted, anchor_dir=str(safe))
+        assert "out.fcpxml" in result
+
+    def test_anchor_dir_itself_is_valid_parent(self, tmp_path):
+        """File directly in anchor_dir (not nested) should be accepted."""
+        result = _validate_output_path(
+            str(tmp_path / "direct.fcpxml"), anchor_dir=str(tmp_path)
+        )
+        assert "direct.fcpxml" in result
+
+    def test_null_byte_in_anchor_dir_propagates(self, tmp_path):
+        """Null byte in the output path is caught even with anchor_dir set."""
+        with pytest.raises(ValueError, match="null byte"):
+            _validate_output_path(
+                "/tmp/ok\x00.fcpxml", anchor_dir=str(tmp_path)
+            )
+
 
 # ============================================================================
 # Directory validation (_validate_directory)

@@ -675,6 +675,66 @@ def test_change_speed_twice_no_duplicate_elements(temp_fcpxml):
 
 
 # ============================================================
+# change_speed — Fractional & Edge-Case Speeds
+# ============================================================
+
+def test_change_speed_fractional_1_5x(temp_fcpxml):
+    """1.5x speed (cinema ramp) produces valid rational timeMap values."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    orig_dur = modifier._parse_time(
+        modifier.clips['Broll_Studio'].get('duration')
+    ).to_seconds()
+    clip = modifier.change_speed(clip_id='Broll_Studio', speed=1.5)
+    new_dur = modifier._parse_time(clip.get('duration')).to_seconds()
+    # 1.5x → duration shrinks to ~2/3
+    assert new_dur == pytest.approx(orig_dur / 1.5, abs=0.05)
+    # timeMap end keyframe must use rational format, never floats
+    timemap = clip.find('timeMap')
+    tp2 = list(timemap)[1]
+    assert 's' in tp2.get('time')
+    assert '.' not in tp2.get('time'), "timeMap must use rational time, not floats"
+
+
+def test_change_speed_quarter(temp_fcpxml):
+    """0.25x extreme slow-mo: duration 4x, timeMap keyframes are rational."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    orig_dur = modifier._parse_time(
+        modifier.clips['Broll_Studio'].get('duration')
+    ).to_seconds()
+    clip = modifier.change_speed(clip_id='Broll_Studio', speed=0.25)
+    new_dur = modifier._parse_time(clip.get('duration')).to_seconds()
+    assert new_dur == pytest.approx(orig_dur * 4.0, abs=0.2)
+
+
+def test_change_speed_conform_rate_has_src_framerate(temp_fcpxml):
+    """conform-rate element must carry srcFrameRate matching timeline fps."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    clip = modifier.change_speed(clip_id='Broll_Studio', speed=2.0)
+    conform = clip.find('conform-rate')
+    assert conform is not None
+    assert conform.get('srcFrameRate') == str(int(modifier.fps))
+
+
+def test_change_speed_preserve_pitch_default(temp_fcpxml):
+    """preserve_pitch=True is default — conform-rate scaleEnabled should be set."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    clip = modifier.change_speed(clip_id='Broll_Studio', speed=2.0, preserve_pitch=True)
+    conform = clip.find('conform-rate')
+    assert conform.get('scaleEnabled') == '1'
+
+
+def test_change_speed_three_times_still_single_elements(temp_fcpxml):
+    """Triple speed change must still have exactly 1 timeMap + 1 conform-rate."""
+    modifier = FCPXMLModifier(temp_fcpxml)
+    modifier.change_speed(clip_id='Broll_Studio', speed=2.0)
+    modifier.change_speed(clip_id='Broll_Studio', speed=0.5)
+    modifier.change_speed(clip_id='Broll_Studio', speed=3.0)
+    clip = modifier.clips['Broll_Studio']
+    assert len(clip.findall('timeMap')) == 1
+    assert len(clip.findall('conform-rate')) == 1
+
+
+# ============================================================
 # DTD Element Ordering Tests
 # ============================================================
 
