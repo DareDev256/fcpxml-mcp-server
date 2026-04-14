@@ -567,14 +567,14 @@ class TestHandleValidateTimeline:
 
 class TestHandleImportTranscriptMarkers:
     async def test_inline_transcript(self):
+        import shutil
         with tempfile.TemporaryDirectory() as d:
+            # Copy source into temp dir so output stays co-located (sandbox).
+            src_copy = str(Path(d, "sample.fcpxml"))
+            shutil.copy2(SAMPLE, src_copy)
             out = str(Path(d, "out.fcpxml"))
-            # Clip index deduplicates by name (last wins).  Accessible clips:
-            #   Broll_Studio: [9.25s, 14.25s)
-            #   Interview_A:  [46.75s, 53.75s)
-            # Use timecodes in seconds that fall within these ranges.
             result = await handle_import_transcript_markers({
-                "filepath": SAMPLE,
+                "filepath": src_copy,
                 "output_path": out,
                 "transcript": "0:10 Marker A\n0:47 Marker B",
             })

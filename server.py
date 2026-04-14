@@ -345,8 +345,14 @@ def _resolve_io_paths(
         ``(filepath, output_path)`` tuple with both paths validated.
     """
     filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+    # Anchor write operations to the input file's directory so LLM-generated
+    # tool calls cannot write to arbitrary filesystem locations (e.g.
+    # /etc/cron.d/backdoor).  When the explicit sandbox is off, the anchor
+    # still prevents writes outside the source directory tree.
+    anchor = str(Path(filepath).resolve().parent)
     output_path = _validate_output_path(
-        arguments.get("output_path") or generate_output_path(filepath, suffix)
+        arguments.get("output_path") or generate_output_path(filepath, suffix),
+        anchor_dir=anchor,
     )
     return filepath, output_path
 
@@ -1941,14 +1947,18 @@ async def handle_add_transition(arguments: dict) -> Sequence[TextContent]:
 
 
 async def handle_change_speed(arguments: dict) -> Sequence[TextContent]:
+    speed = arguments["speed"]
+    if not isinstance(speed, (int, float)) or speed <= 0 or speed > 100:
+        raise ValueError(
+            f"Speed must be a positive number between 0 (exclusive) and 100, got {speed!r}"
+        )
     filepath, output_path, modifier = _setup_modifier(arguments)
     modifier.change_speed(
         clip_id=arguments["clip_id"],
-        speed=arguments["speed"],
+        speed=speed,
         preserve_pitch=arguments.get("preserve_pitch", True),
     )
     modifier.save(output_path)
-    speed = arguments["speed"]
     speed_desc = f"{speed}x" if speed >= 1 else f"{int(1/speed)}x slow motion"
     return _text_result(f"Changed speed of '{arguments['clip_id']}' to {speed_desc}\n\nSaved to: {output_path}")
 

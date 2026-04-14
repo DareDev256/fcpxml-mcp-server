@@ -1027,3 +1027,108 @@ class TestExportSanitization:
         assert "\x00" not in content
         assert "\x01" not in content
         assert "BadNameHere" in content
+
+
+# ============================================================================
+# OUTPUT PATH SANDBOX ENFORCEMENT (v0.6.58)
+# ============================================================================
+
+class TestOutputPathSandbox:
+    """Verify _resolve_io_paths anchors writes to the input file's directory."""
+
+    def test_output_anchored_to_source_dir(self, tmp_path):
+        """Default output stays in the same directory as the input file."""
+        sys.path.insert(0, ".")
+        from server import _resolve_io_paths
+
+        src = tmp_path / "project.fcpxml"
+        src.write_text('<?xml version="1.0"?><fcpxml version="1.11"/>')
+        _, out = _resolve_io_paths({"filepath": str(src)})
+        assert str(tmp_path) in out
+
+    def test_output_escape_blocked(self, tmp_path):
+        """Explicit output_path outside source dir is rejected."""
+        from server import _resolve_io_paths
+
+        src = tmp_path / "project.fcpxml"
+        src.write_text('<?xml version="1.0"?><fcpxml version="1.11"/>')
+        with pytest.raises(ValueError, match="escapes allowed directory"):
+            _resolve_io_paths({
+                "filepath": str(src),
+                "output_path": "/tmp/evil_output.fcpxml",
+            })
+
+
+# ============================================================================
+# SPEED PARAMETER VALIDATION (v0.6.58)
+# ============================================================================
+
+class TestSpeedValidation:
+    """Verify handle_change_speed rejects zero, negative, and extreme speeds."""
+
+    @pytest.mark.asyncio
+    async def test_zero_speed_rejected(self):
+        """speed=0 causes division by zero — must be caught before math."""
+        sys.path.insert(0, ".")
+        from server import handle_change_speed
+
+        with pytest.raises(ValueError, match="positive number"):
+            await handle_change_speed({
+                "filepath": "/nonexistent.fcpxml",
+                "clip_id": "c1",
+                "speed": 0,
+            })
+
+    @pytest.mark.asyncio
+    async def test_negative_speed_rejected(self):
+        from server import handle_change_speed
+
+        with pytest.raises(ValueError, match="positive number"):
+            await handle_change_speed({
+                "filepath": "/nonexistent.fcpxml",
+                "clip_id": "c1",
+                "speed": -2.0,
+            })
+
+    @pytest.mark.asyncio
+    async def test_extreme_speed_rejected(self):
+        from server import handle_change_speed
+
+        with pytest.raises(ValueError, match="positive number"):
+            await handle_change_speed({
+                "filepath": "/nonexistent.fcpxml",
+                "clip_id": "c1",
+                "speed": 999,
+            })
+
+
+# ============================================================================
+# FFMPEG PARAMETER VALIDATION (v0.6.58)
+# ============================================================================
+
+class TestEnsureVideoAssetValidation:
+    """Verify _ensure_video_asset rejects out-of-range numeric parameters."""
+
+    def test_negative_duration_rejected(self):
+        from fcpxml.writer import _ensure_video_asset
+
+        with pytest.raises(ValueError, match="duration"):
+            _ensure_video_asset("/fake.png", duration=-5)
+
+    def test_zero_fps_rejected(self):
+        from fcpxml.writer import _ensure_video_asset
+
+        with pytest.raises(ValueError, match="fps"):
+            _ensure_video_asset("/fake.png", fps=0)
+
+    def test_odd_width_rejected(self):
+        from fcpxml.writer import _ensure_video_asset
+
+        with pytest.raises(ValueError, match="width"):
+            _ensure_video_asset("/fake.png", width=1921)
+
+    def test_huge_height_rejected(self):
+        from fcpxml.writer import _ensure_video_asset
+
+        with pytest.raises(ValueError, match="height"):
+            _ensure_video_asset("/fake.png", height=9999)

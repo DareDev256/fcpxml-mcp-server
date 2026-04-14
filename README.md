@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-830_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-852_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~8.9k_LOC-informational.svg)](#architecture)
 
@@ -375,7 +375,8 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 |-------|------------|
 | **File I/O** | Path traversal blocked, null bytes rejected, symlinks resolved, 100 MB size limit |
 | **Output sandbox** | All generation, write, export, beat sync, subtitle, and reformat handlers enforce `_validate_output_path(anchor_dir=...)` — restricts writes to descendants of the source file's directory, blocking LLM-generated path escapes |
-| **Subprocess bounds** | `_validate_subprocess_params()` bounds-checks duration (0 < d ≤ 300s), fps (1–120), width/height (even, ≤ 7680) before `subprocess.run()` — blocks `inf`/`NaN`, negative values, odd dimensions, string injection, and oversized resolutions that could hang or exhaust ffmpeg |
+| **Subprocess bounds** | `_ensure_video_asset()` bounds-checks duration (0 < d ≤ 3600s), fps (1–240), width/height (even, ≤ 7680×4320) before `subprocess.run()` — blocks `inf`/`NaN`, negative values, odd dimensions, string injection, and oversized resolutions that could hang or exhaust ffmpeg |
+| **Speed validation** | `handle_change_speed` validates speed is positive and ≤100 before any math — prevents ZeroDivisionError crash and nonsensical results |
 | **Directory listing** | Confined to `FCP_PROJECTS_DIR` when set, 10K file cap on `rglob`, symlink files skipped during discovery — prevents workspace enumeration and traversal DoS |
 | **XML parsing** | `defusedxml` with explicit `forbid_entities/external=True` blocks XXE, billion laughs, entity expansion, remote DTD attacks at all 4 entry points (parser, writer, exporter, rough cut) — minidom pretty-print path also hardened via `defusedxml.minidom`. Ruff `S314`/`S320` rules enforce safe parsing in CI |
 | **JSON depth limit** | Iterative BFS depth checker rejects payloads nested beyond 50 levels — immune to RecursionError even at ~1000 nesting |
@@ -388,7 +389,7 @@ Every tool handler is hardened against adversarial input — critical for MCP se
 | **Output suffixes** | Path separators and special characters stripped — no traversal via suffix injection |
 | **Marker types** | `completed` attribute strict-matched (`'0'`/`'1'` only) — rejects `"true"`, `"1 OR 1=1"`, whitespace-padded values |
 
-121 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, minidom hardening, JSON depth limits, role sanitization, ffmpeg parameter bounds, symlink filtering, file count caps, and write-handler sandbox enforcement. Ruff `S` (bandit) rules enforced in CI — `S314`/`S320` block unsafe XML parsing, `S105` catches hardcoded passwords, `S108` flags insecure temp paths. Security events (null bytes, sandbox escapes, unhandled exceptions) are logged via Python `logging` for audit trails.
+132 security-specific tests across `test_security.py` covering XXE, path traversal, sandbox boundaries, output path anchoring, input validation, subprocess bounds, minidom hardening, JSON depth limits, role sanitization, ffmpeg parameter bounds, symlink filtering, file count caps, and write-handler sandbox enforcement. Ruff `S` (bandit) rules enforced in CI — `S314`/`S320` block unsafe XML parsing, `S105` catches hardcoded passwords, `S108` flags insecure temp paths. Security events (null bytes, sandbox escapes, unhandled exceptions) are logged via Python `logging` for audit trails.
 
 ---
 

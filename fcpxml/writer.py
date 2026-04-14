@@ -278,6 +278,16 @@ def _ensure_video_asset(
     Raises:
         FileNotFoundError: If ffmpeg is not installed.
     """
+    # Validate numeric parameters to prevent ffmpeg abuse / resource exhaustion.
+    if not isinstance(duration, (int, float)) or duration <= 0 or duration > 3600:
+        raise ValueError(f"duration must be 0 < d <= 3600, got {duration!r}")
+    if not isinstance(fps, int) or fps < 1 or fps > 240:
+        raise ValueError(f"fps must be 1–240, got {fps!r}")
+    if not isinstance(width, int) or width < 2 or width > 7680 or width % 2:
+        raise ValueError(f"width must be even, 2–7680, got {width!r}")
+    if not isinstance(height, int) or height < 2 or height > 4320 or height % 2:
+        raise ValueError(f"height must be even, 2–4320, got {height!r}")
+
     path = Path(src_path)
     if path.suffix.lower() not in _STILL_IMAGE_EXTENSIONS:
         return src_path

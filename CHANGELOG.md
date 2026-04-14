@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.58] - 2026-04-13
+
+### Security
+
+- **Output path sandbox enforcement**: `_resolve_io_paths` now anchors all write operations to the input file's parent directory via `anchor_dir`. Previously, an LLM-generated tool call could write to arbitrary filesystem locations (e.g. `/etc/cron.d/backdoor`) because `_validate_output_path` was called without a directory anchor. Closes a real path traversal vector on write operations.
+- **Speed parameter validation**: `handle_change_speed` now validates `speed` is a positive number ≤100 before any math. Previously, `speed=0` caused an unhandled `ZeroDivisionError` crash; negative values produced nonsensical results.
+- **ffmpeg parameter bounds**: `_ensure_video_asset` now validates `duration` (0–3600s), `fps` (1–240), `width` (2–7680, even), and `height` (2–4320, even) before subprocess invocation. Prevents resource exhaustion or ffmpeg abuse via extreme values.
+
+### Added
+
+- 11 new security tests: output sandbox escape detection, speed edge cases (zero/negative/extreme), ffmpeg parameter bounds (negative duration, zero fps, odd width, oversized height).
+
 ## [0.6.57] - 2026-04-13
 
 ### Changed
