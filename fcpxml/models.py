@@ -5,11 +5,12 @@ Provides a clean Python interface for working with Final Cut Pro
 timelines, clips, markers, and other elements.
 """
 
+import operator
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
 from math import gcd
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # ============================================================================
 # ENUMS
@@ -336,16 +337,10 @@ class TimeValue:
 
     def to_timecode(self, fps: float = 30.0) -> str:
         """Convert to HH:MM:SS:FF timecode string."""
-        total_seconds = self.to_seconds()
-        total_frames = int(round(total_seconds * fps))
-
-        frames = int(total_frames % fps)
-        total_secs = total_frames // int(fps)
-        secs = total_secs % 60
-        total_mins = total_secs // 60
-        mins = total_mins % 60
-        hours = total_mins // 60
-
+        total_frames = int(round(self.to_seconds() * fps))
+        total_secs, frames = divmod(total_frames, int(fps))
+        total_mins, secs = divmod(total_secs, 60)
+        hours, mins = divmod(total_mins, 60)
         return f"{hours:02d}:{mins:02d}:{secs:02d}:{frames:02d}"
 
     def to_frames(self, fps: float = 30.0) -> int:
@@ -367,25 +362,24 @@ class TimeValue:
         """LCM of two denominators for cross-timebase arithmetic."""
         return d1 // gcd(d1, d2) * d2
 
-    def __add__(self, other: 'TimeValue') -> 'TimeValue':
+    def _binop(self, other: 'TimeValue', op: Callable[[int, int], int]) -> 'TimeValue':
+        """Shared logic for add/sub: same-denom fast path, then LCM alignment."""
         if self.denominator == other.denominator:
-            return TimeValue(self.numerator + other.numerator, self.denominator)
-        new_denom = TimeValue._lcm_denom(self.denominator, other.denominator)
+            return TimeValue(op(self.numerator, other.numerator), self.denominator)
+        lcd = TimeValue._lcm_denom(self.denominator, other.denominator)
         return TimeValue(
-            self.numerator * (new_denom // self.denominator)
-            + other.numerator * (new_denom // other.denominator),
-            new_denom,
+            op(
+                self.numerator * (lcd // self.denominator),
+                other.numerator * (lcd // other.denominator),
+            ),
+            lcd,
         )
 
+    def __add__(self, other: 'TimeValue') -> 'TimeValue':
+        return self._binop(other, operator.add)
+
     def __sub__(self, other: 'TimeValue') -> 'TimeValue':
-        if self.denominator == other.denominator:
-            return TimeValue(self.numerator - other.numerator, self.denominator)
-        new_denom = TimeValue._lcm_denom(self.denominator, other.denominator)
-        return TimeValue(
-            self.numerator * (new_denom // self.denominator)
-            - other.numerator * (new_denom // other.denominator),
-            new_denom,
-        )
+        return self._binop(other, operator.sub)
 
     def __mul__(self, scalar: float) -> 'TimeValue':
         new_num = round(self.numerator * scalar)
@@ -413,9 +407,10 @@ class TimeValue:
         return self.numerator * other.denominator == other.numerator * self.denominator
 
     def __hash__(self) -> int:
-        # Reduce to lowest terms so equal values hash identically
-        g = gcd(abs(self.numerator), self.denominator) if self.denominator else 1
-        return hash((self.numerator // g, self.denominator // g))
+        # Delegate to simplify() — single source of truth for canonical form.
+        # __post_init__ guarantees denominator > 0, so no zero guard needed.
+        s = self.simplify()
+        return hash((s.numerator, s.denominator))
 
     def snap_to_frame(self, fps: float) -> 'TimeValue':
         """Round this time value to the nearest frame boundary at the given fps.
@@ -429,7 +424,7 @@ class TimeValue:
         Returns:
             New TimeValue snapped to the nearest frame in 2400-tick timebase.
         """
-        fps_int = int(fps) if fps is not None else 24
+        fps_int = int(fps)
         if fps_int <= 0:
             raise ValueError(f"fps must be positive, got {fps}")
         ticks_per_frame = 2400 // fps_int

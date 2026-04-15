@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.62] - 2026-04-14
+
+### Changed
+
+- **TimeValue arithmetic**: Extracted `_binop()` helper from `__add__`/`__sub__`, eliminating 10 lines of duplicated LCM-alignment logic. Both operators now delegate to a single code path with `operator.add`/`operator.sub`.
+- **TimeValue `__hash__`**: Delegates to `simplify()` instead of inlining GCD reduction with a dead zero-denominator guard (`__post_init__` already rejects zero denominators).
+- **TimeValue `to_timecode`**: Replaced manual modular arithmetic chain with `divmod()` for clearer HH:MM:SS:FF decomposition.
+- **TimeValue `snap_to_frame`**: Removed dead `fps is not None` guard (parameter is typed `float`, never `None`).
+
 ## [0.6.61] - 2026-04-14
 
 ### Added
