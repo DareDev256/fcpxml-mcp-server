@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.61] - 2026-04-14
+
+### Added
+
+- 33 new tests for FCPXML validation infrastructure (`test_validation.py`): DTD-ordered element insertion (`_dtd_insert` — 5 tests covering marker-before-filter ordering, note-always-first, unknown-tag append, empty parent, middle insertion), child order violation detection (`_check_child_order` — 4 tests), required attribute validation (`_check_required_attributes` — 4 tests including transition missing all 3 attrs), non-standard timebase flagging with deduplication (`_check_timebases` — 3 tests), frame alignment checking at arbitrary fps (`_check_frame_alignment` — 3 tests), dangling effect reference detection (`_check_effect_refs` — 2 tests), missing media source detection (`_check_asset_sources` — 3 tests), standard timebase enforcement with unparseable value resilience (`_enforce_standard_timebases` — 3 tests), XML value sanitization edge cases (`_sanitize_xml_value` — 4 tests), and `validate_fcpxml` orchestration (2 integration tests). Total: 876 → 909 tests across 18 files.
+
 ## [0.6.60] - 2026-04-13
 
 ### Added
