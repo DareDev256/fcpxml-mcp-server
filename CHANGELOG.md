@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.63] - 2026-04-14
+
+### Fixed
+
+- **MontageConfig CONSTANT pacing**: The CONSTANT pacing curve returned its computed duration directly, bypassing the `min_duration`/`max_duration` clamp that all other curves (ACCELERATING, DECELERATING, PYRAMID) correctly applied. A montage configured with `min_duration=1.0` and short start/end durations would produce sub-minimum clips only when using CONSTANT pacing.
+- **Unnecessary self-imports**: Removed `from . import models` inside `FlashFrame.is_critical` and `MontageConfig.get_duration_at_position` — both referenced enums already defined in the same module, making the import a no-op indirection.
+
+### Added
+
+- 3 new tests for CONSTANT pacing clamping: min clamp, max clamp, and within-bounds passthrough (`test_targeted_gaps.py`). Total: 909 → 912 tests.
+
 ## [0.6.62] - 2026-04-14
 
 ### Changed

@@ -787,8 +787,7 @@ class FlashFrame:
     @property
     def is_critical(self) -> bool:
         """Check if this is a critical flash frame."""
-        from . import models  # avoid circular import
-        return self.severity == models.FlashFrameSeverity.CRITICAL
+        return self.severity == FlashFrameSeverity.CRITICAL
 
 
 @dataclass
@@ -905,20 +904,18 @@ class MontageConfig:
         Returns:
             Target duration in seconds for a clip at this position
         """
-        from . import models
+        if self.pacing_curve == PacingCurve.CONSTANT:
+            duration = (self.start_duration + self.end_duration) / 2
 
-        if self.pacing_curve == models.PacingCurve.CONSTANT:
-            return (self.start_duration + self.end_duration) / 2
-
-        elif self.pacing_curve == models.PacingCurve.ACCELERATING:
+        elif self.pacing_curve == PacingCurve.ACCELERATING:
             # Linear interpolation from start to end duration
             duration = self.start_duration + (self.end_duration - self.start_duration) * position
 
-        elif self.pacing_curve == models.PacingCurve.DECELERATING:
+        elif self.pacing_curve == PacingCurve.DECELERATING:
             # Reverse: start fast, end slow
             duration = self.end_duration + (self.start_duration - self.end_duration) * position
 
-        elif self.pacing_curve == models.PacingCurve.PYRAMID:
+        elif self.pacing_curve == PacingCurve.PYRAMID:
             # Slow → fast → slow (parabolic curve)
             if position < 0.5:
                 # First half: slow to fast

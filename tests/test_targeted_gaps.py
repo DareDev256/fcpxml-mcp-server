@@ -291,6 +291,47 @@ class TestMontageConfigClamping:
         # At position 0.0, accelerating = start = 8.0, clamped to 5.0
         assert cfg.get_duration_at_position(0.0) == 5.0
 
+    def test_constant_clamps_to_min_duration(self):
+        """CONSTANT pacing must respect min_duration (was bypassing clamp)."""
+        cfg = MontageConfig(
+            target_duration=60,
+            pacing_curve=PacingCurve.CONSTANT,
+            start_duration=0.1,
+            end_duration=0.1,
+            min_duration=0.5,
+            max_duration=5.0,
+        )
+        # Average = 0.1, but must be clamped up to min_duration = 0.5
+        for p in [0.0, 0.5, 1.0]:
+            assert cfg.get_duration_at_position(p) == 0.5
+
+    def test_constant_clamps_to_max_duration(self):
+        """CONSTANT pacing must respect max_duration (was bypassing clamp)."""
+        cfg = MontageConfig(
+            target_duration=60,
+            pacing_curve=PacingCurve.CONSTANT,
+            start_duration=10.0,
+            end_duration=10.0,
+            min_duration=0.5,
+            max_duration=5.0,
+        )
+        # Average = 10.0, but must be clamped down to max_duration = 5.0
+        for p in [0.0, 0.5, 1.0]:
+            assert cfg.get_duration_at_position(p) == 5.0
+
+    def test_constant_within_bounds_unchanged(self):
+        """CONSTANT pacing returns unclamped average when within bounds."""
+        cfg = MontageConfig(
+            target_duration=60,
+            pacing_curve=PacingCurve.CONSTANT,
+            start_duration=3.0,
+            end_duration=1.0,
+            min_duration=0.5,
+            max_duration=5.0,
+        )
+        # Average = 2.0, within [0.5, 5.0] — no clamp needed
+        assert cfg.get_duration_at_position(0.5) == 2.0
+
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
