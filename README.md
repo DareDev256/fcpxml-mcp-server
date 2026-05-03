@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/daredev256-fcpxml-mcp-server-badge.png)](https://mseep.ai/app/daredev256-fcpxml-mcp-server)
+
 # FCPXML MCP
 
 **The bridge between Final Cut Pro and AI. 53 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
