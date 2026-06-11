@@ -100,8 +100,20 @@ def _validate_filepath(filepath: str, allowed_extensions: tuple[str, ...] | None
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
-    if not resolved.is_file():
+    # .fcpxmld bundles are directories (a package wrapping Info.fcpxml plus
+    # sidecar data files for object tracking / Cinematic mode).  The size
+    # check applies to the inner Info.fcpxml, which is what gets parsed.
+    if resolved.is_dir():
+        if resolved.suffix.lower() != '.fcpxmld':
+            raise ValueError(f"Not a regular file: {filepath}")
+        inner = resolved / 'Info.fcpxml'
+        if not inner.is_file():
+            raise ValueError(f"Invalid bundle (no Info.fcpxml): {filepath}")
+        size_target = inner
+    elif not resolved.is_file():
         raise ValueError(f"Not a regular file: {filepath}")
+    else:
+        size_target = resolved
 
     if allowed_extensions and resolved.suffix.lower() not in allowed_extensions:
         raise ValueError(
@@ -109,8 +121,8 @@ def _validate_filepath(filepath: str, allowed_extensions: tuple[str, ...] | None
             f"Allowed: {', '.join(allowed_extensions)}"
         )
 
-    if resolved.stat().st_size > MAX_FILE_SIZE:
-        size_mb = resolved.stat().st_size / (1024 * 1024)
+    if size_target.stat().st_size > MAX_FILE_SIZE:
+        size_mb = size_target.stat().st_size / (1024 * 1024)
         raise ValueError(f"File too large ({size_mb:.1f} MB). Maximum: {MAX_FILE_SIZE // (1024 * 1024)} MB")
 
     return str(resolved)
@@ -1487,6 +1499,23 @@ async def list_tools() -> list[Tool]:
                     "fps": {"type": "number", "description": "Frame rate", "default": 24},
                 },
                 "required": ["template_name", "clips", "output_path"]
+            }
+        ),
+
+        # ===== v0.8.0 TOOLS =====
+        Tool(
+            name="relink_media",
+            description="Bulk-rewrite media source paths (asset/media-rep src URLs) to relink moved or renamed media folders without opening FCP. Prefix-based: find='/Volumes/OldDrive/Media' replace='/Volumes/NewDrive/Media'. Use dry_run to preview.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file or .fcpxmld bundle"},
+                    "find": {"type": "string", "description": "Old path prefix to match (plain path or file:// URL)"},
+                    "replace": {"type": "string", "description": "New path prefix to substitute"},
+                    "dry_run": {"type": "boolean", "description": "Preview changes without writing", "default": False},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _relinked suffix)"},
+                },
+                "required": ["filepath", "find", "replace"]
             }
         ),
     ]
@@ -2935,6 +2964,50 @@ async def handle_apply_template(arguments: dict) -> Sequence[TextContent]:
     ))
 
 
+async def handle_relink_media(arguments: dict) -> Sequence[TextContent]:
+    dry_run = arguments.get("dry_run", False)
+    if dry_run:
+        filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+        modifier = FCPXMLModifier(filepath)
+        result = modifier.relink_media(
+            arguments["find"], arguments["replace"], dry_run=True
+        )
+        footer = "Dry run — no file written."
+    else:
+        filepath, output_path, modifier = _setup_modifier(arguments, "_relinked")
+        result = modifier.relink_media(arguments["find"], arguments["replace"])
+        saved = modifier.save(output_path)
+        footer = f"Saved to: {saved}"
+
+    if not result["relinked"]:
+        return _text_result(
+            f"No media paths matched prefix '{arguments['find']}' "
+            f"({result['total_assets']} assets scanned). Nothing to relink."
+        )
+
+    lines = [
+        f"{'Would relink' if dry_run else 'Relinked'} "
+        f"{result['relinked']} media reference(s) "
+        f"across {result['total_assets']} asset(s):",
+        "",
+    ]
+    missing = 0
+    for change in result["changes"]:
+        mark = "✓" if change["target_exists"] else "⚠ target missing"
+        if not change["target_exists"]:
+            missing += 1
+        lines.append(f"  {change['asset']}: {change['new']}  [{mark}]")
+    if missing:
+        lines.append("")
+        lines.append(
+            f"⚠ {missing} new path(s) do not exist on this machine — "
+            f"FCP will show those clips as missing until the media is present."
+        )
+    lines.append("")
+    lines.append(footer)
+    return _text_result("\n".join(lines))
+
+
 # ============================================================================
 # TOOL DISPATCH
 # ============================================================================
@@ -3007,6 +3080,8 @@ TOOL_HANDLERS = {
     "flatten_compound_clip": handle_flatten_compound_clip,
     "list_templates": handle_list_templates,
     "apply_template": handle_apply_template,
+    # v0.8.0
+    "relink_media": handle_relink_media,
 }
 
 

@@ -1,15 +1,15 @@
 # FCPXML MCP
 
-**The bridge between Final Cut Pro and AI. 53 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
+**The bridge between Final Cut Pro and AI. 54 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
 
 [![CI](https://github.com/DareDev256/fcpxml-mcp-server/actions/workflows/test.yml/badge.svg)](https://github.com/DareDev256/fcpxml-mcp-server/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
-[![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4+-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-912_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-17-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~8.9k_LOC-informational.svg)](#architecture)
+[![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4%E2%80%9312.x-purple.svg)](https://www.apple.com/final-cut-pro/)
+[![Tests](https://img.shields.io/badge/tests-942_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-21-blue.svg)](#testing)
+[![Source](https://img.shields.io/badge/source-~9.4k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -229,7 +229,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ---
 
-## All 53 Tools
+## All 54 Tools
 
 | Category | Tools | What It Does |
 |----------|------:|--------------|
@@ -250,7 +250,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | **Compound** | 2 | Create/flatten compound clips |
 | **Templates** | 2 | Pre-built timeline structures (intro/outro, lower thirds, music video) |
 | **Effects** | 1 | List FCP transition effects with UUIDs |
-| | **53** | |
+| **Media** | 1 | Bulk relink moved/renamed media (rewrite `media-rep` src paths) |
+| | **54** | |
 
 <details>
 <summary><strong>Full tool reference (click to expand)</strong></summary>
@@ -291,6 +292,9 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 #### v0.6.0 — Audio, Compound, Templates, Effects — 6 tools
 `list_effects` · `add_audio` · `create_compound_clip` · `flatten_compound_clip` · `list_templates` · `apply_template`
 
+#### v0.8.0 — Media — 1 tool
+`relink_media` (bulk-rewrite `asset`/`media-rep` src paths with `dry_run` preview — relink a moved drive without opening FCP)
+
 </details>
 
 ---
@@ -300,7 +304,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `FCP_PROJECTS_DIR` | No | `~/Movies` | Root directory for FCPXML file discovery via `list_projects` |
-| `OPENAI_BASE_URL` | No | — | Route LLM calls through any OpenAI-compatible proxy (LiteLLM, OpenRouter, Ollama, vLLM) |
+| `FCPXML_DTD_DIR` | No | FCP app bundle | Directory of Apple `FCPXMLv*_*.dtd` files for DTD validation (auto-detected from the installed Final Cut Pro) |
 
 ---
 
@@ -308,8 +312,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 | Component | Supported Versions |
 |-----------|--------------------|
-| FCPXML format | v1.8 – v1.11 |
-| Final Cut Pro | 10.4+ |
+| FCPXML format | reads v1.8 – v1.14 · writes v1.13 (modified files keep their source version) |
+| Final Cut Pro | 10.4+ through 12.x · flat `.fcpxml` and `.fcpxmld` bundles (sidecars preserved) |
 | Python | 3.10, 3.11, 3.12 |
 | MCP protocol | 1.0 |
 | **Export targets** | |
@@ -321,15 +325,14 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ## Architecture
 
 ```
-fcp-mcp-server/           ~8.9k lines Python
-├── server.py              MCP entry point — 53 tools, 5 prompts, resource discovery
+fcp-mcp-server/           ~9.4k lines Python
+├── server.py              MCP entry point — 54 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
 │                          _raw_markers_to_batch()
 │                          _detect_flash_frames() / _detect_gaps() / _detect_duplicate_groups()
 │                          consolidate path validation, QC detection, rendering, handler boilerplate
 ├── fcpxml/
-│   ├── README.md          Developer guide — TimeValue, clip hierarchy, modifier patterns
 │   ├── models.py          TimeValue, Timecode, Clip, ConnectedClip, MarkerType, Timeline
 │   ├── parser.py          FCPXML → Python (spine, connected clips, roles, markers)
 │   ├── writer.py          Modify & write (markers, trim, gaps, transitions, silence)
@@ -340,8 +343,9 @@ fcp-mcp-server/           ~8.9k lines Python
 │   ├── diff.py            Timeline comparison engine (identity matching, threshold docs)
 │   ├── export.py          DaVinci Resolve v1.9 + FCP7 XMEML v5 export
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection) + serialize_xml()
+│   ├── dtd.py             Validate output against Apple's official DTDs (located in the FCP app bundle)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 912 tests across 18 suites
+├── tests/                 942 tests across 21 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -358,9 +362,13 @@ fcp-mcp-server/           ~8.9k lines Python
 │   ├── test_edge_cases.py Boundary arithmetic, clip collisions, split/diff edges
 │   ├── test_diversity.py  Boundary conditions across diff, models, validation
 │   ├── test_refactored_helpers.py  _index_elements, _iter_spine_clips, serialize_xml edges
-│   └── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
+│   ├── test_targeted_gaps.py  Targeted branch coverage for diff, export, models
+│   ├── test_bundles.py    .fcpxmld bundles, sidecar preservation, FCPXML 1.13/1.14 tolerance
+│   ├── test_relink.py     Bulk media relink (URL + plain paths, dry run, segment matching)
+│   └── test_dtd_validation.py  Output validated against Apple's shipped DTDs (skips without FCP)
 ├── docs/
-│   └── WORKFLOWS.md       8 production workflow recipes
+│   ├── WORKFLOWS.md       8 production workflow recipes
+│   └── CAPABILITY-AUDIT-2026-06.md  Ecosystem audit + dual-mode (XML + Live) roadmap
 └── examples/
     └── sample.fcpxml      9 clips, 24fps — test fixture
 ```
@@ -450,7 +458,7 @@ Before v0.6.20, the 4-part SMPTE parser silently dropped frames — `01:00:10:12
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. `INCOMPLETE` is canonical; `TODO` is a backward-compat alias (same object) |
-| **Security-first** | 10-layer defense-in-depth across all 53 handlers — see [Security](#security) for the full matrix |
+| **Security-first** | 10-layer defense-in-depth across all 54 handlers — see [Security](#security) for the full matrix |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -472,7 +480,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-795 tests across 17 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions (_index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _require_clip, _require_spine_clip, _resolve_asset, serialize_xml), recent fix regressions (rapid_trim directions, min_duration, offset recalculation, interval timing accuracy, gap skipping, duplicate-name clip operations across trim/speed/split/delete/markers), security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, boundary conditions, and backward compatibility.
+942 tests across 21 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
 
 ---
 
@@ -484,9 +492,32 @@ ruff check . --exclude docs/           # lint — must pass before committing
 
 ---
 
+## Ecosystem — XML Mode Today, Live Mode Next
+
+This server is the **safe, offline layer** of FCP automation: no patched binaries, no
+private APIs, runs on managed Macs, works without Final Cut Pro installed. It composes
+with the live-control side of the ecosystem rather than competing with it:
+
+- **[SpliceKit](https://github.com/elliotttate/SpliceKit)** by [@elliotttate](https://github.com/elliotttate)
+  with [@latenitefilms](https://github.com/latenitefilms) — live in-process control of a
+  patched FCP copy with its own ~200-tool MCP server. The deep edit engine here and the
+  live hands there are complementary by design; an optional bridge to SpliceKit's local
+  JSON-RPC endpoint is on this project's roadmap (see below).
+- **[CommandPost](https://commandpost.fcp.cafe)** by [@latenitefilms](https://github.com/latenitefilms) —
+  nine years of accessibility-layer FCP automation with a built-in WebSocket control
+  surface; another candidate live backend.
+
+The full ecosystem analysis and the dual-mode architecture plan live in
+[docs/CAPABILITY-AUDIT-2026-06.md](docs/CAPABILITY-AUDIT-2026-06.md).
+
+---
+
 ## Roadmap
 
-- [x] Core FCPXML parsing (v1.8–1.11)
+- [x] Core FCPXML parsing (reads v1.8–1.14, writes v1.13) — *v0.8.0*
+- [x] `.fcpxmld` bundle support with object-tracking/Cinematic sidecar preservation — *v0.8.0*
+- [x] Bulk media relink (`relink_media`) — *v0.8.0*
+- [x] DTD validation against Apple's official DTDs — *v0.8.0*
 - [x] Timeline analysis, markers, EDL/CSV export
 - [x] Clip editing (trim, reorder, split, speed, transitions)
 - [x] QC tools (flash frames, gaps, duplicates, health scoring)
@@ -497,6 +528,9 @@ ruff check . --exclude docs/           # lint — must pass before committing
 - [x] Timeline diff + social media reformat
 - [x] Silence detection & cleanup
 - [x] Cross-NLE export (DaVinci Resolve, Premiere Pro, Avid)
+- [ ] **Live mode v1** — zero-click push-to-FCP via Apple events (`<import-options>` import), AppleScript library inspection, watch-folder round-trip
+- [ ] **Media intelligence** — transcript-driven editing, scene/beat/silence detection, preview-without-FCP
+- [ ] **Live bridges** — optional SpliceKit / CommandPost adapters for in-app control when installed
 - [ ] Audio sync detection
 - [ ] Premiere Pro native XML support
 

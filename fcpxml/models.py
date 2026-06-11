@@ -713,7 +713,7 @@ class Project:
     """Represents a Final Cut Pro project/library."""
     name: str
     timelines: List[Timeline] = field(default_factory=list)
-    fcpxml_version: str = "1.11"
+    fcpxml_version: str = "1.13"
 
     @property
     def primary_timeline(self) -> Optional[Timeline]:

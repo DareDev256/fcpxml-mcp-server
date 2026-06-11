@@ -627,13 +627,25 @@ class FCPXMLModifier:
         modifier is ready for any editing operation.
 
         Args:
-            fcpxml_path: Absolute or relative path to an ``.fcpxml`` file.
+            fcpxml_path: Absolute or relative path to an ``.fcpxml`` file or
+                an ``.fcpxmld`` bundle (a directory wrapping ``Info.fcpxml``
+                plus sidecar data files for object tracking / Cinematic mode).
 
         Raises:
             FileNotFoundError: If *fcpxml_path* does not exist.
             ET.ParseError: If the file is not valid XML.
             ValueError: If no ``<spine>`` is found (checked lazily on first edit).
         """
+        path = Path(fcpxml_path)
+        self.bundle_dir: Optional[Path] = None
+        if path.suffix.lower() == '.fcpxmld':
+            self.bundle_dir = path
+            inner = path / 'Info.fcpxml'
+            if not inner.exists():
+                raise FileNotFoundError(
+                    f"Info.fcpxml not found in bundle: {fcpxml_path}"
+                )
+            fcpxml_path = str(inner)
         self.path = Path(fcpxml_path)
         from .safe_xml import safe_parse
         self.tree = safe_parse(fcpxml_path)
@@ -1089,15 +1101,139 @@ class FCPXMLModifier:
     def save(self, output_path: Optional[str] = None) -> str:
         """Serialise the modified XML tree to disk.
 
+        When the destination ends in ``.fcpxmld`` a bundle directory is
+        created and the XML lands in ``Info.fcpxml`` inside it.  If the
+        source was also a bundle, every sidecar file (object-tracking /
+        Cinematic-mode ``dataLocator`` payloads — anything that isn't
+        ``Info.fcpxml``) is copied across so the round-trip is lossless.
+        Writing a bundle source to a flat ``.fcpxml`` destination drops
+        those sidecars by definition.
+
         Args:
-            output_path: Destination file path.  Defaults to overwriting the
-                original file loaded in ``__init__``.
+            output_path: Destination ``.fcpxml`` file or ``.fcpxmld``
+                bundle path.  Defaults to overwriting the original
+                file/bundle loaded in ``__init__``.
 
         Returns:
-            The absolute path written to.
+            The absolute path written to (the bundle path when writing
+            a bundle, not the inner ``Info.fcpxml``).
         """
-        out_path = output_path or str(self.path)
-        return write_fcpxml(self.root, out_path)
+        if output_path is None:
+            out = self.bundle_dir if self.bundle_dir is not None else self.path
+        else:
+            out = Path(output_path)
+
+        if out.suffix.lower() == '.fcpxmld':
+            out.mkdir(exist_ok=True)
+            if (
+                self.bundle_dir is not None
+                and self.bundle_dir.resolve() != out.resolve()
+            ):
+                self._copy_bundle_sidecars(self.bundle_dir, out)
+            write_fcpxml(self.root, str(out / 'Info.fcpxml'))
+            return str(out)
+
+        return write_fcpxml(self.root, str(out))
+
+    @staticmethod
+    def _copy_bundle_sidecars(src_bundle: Path, dst_bundle: Path) -> None:
+        """Copy every sidecar entry of *src_bundle* into *dst_bundle*.
+
+        Sidecars are all bundle members except ``Info.fcpxml`` itself —
+        e.g. the external data files that ``locator``/``dataLocator``
+        elements reference for object tracking and Cinematic mode.
+        """
+        import shutil
+        for entry in src_bundle.iterdir():
+            if entry.name == 'Info.fcpxml':
+                continue
+            target = dst_bundle / entry.name
+            if entry.is_dir():
+                shutil.copytree(entry, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(entry, target)
+
+    # ========================================================================
+    # MEDIA RELINK
+    # ========================================================================
+
+    def relink_media(
+        self,
+        find: str,
+        replace: str,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Bulk-rewrite media source paths (programmatic relink).
+
+        Rewrites the ``src`` of every ``<asset>`` / ``<media-rep>`` whose
+        path starts with *find*, substituting *replace* — the standard
+        technique for relinking a moved or renamed media folder without
+        opening Final Cut Pro.  FCP relinks via the ``media-rep`` file URL
+        on import; the device-specific bookmark blob is left untouched
+        (FCP regenerates it).
+
+        *find* / *replace* accept plain paths (``/Volumes/OldDrive``) or
+        ``file://`` URLs; percent-encoding in existing URLs is handled.
+        Matching is prefix-based on whole path segments, so ``/Media/A``
+        matches ``/Media/A/clip.mov`` but not ``/Media/AB/clip.mov``.
+
+        Args:
+            find: Old path prefix to match.
+            replace: New path prefix to substitute.
+            dry_run: When True, report what would change without
+                mutating the tree.
+
+        Returns:
+            Summary dict: ``total_assets``, ``relinked`` (reference
+            count), ``dry_run``, and ``changes`` — a list of
+            ``{asset, old, new, target_exists}`` entries
+            (``target_exists`` checks the new path on this machine).
+        """
+        from urllib.parse import quote, unquote, urlparse
+
+        def _to_path(value: str) -> str:
+            if value.startswith('file://'):
+                return unquote(urlparse(value).path)
+            return value
+
+        find_path = _to_path(find).rstrip('/')
+        replace_path = _to_path(replace).rstrip('/')
+        if not find_path:
+            raise ValueError("relink_media: 'find' must be a non-empty path prefix")
+
+        changes = []
+        for asset_id, info in self.resources.items():
+            elem = info['element']
+            targets = [(elem, elem.get('src'))]
+            media_rep = elem.find('media-rep')
+            if media_rep is not None:
+                targets.append((media_rep, media_rep.get('src')))
+
+            for node, old_src in targets:
+                if not old_src:
+                    continue
+                was_url = old_src.startswith('file://')
+                old_path = _to_path(old_src)
+                if old_path != find_path and not old_path.startswith(find_path + '/'):
+                    continue
+                new_path = replace_path + old_path[len(find_path):]
+                new_src = 'file://' + quote(new_path) if was_url else new_path
+                if not dry_run:
+                    node.set('src', new_src)
+                    info['src'] = new_src
+                changes.append({
+                    'asset': info.get('name') or asset_id,
+                    'old': old_src,
+                    'new': new_src,
+                    'target_exists': Path(new_path).exists(),
+                })
+
+        return {
+            'total_assets': len(self.resources),
+            'relinked': len(changes),
+            'dry_run': dry_run,
+            'changes': changes,
+        }
 
     # ========================================================================
     # MARKER OPERATIONS
@@ -2699,7 +2835,7 @@ class FCPXMLWriter:
         writer.write_project(project, "output.fcpxml")
     """
 
-    def __init__(self, version: str = "1.11"):
+    def __init__(self, version: str = "1.13"):
         """Initialize writer targeting the given FCPXML version."""
         self.version = version
         self.resource_counter = 1

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-11
+
+### Added
+
+- **FCPXML 1.12–1.14 support**: parser now reads everything Final Cut Pro 12.x exports (FCPXML 1.14). Elements introduced after 1.11 (`adjust-stereo-3D`, `hidden-clip-marker`, smart-collection `match-analysis-type`, …) are tolerated on read and preserved losslessly through edits. Generated timelines (templates, rough cuts, FCPXMLWriter) now emit **1.13** by default; modified files keep their source version.
+- **`.fcpxmld` bundle support, end to end**: bundles (directories wrapping `Info.fcpxml` plus sidecar data) now work in every tool. `FCPXMLModifier` loads bundles, and `save()` writes bundle outputs with **sidecar preservation** — object-tracking and Cinematic-mode `dataLocator` payloads are copied across the round-trip instead of silently destroyed. Fixed `_validate_filepath` rejecting bundles outright (they are directories, and the previous "regular file" check made the whitelisted `.fcpxmld` extension unreachable).
+- **`relink_media` tool (54th tool)**: bulk-rewrite `asset`/`media-rep` `src` paths by prefix — relink a moved or renamed media drive without opening FCP. Handles `file://` URLs (percent-encoding preserved) and plain paths, matches whole path segments only, reports whether each new target exists on disk, and supports `dry_run` preview.
+- **DTD validation** (`fcpxml/dtd.py` + `tests/test_dtd_validation.py`): generated output is validated against **Apple's official DTDs** located inside the installed Final Cut Pro app bundle (the only authoritative FCPXML spec — Apple's online docs stopped at 1.10). Skips gracefully on machines without FCP; `FCPXML_DTD_DIR` overrides the search path. Found and worked around an xmllint quirk where the space in "Final Cut Pro.app" breaks DTD URI resolution.
+- **Capability audit + dual-mode roadmap** (`docs/CAPABILITY-AUDIT-2026-06.md`): verified June-2026 ecosystem analysis (FCP 12.2 control surfaces, SpliceKit, CommandPost, format ceiling) and the XML-mode + Live-mode architecture plan through v1.0.
+
+### Fixed
+
+- README/CLAUDE.md drift: tool count, test counts, FCPXML version matrix, phantom `fcpxml/README.md` and `OPENAI_BASE_URL` references removed.
+
+### Known
+
+- `examples/sample.fcpxml` is not DTD-conformant (pre-`media-rep` asset form, sequence-level chapter markers) — documented by a dedicated test; fixture modernization planned.
+- Total: 912 → 942 tests across 21 suites.
+
+## [0.7.0] - 2026-05-02
+
+Version milestone consolidating the April hardening waves (no API changes):
+TimeValue integer-exact comparison via cross-multiplication with normalized
+negative denominators, output-path sandbox enforcement plus speed/ffmpeg
+parameter validation, stale `timeMap`/conform-rate stripping in
+`change_speed`, marker/keyword filtering during `split_clip`, shared
+`_text_result`/`_resolve_clip_duration`/`_make_asset_clip` helpers, and the
+FCPXML validation-infrastructure test wave (912 tests).
+
 ## [0.6.63] - 2026-04-14
 
 ### Fixed

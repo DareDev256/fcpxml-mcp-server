@@ -247,7 +247,7 @@ def apply_template(
 
     # Build FCPXML
     fps_int = int(fps)
-    root = ET.Element('fcpxml', version='1.11')
+    root = ET.Element('fcpxml', version='1.13')
     resources = ET.SubElement(root, 'resources')
 
     # Format resource

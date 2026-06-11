@@ -7,9 +7,9 @@ name = "fcp-mcp-server"
 
 
 
-version = "0.7.0"
+version = "0.8.0"
 
-description = "MCP server for Final Cut Pro XML. 53 tools for timeline analysis, batch editing, QC, generation, multi-track support, NLE export, templates, and audio via Claude."
+description = "MCP server for Final Cut Pro XML. 54 tools for timeline analysis, batch editing, QC, generation, multi-track support, NLE export, templates, media relink, and .fcpxmld bundles via Claude."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [

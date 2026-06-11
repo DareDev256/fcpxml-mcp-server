@@ -351,7 +351,7 @@ class RoughCutGenerator:
     ) -> float:
         """Build the output FCPXML."""
         # Create new FCPXML structure
-        root = ET.Element('fcpxml', version='1.11')
+        root = ET.Element('fcpxml', version='1.13')
         resources = ET.SubElement(root, 'resources')
 
         # Copy relevant resources

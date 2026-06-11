@@ -887,7 +887,7 @@ class TestTemplateSystem:
             tree = ET.parse(out)
             root = tree.getroot()
             assert root.tag == 'fcpxml'
-            assert root.get('version') == '1.11'
+            assert root.get('version') == '1.13'
             issues = validate_fcpxml(root)
             errors = [i for i in issues if i.severity == "error"]
             assert len(errors) == 0

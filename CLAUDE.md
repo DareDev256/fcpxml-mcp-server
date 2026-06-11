@@ -2,12 +2,12 @@
 
 ## What This Is
 
-MCP server that reads/writes Final Cut Pro XML (FCPXML) files. 53 tools for timeline analysis, batch editing, QC, generation, multi-track support, and NLE export.
+MCP server that reads/writes Final Cut Pro XML (FCPXML) files. 54 tools for timeline analysis, batch editing, QC, generation, multi-track support, media relink, and NLE export. Reads FCPXML 1.8–1.14 (incl. `.fcpxmld` bundles with sidecar preservation), writes 1.13 by default. Dual-mode (XML + Live) direction: `docs/CAPABILITY-AUDIT-2026-06.md`.
 
 ## Architecture
 
 ```
-server.py           — MCP server entry point. All 53 tool definitions, handlers, resources, prompts.
+server.py           — MCP server entry point. All 54 tool definitions, handlers, resources, prompts.
                       Dispatch dict pattern: TOOL_HANDLERS maps tool names → async handler functions.
 
 fcpxml/parser.py    — Reads FCPXML → Python objects (Timeline, Clip, ConnectedClip, Marker, etc.)
@@ -18,6 +18,8 @@ fcpxml/rough_cut.py — Generates new timelines from source clips (rough cuts, m
 fcpxml/diff.py      — Timeline comparison engine. Detects added/removed/moved/trimmed clips & markers.
 fcpxml/export.py    — DaVinci Resolve FCPXML v1.9 export + FCP7 XMEML v5 export for cross-NLE workflows.
 fcpxml/models.py    — Data classes: TimeValue, Timecode, Clip, ConnectedClip, CompoundClip, Timeline, etc.
+fcpxml/dtd.py       — Validates output against Apple's official DTDs (located inside the installed FCP app bundle;
+                      xmllint needs the DTD path as a percent-encoded file:// URI — spaces in "Final Cut Pro.app" break it).
 ```
 
 ## Key Patterns
@@ -47,7 +49,7 @@ CI runs both on every push to main. If either fails, the commit gets an X on Git
 
 ## Testing
 
-912 tests across 18 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. `test_features_v05.py` covers connected clips, roles, timeline diff, reformat, silence detection, export, and backward compatibility. `test_marker_pipeline.py` covers build_marker_element shared builder, batch auto-modes, clip index duplicate-name behavior, and write_fcpxml output format. `test_refactored_helpers.py` covers _index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _resolve_clip_duration, _make_asset_clip, _format_batch_result, and serialize_xml edge cases. Tests use `examples/sample.fcpxml` as fixture data and inline XML fixtures. Tests create temp files and clean up after.
+942 tests across 21 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. `test_features_v05.py` covers connected clips, roles, timeline diff, reformat, silence detection, export, and backward compatibility. `test_marker_pipeline.py` covers build_marker_element shared builder, batch auto-modes, clip index duplicate-name behavior, and write_fcpxml output format. `test_refactored_helpers.py` covers _index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _resolve_clip_duration, _make_asset_clip, _format_batch_result, and serialize_xml edge cases. Tests use `examples/sample.fcpxml` as fixture data and inline XML fixtures. Tests create temp files and clean up after.
 
 ## FCPXML Gotchas
 
@@ -56,3 +58,5 @@ CI runs both on every push to main. If either fails, the commit gets an X on Git
 - Library clips (`<asset-clip>`) are different from timeline clips (`<clip>`)
 - Markers are children of clips, not siblings
 - The `<spine>` element is the primary storyline — clips go here
+- `.fcpxmld` bundles are DIRECTORIES wrapping `Info.fcpxml` + sidecar data files — sidecars must be copied on save or object-tracking/Cinematic data is destroyed
+- `examples/sample.fcpxml` is NOT DTD-conformant (pre-`media-rep` assets, sequence-level chapter markers) — don't use it as a DTD-validity fixture

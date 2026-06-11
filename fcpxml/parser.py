@@ -29,7 +29,13 @@ _CONNECTED_CLIP_TAGS = ('asset-clip', 'clip', 'video', 'audio', 'title', 'ref-cl
 
 
 class FCPXMLParser:
-    """Parser for Final Cut Pro FCPXML files. Supports versions 1.8 - 1.11."""
+    """Parser for Final Cut Pro FCPXML files. Supports versions 1.8 - 1.14.
+
+    Unknown elements introduced by newer FCPXML versions (e.g. 1.13's
+    ``adjust-stereo-3D`` / ``hidden-clip-marker``, 1.14's smart-collection
+    search rules) are ignored on read and preserved untouched by the
+    modify path, which operates on the raw ElementTree.
+    """
 
     def __init__(self):
         self.resources: Dict[str, Dict[str, Any]] = {}
