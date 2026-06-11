@@ -1518,6 +1518,32 @@ async def list_tools() -> list[Tool]:
                 "required": ["filepath", "find", "replace"]
             }
         ),
+
+        # ===== v0.9.0 LIVE MODE (macOS + Final Cut Pro required) =====
+        Tool(
+            name="push_to_fcp",
+            description="LIVE: send an FCPXML file into the running Final Cut Pro with zero clicks (official Open Document Apple event). Creates/targets a library via import-options. Launches FCP if needed. macOS-only; first use triggers an Automation permission prompt. For true zero-click, pass a library_location ending in .fcpbundle (a new path is auto-created); omitting it makes FCP show a modal library picker.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file or .fcpxmld bundle to import"},
+                    "library_location": {"type": "string", "description": "Target .fcpbundle library path (auto-created if it doesn't exist; the extension is normalized to .fcpbundle). Omit to import into the active library, but note FCP then shows a modal 'Open Library' picker that blocks until answered"},
+                    "suppress_warnings": {"type": "boolean", "description": "Suppress non-fatal import warning dialogs", "default": True},
+                    "copy_assets": {"type": "boolean", "description": "Copy media into the library (true) or link in place (false). Omit for FCP default"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="list_fcp_libraries",
+            description="LIVE: enumerate the running Final Cut Pro's open libraries, events, and projects via Apple's read-only scripting dictionary. Refuses to launch FCP unless allow_launch is true. macOS-only.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "allow_launch": {"type": "boolean", "description": "Launch FCP if it isn't running", "default": False},
+                },
+            }
+        ),
     ]
 
 
@@ -3008,6 +3034,65 @@ async def handle_relink_media(arguments: dict) -> Sequence[TextContent]:
     return _text_result("\n".join(lines))
 
 
+async def handle_push_to_fcp(arguments: dict) -> Sequence[TextContent]:
+    from fcpxml.live import push_to_fcp
+
+    filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
+
+    # Flat files get an options-injected sibling copy (never touch the
+    # original); the copy path goes through the same write sandbox as
+    # every other derived output.
+    import_copy = None
+    if Path(filepath).suffix.lower() == '.fcpxml':
+        anchor = str(Path(filepath).resolve().parent)
+        import_copy = _validate_output_path(
+            generate_output_path(filepath, "_import"), anchor_dir=anchor
+        )
+
+    result = push_to_fcp(
+        filepath,
+        library_location=arguments.get("library_location"),
+        suppress_warnings=arguments.get("suppress_warnings", True),
+        copy_assets=arguments.get("copy_assets"),
+        import_copy_path=import_copy,
+    )
+    lines = [
+        f"Sent to Final Cut Pro: {result['sent']}",
+        f"FCP {'was launched' if result['launched_fcp'] else 'was already running'} — "
+        f"import happens in-app (libraries/events are created or merged per import-options).",
+    ]
+    if arguments.get("library_location"):
+        lines.append(f"Target library: {arguments['library_location']}")
+    lines.append(
+        "Note: Apple offers no programmatic export — to round-trip edits "
+        "back, use File > Export XML in FCP."
+    )
+    return _text_result("\n".join(lines))
+
+
+async def handle_list_fcp_libraries(arguments: dict) -> Sequence[TextContent]:
+    from fcpxml.live import list_fcp_libraries
+
+    try:
+        libraries = list_fcp_libraries(
+            allow_launch=arguments.get("allow_launch", False)
+        )
+    except RuntimeError as exc:
+        return _text_result(str(exc))
+
+    if not libraries:
+        return _text_result("Final Cut Pro is running but reports no open libraries.")
+
+    lines = [f"Open libraries in Final Cut Pro ({len(libraries)}):", ""]
+    for lib in libraries:
+        lines.append(f"📚 {lib['name']}")
+        for event in lib["events"]:
+            lines.append(f"  └─ {event['name']}")
+            for proj in event["projects"]:
+                lines.append(f"      • {proj}")
+    return _text_result("\n".join(lines))
+
+
 # ============================================================================
 # TOOL DISPATCH
 # ============================================================================
@@ -3082,6 +3167,9 @@ TOOL_HANDLERS = {
     "apply_template": handle_apply_template,
     # v0.8.0
     "relink_media": handle_relink_media,
+    # v0.9.0 — Live mode
+    "push_to_fcp": handle_push_to_fcp,
+    "list_fcp_libraries": handle_list_fcp_libraries,
 }
 
 

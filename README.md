@@ -1,15 +1,15 @@
 # FCPXML MCP
 
-**The bridge between Final Cut Pro and AI. 54 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
+**The bridge between Final Cut Pro and AI. 56 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
 
 [![CI](https://github.com/DareDev256/fcpxml-mcp-server/actions/workflows/test.yml/badge.svg)](https://github.com/DareDev256/fcpxml-mcp-server/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4%E2%80%9312.x-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-942_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-21-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~9.4k_LOC-informational.svg)](#architecture)
+[![Tests](https://img.shields.io/badge/tests-955_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-22-blue.svg)](#testing)
+[![Source](https://img.shields.io/badge/source-~9.7k_LOC-informational.svg)](#architecture)
 
 ---
 
@@ -96,8 +96,44 @@ Every time value stays as a rational fraction — `720/24s`, not `30.0` — so t
 ### What This Is NOT
 
 - **Not a plugin** — it doesn't run inside Final Cut Pro
-- **Not real-time** — you work with the XML between exports
 - **Not for creative calls** — color, framing, motion still need your eyes
+
+> **New in v0.9 — Live Mode.** The server can now *push* an FCPXML straight
+> into the running Final Cut Pro with zero clicks, using Apple's official Open
+> Document event — no XML re-import step. See [Live Mode](#live-mode-macos) below.
+
+---
+
+## Live Mode (macOS)
+
+XML mode is offline and portable; **Live mode** drives a running Final Cut Pro
+through Apple's sanctioned surfaces — no patched binary, no private APIs, no
+accessibility scripting. Two tools, both verified end-to-end against FCP 12.2:
+
+| Tool | What it does |
+|------|--------------|
+| **`push_to_fcp`** | Sends an FCPXML file into FCP with zero clicks (Open Document Apple event). Injects `<import-options>` (library location, copy/link assets, suppress warnings), launches FCP if needed, and never mutates your original — flat files get an options-injected copy. |
+| **`list_fcp_libraries`** | Enumerates FCP's open libraries → events → projects via the read-only AppleScript dictionary. |
+
+```
+You:    "Build a rough cut from my Interview clips and push it into Final Cut"
+
+Claude: ✓ Generated RoughCut.fcpxml (8 clips, 0:54)
+        ✓ Pushed into Final Cut Pro → library "ProjectX", event 2026-06-11
+        → Open Final Cut Pro to keep editing
+```
+
+**The asymmetry you must know:** Apple makes *import* scriptable but offers **no
+programmatic export** — to pull your current timeline back out for further AI
+work, you still run `File > Export XML` yourself. Live mode pushes; round-trips
+come back through the XML tools.
+
+Notes (all live-verified): pass a `library_location` ending in `.fcpbundle` for
+a true zero-click import (a new path is auto-created); omitting it makes FCP
+show a modal library picker that blocks until you answer. First use triggers a
+one-time macOS Automation permission prompt for your terminal/MCP host. The
+[capability audit](docs/CAPABILITY-AUDIT-2026-06.md) maps the full surface and
+the optional SpliceKit/CommandPost bridges planned for v1.0.
 
 ---
 
@@ -229,7 +265,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ---
 
-## All 54 Tools
+## All 56 Tools
 
 | Category | Tools | What It Does |
 |----------|------:|--------------|
@@ -251,7 +287,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | **Templates** | 2 | Pre-built timeline structures (intro/outro, lower thirds, music video) |
 | **Effects** | 1 | List FCP transition effects with UUIDs |
 | **Media** | 1 | Bulk relink moved/renamed media (rewrite `media-rep` src paths) |
-| | **54** | |
+| **Live (macOS)** | 2 | Push FCPXML into the running FCP (zero-click Apple-event import); list open libraries |
+| | **56** | |
 
 <details>
 <summary><strong>Full tool reference (click to expand)</strong></summary>
@@ -295,6 +332,9 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 #### v0.8.0 — Media — 1 tool
 `relink_media` (bulk-rewrite `asset`/`media-rep` src paths with `dry_run` preview — relink a moved drive without opening FCP)
 
+#### v0.9.0 — Live Mode (macOS + Final Cut Pro) — 2 tools
+`push_to_fcp` (zero-click FCPXML import into the running FCP via Apple event) · `list_fcp_libraries` (enumerate open libraries/events/projects)
+
 </details>
 
 ---
@@ -326,7 +366,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ```
 fcp-mcp-server/           ~9.4k lines Python
-├── server.py              MCP entry point — 54 tools, 5 prompts, resource discovery
+├── server.py              MCP entry point — 56 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
 │                          _raw_markers_to_batch()
@@ -458,7 +498,7 @@ Before v0.6.20, the 4-part SMPTE parser silently dropped frames — `01:00:10:12
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. `INCOMPLETE` is canonical; `TODO` is a backward-compat alias (same object) |
-| **Security-first** | 10-layer defense-in-depth across all 54 handlers — see [Security](#security) for the full matrix |
+| **Security-first** | 10-layer defense-in-depth across all 56 handlers — see [Security](#security) for the full matrix |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -528,7 +568,8 @@ The full ecosystem analysis and the dual-mode architecture plan live in
 - [x] Timeline diff + social media reformat
 - [x] Silence detection & cleanup
 - [x] Cross-NLE export (DaVinci Resolve, Premiere Pro, Avid)
-- [ ] **Live mode v1** — zero-click push-to-FCP via Apple events (`<import-options>` import), AppleScript library inspection, watch-folder round-trip
+- [x] **Live mode v1** — zero-click push-to-FCP via Apple events, AppleScript library inspection — *v0.9.0*
+- [ ] Watch-folder round-trip + backend Protocol refactor (operation layer shared by XML and Live)
 - [ ] **Media intelligence** — transcript-driven editing, scene/beat/silence detection, preview-without-FCP
 - [ ] **Live bridges** — optional SpliceKit / CommandPost adapters for in-app control when installed
 - [ ] Audio sync detection

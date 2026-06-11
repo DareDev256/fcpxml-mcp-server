@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-11
+
+### Added — Live Mode v1 (the dual-mode roadmap goes live)
+
+This is the first release where the server can drive a **running** Final Cut Pro, not just edit XML offline — using Apple's officially-supported surfaces only (no injection, no private APIs). Both tools were **live-verified end to end against Final Cut Pro 12.2**.
+
+- **`push_to_fcp` (55th tool)** — send an FCPXML file into the running FCP with zero clicks via the Open Document Apple event. Injects an `<import-options>` element (library location, suppress warnings, copy assets), launches FCP if needed, and never touches your original (flat files get an options-injected sibling copy through the same write sandbox as every other tool). Live-verified: generated a timeline, pushed it, and confirmed the library/event/project landed both in FCP and on disk.
+- **`list_fcp_libraries` (56th tool)** — enumerate the running FCP's open libraries → events → projects via Apple's read-only scripting dictionary. Refuses to launch FCP unless `allow_launch=true`.
+- **`fcpxml/live.py`** + **`tests/test_live.py`** (13 tests, osascript fully mocked so CI never launches FCP).
+
+### Findings baked in from live testing
+
+- **Zero-click import requires a `.fcpbundle` library location.** With a new `.fcpbundle` path FCP silently creates the library + a dated event and imports; with no location (or a `.fcplibrary`/bare path) FCP raises a modal **Open Library** picker — a *required choice* that `suppress warnings` does not dismiss — which blocks the Apple event. `push_to_fcp` now normalizes the location to `.fcpbundle`.
+- **Apple offers no programmatic export** — the read-back leg of any edit loop still needs File > Export XML; the tool says so in its output.
+- Importing a project whose media already exists in the target library fails on a media-identity collision — push into a fresh library or reuse FCP's existing asset IDs.
+
+Tests: 942 → 955.
+
 ## [0.8.0] - 2026-06-11
 
 ### Added
