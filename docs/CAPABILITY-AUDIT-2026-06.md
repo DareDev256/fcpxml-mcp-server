@@ -155,8 +155,7 @@ Principles:
 - Emit 1.13 by default (1.11 forfeits HFR/spatial attrs).
 - Bulk media-relink tool (rewrite `media-rep src` paths — known user pain, trivial here).
 - Hygiene: CHANGELOG entry for 0.7.0 missing; README badge says 912 tests / Testing
-  section says 795; README references nonexistent `fcpxml/README.md` and a phantom
-  `OPENAI_BASE_URL` env var.
+  section says 795; README references nonexistent `fcpxml/README.md` and a phantom env var.
 
 ### v0.9 — Live mode v1, official surfaces only (~1-2 weeks)
 - `push_to_fcp` tool: write FCPXML + `<import-options>`, fire the Apple event

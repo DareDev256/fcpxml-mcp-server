@@ -44,13 +44,20 @@ Tests: 942 → 955.
 
 ## [0.7.0] - 2026-05-02
 
-Version milestone consolidating the April hardening waves (no API changes):
-TimeValue integer-exact comparison via cross-multiplication with normalized
-negative denominators, output-path sandbox enforcement plus speed/ffmpeg
-parameter validation, stale `timeMap`/conform-rate stripping in
-`change_speed`, marker/keyword filtering during `split_clip`, shared
-`_text_result`/`_resolve_clip_duration`/`_make_asset_clip` helpers, and the
-FCPXML validation-infrastructure test wave (912 tests).
+### Added / Fixed
+
+- Version milestone consolidating the April hardening waves (no API changes).
+- Security hardening with `defusedxml`.
+- Duplicate clip name bug fixes.
+- Added 100+ new tests.
+- Refactored helper functions for cleaner logic.
+- Unification of XML serialization.
+- TimeValue arithmetic fixes (integer-exact comparison via cross-multiplication with normalized negative denominators).
+- Output-path sandbox enforcement plus speed/ffmpeg parameter validation.
+- Stale `timeMap`/conform-rate stripping in `change_speed`.
+- Marker/keyword filtering during `split_clip`.
+- Shared `_text_result`, `_resolve_clip_duration`, and `_make_asset_clip` helpers.
+- FCPXML validation-infrastructure test wave (912 tests).
 
 ## [0.6.63] - 2026-04-14
 
