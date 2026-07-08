@@ -630,6 +630,65 @@ class TestAudioSupport:
         finally:
             os.unlink(path)
 
+    def _write_temp_wav(self, seconds: float = 2.0, rate: int = 48000,
+                        channels: int = 2) -> str:
+        """Write a real WAV file of the given length and return its path."""
+        import wave
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+            wav_path = f.name
+        with wave.open(wav_path, 'wb') as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(2)
+            wf.setframerate(rate)
+            wf.writeframes(b'\x00\x00' * channels * int(seconds * rate))
+        return wav_path
+
+    def test_audio_asset_duration_matches_real_file(self):
+        # Asset duration must come from the actual media file, not the
+        # requested clip duration (timeline is 20s, file is only 2s).
+        mod, path = self._make_modifier()
+        wav_path = self._write_temp_wav(seconds=2.0)
+        try:
+            mod.add_music_bed(src=wav_path, role='music')
+            resources = mod.root.find('.//resources')
+            asset = next(a for a in resources.findall('asset')
+                         if a.get('id', '').startswith('r_audio'))
+            dur = TimeValue.from_timecode(asset.get('duration')).to_seconds()
+            assert abs(dur - 2.0) < 0.01
+            assert asset.get('audioRate') == '48000'
+            assert asset.get('audioChannels') == '2'
+        finally:
+            os.unlink(path)
+            os.unlink(wav_path)
+
+    def test_music_bed_clamps_to_media_length(self):
+        # A music bed spanning a 20s timeline must not overrun a 2s file.
+        mod, path = self._make_modifier()
+        wav_path = self._write_temp_wav(seconds=2.0)
+        try:
+            clip = mod.add_music_bed(src=wav_path, role='music')
+            dur = TimeValue.from_timecode(clip.get('duration')).to_seconds()
+            assert abs(dur - 2.0) < 0.01
+        finally:
+            os.unlink(path)
+            os.unlink(wav_path)
+
+    def test_audio_asset_unprobeable_src_keeps_requested_duration(self):
+        # Nonexistent files can't be probed; fall back to the requested
+        # duration so template workflows keep working.
+        mod, path = self._make_modifier()
+        try:
+            clip = mod.add_audio_clip(
+                parent_clip_id='Clip A',
+                src='/path/to/missing.wav',
+                duration='120/24s',
+                role='dialogue',
+            )
+            dur = TimeValue.from_timecode(clip.get('duration')).to_seconds()
+            assert abs(dur - 5.0) < 0.01
+        finally:
+            os.unlink(path)
+
 
 # ============================================================================
 # FEATURE 7: Compound Clip Generation
