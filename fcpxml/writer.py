@@ -245,6 +245,57 @@ def _create_asset_element(
     return asset
 
 
+def _probe_audio_info(src: str) -> Optional[Dict[str, Any]]:
+    """Probe an audio file for its real duration, sample rate, and channels.
+
+    Tries ffprobe first, then falls back to the stdlib ``wave`` module for
+    .wav files. Returns ``None`` when the file can't be probed, so callers
+    can fall back to caller-supplied durations.
+
+    Returns:
+        ``{'duration': float, 'sample_rate': int, 'channels': int}`` or None.
+    """
+    path = Path(src)
+    if not path.is_file():
+        return None
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'a:0',
+             '-show_entries', 'stream=sample_rate,channels,duration',
+             '-show_entries', 'format=duration',
+             '-of', 'json', str(path)],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode == 0:
+            import json
+            data = json.loads(result.stdout)
+            streams = data.get('streams') or [{}]
+            stream = streams[0]
+            duration = stream.get('duration') or data.get('format', {}).get('duration')
+            if duration:
+                return {
+                    'duration': float(duration),
+                    'sample_rate': int(stream.get('sample_rate') or 48000),
+                    'channels': int(stream.get('channels') or 2),
+                }
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    if path.suffix.lower() == '.wav':
+        try:
+            import wave
+            with wave.open(str(path), 'rb') as wf:
+                rate = wf.getframerate()
+                if rate > 0:
+                    return {
+                        'duration': wf.getnframes() / rate,
+                        'sample_rate': rate,
+                        'channels': wf.getnchannels(),
+                    }
+        except (OSError, wave.Error, EOFError):
+            pass
+    return None
+
+
 # ============================================================================
 # STILL IMAGE AUTO-CONVERSION (v0.6.0)
 # ============================================================================
@@ -2332,15 +2383,28 @@ class FCPXMLModifier:
             if resources is None:
                 raise ValueError("No <resources> element found in FCPXML")
             asset_id = self._unique_resource_id(resources, 'r_audio1')
+            # The asset duration must reflect the real media length, not the
+            # requested clip duration — FCP flags assets that claim more
+            # media than the file contains.
+            probed = _probe_audio_info(src)
+            if probed:
+                rate = probed['sample_rate']
+                asset_duration = f"{round(probed['duration'] * rate)}/{rate}s"
+            else:
+                asset_duration = duration or "0s"
             asset_elem = _create_asset_element(
                 resources, asset_id, Path(src).stem, src,
-                duration=duration or "0s",
+                duration=asset_duration,
                 has_video="0", has_audio="1",
             )
+            if probed:
+                asset_elem.set('audioSources', '1')
+                asset_elem.set('audioChannels', str(probed['channels']))
+                asset_elem.set('audioRate', str(probed['sample_rate']))
             asset = {
                 'id': asset_id,
                 'name': Path(src).stem,
-                'duration': duration or "0s",
+                'duration': asset_duration,
                 'element': asset_elem,
             }
             self.resources[asset_id] = asset
@@ -2348,6 +2412,19 @@ class FCPXMLModifier:
             raise ValueError("Must provide either asset_id or src for audio clip")
 
         clip_duration, source_start = self._resolve_clip_duration(asset, duration)
+
+        # Clamp so the clip never claims more media than the asset contains
+        asset_duration_tv = self._parse_time(asset.get('duration', '0s'))
+        if asset_duration_tv > TimeValue.zero():
+            available = asset_duration_tv - source_start
+            if available < TimeValue.zero():
+                raise ValueError(
+                    f"Source start {source_start.to_fcpxml()} is beyond the end "
+                    f"of audio asset '{asset.get('name')}' "
+                    f"({asset_duration_tv.to_fcpxml()})"
+                )
+            if clip_duration > available:
+                clip_duration = available
 
         new_clip = self._make_asset_clip(
             asset_id, asset.get('name', 'Audio'),
