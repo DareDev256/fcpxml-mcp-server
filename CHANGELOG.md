@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-07-09
+
+### Security
+
+- **`apply_template` write sandbox bypass fixed** — the one generation handler that built a timeline from scratch (no input file to anchor against) called `_validate_output_path()` without an `anchor_dir`, which skipped the sandbox check entirely and accepted absolute or `../` output paths. An LLM-steered call could overwrite an arbitrary user-writable file. Now anchored to `FCP_PROJECTS_DIR` like every other write handler. Reported and fixed by [@mikegrant25](https://github.com/mikegrant25) (#6).
+- **`SECURITY.md` added** and GitHub private vulnerability reporting enabled — future disclosures have a private channel.
+
+### Fixed
+
+- **`add_audio` / `add_music_bed` stamped the requested clip duration onto new `<asset>` elements** without reading the media file — a music bed shorter than the timeline produced an asset claiming more media than the file contains (invalid FCPXML, clip overruns the real audio). New `_probe_audio_info()` reads the real duration, sample rate, and channel count via `ffprobe` (stdlib `wave` fallback for `.wav`); assets carry sample-accurate durations plus `audioRate`/`audioChannels`/`audioSources`, and clip durations are clamped to available media. Unprobeable sources keep the old behavior. Fixed by [@jardelapp](https://github.com/jardelapp) (#7).
+- Docs reconciled to verified test counts (#5).
+
+Tests: 955 → 958.
+
 ## [0.9.0] - 2026-06-11
 
 ### Added — Live Mode v1 (the dual-mode roadmap goes live)

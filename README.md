@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4%E2%80%9312.x-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-955_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-958_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-22-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~9.7k_LOC-informational.svg)](#architecture)
 
@@ -385,7 +385,7 @@ fcp-mcp-server/           ~9.4k lines Python
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection) + serialize_xml()
 │   ├── dtd.py             Validate output against Apple's official DTDs (located in the FCP app bundle)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 955 tests across 22 suites
+├── tests/                 958 tests across 22 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -418,6 +418,8 @@ fcp-mcp-server/           ~9.4k lines Python
 ## Security
 
 Every tool handler is hardened against adversarial input — critical for MCP servers where prompts may be LLM-generated, not human-typed.
+
+Found a vulnerability? Report it privately via the repo's **Security → Report a vulnerability** tab — see [SECURITY.md](SECURITY.md).
 
 | Layer | Protection |
 |-------|------------|
@@ -520,7 +522,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-955 tests across 22 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
+958 tests across 22 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
 
 ---
 
