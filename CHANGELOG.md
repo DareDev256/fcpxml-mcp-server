@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-09
+
+### Added — Media Intelligence v1 (the moat work begins)
+
+First slice of the v0.10 media-intelligence roadmap: the server now analyzes the **actual media files** a timeline references, not just the XML.
+
+- **`detect_media_silence` (57th tool)** — probes each clip's source audio with ffmpeg's `silencedetect` filter and maps silence ranges from source time into **timeline time**, reporting per-clip silence spans with a cut plan. Unlike `detect_silence_candidates` (XML-only heuristics: gaps, name patterns), this hears the audio. Supports `noise_db` threshold (−120..0 dB), `min_silence` duration, and per-clip filtering; media files are probed once and cached across clips that share them; missing/unreadable media is reported per clip, never fatal.
+- **`fcpxml/media_intel.py`** — new module for real media analysis. Zero new Python dependencies: ffmpeg runs as a bounded subprocess (list-form args, validated numeric parameters, 120s hard timeout, 100-file probe cap) and everything degrades gracefully — no ffmpeg means "unanalyzable", not a crash.
+- **CI now installs ffmpeg** so the real-WAV integration tests (tone/silence/tone fixtures generated with the stdlib `wave` module) run on every push; they skip automatically on machines without ffmpeg.
+
+Tests: 958 → 976 across 23 suites.
+
 ## [0.9.1] - 2026-07-09
 
 ### Security

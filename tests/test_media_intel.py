@@ -1,0 +1,232 @@
+"""Tests for fcpxml/media_intel.py — real media analysis (v0.10 media intelligence).
+
+Parser and mapping tests are pure and run everywhere; integration tests that
+invoke ffmpeg skip automatically on machines without it (CI installs it).
+"""
+
+import math
+import shutil
+import struct
+import tempfile
+import wave
+from pathlib import Path
+
+import pytest
+
+from fcpxml.media_intel import (
+    detect_silence,
+    map_silence_to_timeline,
+    parse_silencedetect_output,
+)
+
+FFMPEG = shutil.which("ffmpeg") is not None
+
+SAMPLE_STDERR = """\
+Input #0, wav, from 'test.wav':
+  Duration: 00:00:04.00, bitrate: 1536 kb/s
+[silencedetect @ 0x600002f30000] silence_start: 1.0
+[silencedetect @ 0x600002f30000] silence_end: 3.0 | silence_duration: 2.0
+size=N/A time=00:00:04.00 bitrate=N/A speed= 500x
+"""
+
+MULTI_STDERR = """\
+[silencedetect @ 0x1] silence_start: 0.5
+[silencedetect @ 0x1] silence_end: 1.25 | silence_duration: 0.75
+[silencedetect @ 0x1] silence_start: 7.099979
+[silencedetect @ 0x1] silence_end: 9.5 | silence_duration: 2.400021
+"""
+
+UNTERMINATED_STDERR = """\
+[silencedetect @ 0x1] silence_start: 2.0
+"""
+
+
+class TestParseSilencedetectOutput:
+    def test_parses_single_silence_range(self):
+        assert parse_silencedetect_output(SAMPLE_STDERR) == [(1.0, 3.0)]
+
+    def test_parses_multiple_ranges(self):
+        result = parse_silencedetect_output(MULTI_STDERR)
+        assert len(result) == 2
+        assert result[0] == (0.5, 1.25)
+        assert result[1] == pytest.approx((7.099979, 9.5))
+
+    def test_unterminated_silence_closed_at_total_duration(self):
+        result = parse_silencedetect_output(UNTERMINATED_STDERR, total_duration=5.0)
+        assert result == [(2.0, 5.0)]
+
+    def test_unterminated_silence_without_duration_dropped(self):
+        assert parse_silencedetect_output(UNTERMINATED_STDERR) == []
+
+    def test_empty_and_unrelated_input(self):
+        assert parse_silencedetect_output("") == []
+        assert parse_silencedetect_output("frame=  100 fps=25\n") == []
+
+
+class TestMapSilenceToTimeline:
+    """Silence ranges are in SOURCE seconds; clips use [source_start,
+    source_start + duration) of the source and sit at timeline_offset."""
+
+    def test_silence_inside_used_range_is_mapped(self):
+        # Clip uses source 10..20s, sits at timeline 100s.
+        result = map_silence_to_timeline(
+            [(12.0, 15.0)], source_start=10.0, clip_duration=10.0, timeline_offset=100.0
+        )
+        assert result == [(102.0, 105.0)]
+
+    def test_silence_overlapping_range_edges_is_clamped(self):
+        result = map_silence_to_timeline(
+            [(8.0, 12.0), (18.0, 25.0)],
+            source_start=10.0, clip_duration=10.0, timeline_offset=100.0,
+        )
+        assert result == [(100.0, 102.0), (108.0, 110.0)]
+
+    def test_silence_outside_used_range_is_excluded(self):
+        result = map_silence_to_timeline(
+            [(0.0, 5.0), (30.0, 40.0)],
+            source_start=10.0, clip_duration=10.0, timeline_offset=100.0,
+        )
+        assert result == []
+
+
+class TestDetectSilenceBounds:
+    def test_rejects_positive_noise_db(self):
+        with pytest.raises(ValueError):
+            detect_silence("/tmp/x.wav", noise_db=5.0)
+
+    def test_rejects_extreme_negative_noise_db(self):
+        with pytest.raises(ValueError):
+            detect_silence("/tmp/x.wav", noise_db=-200.0)
+
+    def test_rejects_nonpositive_min_duration(self):
+        with pytest.raises(ValueError):
+            detect_silence("/tmp/x.wav", min_duration=0)
+
+    def test_rejects_huge_min_duration(self):
+        with pytest.raises(ValueError):
+            detect_silence("/tmp/x.wav", min_duration=4000)
+
+    def test_missing_file_returns_none(self):
+        assert detect_silence("/nonexistent/path/audio.wav") is None
+
+
+def _write_tone_silence_tone_wav(path: str, rate: int = 48000) -> None:
+    """1s 440Hz tone, 2s silence, 1s 440Hz tone."""
+    def tone(seconds: float) -> bytes:
+        n = int(seconds * rate)
+        return b"".join(
+            struct.pack("<h", int(20000 * math.sin(2 * math.pi * 440 * i / rate)))
+            for i in range(n)
+        )
+
+    def silence(seconds: float) -> bytes:
+        return b"\x00\x00" * int(seconds * rate)
+
+    with wave.open(path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(tone(1.0) + silence(2.0) + tone(1.0))
+
+
+PROJECT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.13">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p24" frameDuration="1/24s" width="1920" height="1080"/>
+    <asset id="r2" name="interview" start="0s" duration="4s" hasVideo="0" hasAudio="1"
+           audioSources="1" audioChannels="1" audioRate="48000">
+      <media-rep kind="original-media" src="{src}"/>
+    </asset>
+  </resources>
+  <library>
+    <event name="Test">
+      <project name="SilenceTest">
+        <sequence format="r1" duration="4s" tcStart="0s">
+          <spine>
+            <gap name="Gap" offset="0s" start="0s" duration="10s"/>
+            <asset-clip ref="r2" offset="10s" name="interview" start="0s" duration="4s" audioRole="dialogue"/>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>
+"""
+
+
+class TestDetectMediaSilenceHandler:
+    """The detect_media_silence MCP tool: probes each clip's real source
+    audio and reports silence mapped into timeline time."""
+
+    def _write_project(self, tmp_path: Path, media_src: str) -> str:
+        fcpxml_path = tmp_path / "project.fcpxml"
+        fcpxml_path.write_text(PROJECT_XML.format(src=media_src))
+        return str(fcpxml_path)
+
+    @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+    async def test_reports_timeline_mapped_silence(self, tmp_path):
+        from server import handle_detect_media_silence
+
+        wav_path = tmp_path / "interview.wav"
+        _write_tone_silence_tone_wav(str(wav_path))
+        filepath = self._write_project(tmp_path, f"file://{wav_path}")
+
+        result = await handle_detect_media_silence(
+            {"filepath": filepath, "noise_db": -40.0, "min_silence": 0.5}
+        )
+        text = result[0].text
+        # WAV is silent from 1s to 3s in source; clip sits at timeline 10s.
+        assert "interview" in text
+        assert "11.0" in text
+        assert "13.0" in text
+
+    async def test_missing_media_is_reported_not_crashed(self, tmp_path):
+        from server import handle_detect_media_silence
+
+        filepath = self._write_project(tmp_path, "file:///nonexistent/interview.wav")
+        result = await handle_detect_media_silence({"filepath": filepath})
+        text = result[0].text
+        assert "interview" in text
+        assert "skipped" in text.lower() or "missing" in text.lower()
+
+    async def test_rejects_out_of_bounds_noise_db(self, tmp_path):
+        from server import handle_detect_media_silence
+
+        filepath = self._write_project(tmp_path, "file:///nonexistent/interview.wav")
+        with pytest.raises(ValueError):
+            await handle_detect_media_silence({"filepath": filepath, "noise_db": 40.0})
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+class TestDetectSilenceIntegration:
+    def test_detects_silence_in_real_wav(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            wav_path = f.name
+        try:
+            _write_tone_silence_tone_wav(wav_path)
+            result = detect_silence(wav_path, noise_db=-40.0, min_duration=0.5)
+            assert result is not None
+            assert len(result) == 1
+            start, end = result[0]
+            assert start == pytest.approx(1.0, abs=0.1)
+            assert end == pytest.approx(3.0, abs=0.1)
+        finally:
+            Path(wav_path).unlink(missing_ok=True)
+
+    def test_fully_silent_wav_is_one_range(self):
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            wav_path = f.name
+        try:
+            with wave.open(wav_path, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(48000)
+                wf.writeframes(b"\x00\x00" * 48000 * 3)
+            result = detect_silence(wav_path, noise_db=-40.0, min_duration=0.5)
+            assert result is not None
+            assert len(result) == 1
+            start, end = result[0]
+            assert start == pytest.approx(0.0, abs=0.1)
+            assert end == pytest.approx(3.0, abs=0.1)
+        finally:
+            Path(wav_path).unlink(missing_ok=True)

@@ -30,6 +30,7 @@ from mcp.types import (
 
 from fcpxml.diff import compare_timelines
 from fcpxml.export import DaVinciExporter
+from fcpxml.media_intel import detect_silence, map_silence_to_timeline, media_src_to_path
 from fcpxml.models import (
     DuplicateGroup,
     FlashFrame,
@@ -1364,6 +1365,22 @@ async def list_tools() -> list[Tool]:
                     "output_path": {"type": "string", "description": "Output path (default: adds _reformatted suffix)"}
                 },
                 "required": ["filepath", "format"]
+            }
+        ),
+
+        # ===== MEDIA INTELLIGENCE (v0.10.0) =====
+        Tool(
+            name="detect_media_silence",
+            description="Detect REAL silence by analyzing each clip's source audio with ffmpeg silencedetect, mapped into timeline time. Unlike detect_silence_candidates (XML-only heuristics), this reads the actual media files referenced by the timeline. Requires ffmpeg; clips whose media is missing or unreadable are reported, not failed.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "noise_db": {"type": "number", "default": -30.0, "description": "Silence threshold in dBFS, -120 to 0 (default -30)"},
+                    "min_silence": {"type": "number", "default": 0.5, "description": "Minimum silence duration in seconds to report (default 0.5)"},
+                    "clip_name": {"type": "string", "description": "Only analyze the clip with this name"},
+                },
+                "required": ["filepath"]
             }
         ),
 
@@ -2810,6 +2827,73 @@ async def handle_reformat_timeline(arguments: dict) -> Sequence[TextContent]:
 
 # ----- SILENCE DETECTION HANDLERS (v0.5.0) -----
 
+async def handle_detect_media_silence(arguments: dict) -> Sequence[TextContent]:
+    noise_db = float(arguments.get("noise_db", -30.0))
+    min_silence = float(arguments.get("min_silence", 0.5))
+    # Same bounds detect_silence() enforces — validated here so a bad request
+    # fails before any media file is opened.
+    if not (-120.0 <= noise_db <= 0.0):
+        raise ValueError(f"noise_db must be between -120 and 0 dB, got {noise_db}")
+    if not (0 < min_silence <= 3600):
+        raise ValueError(f"min_silence must be between 0 and 3600 seconds, got {min_silence}")
+
+    _, tl = _require_timeline(arguments["filepath"])
+    clip_filter = arguments.get("clip_name")
+
+    max_media_probes = 100
+    findings: list[tuple[str, float, float]] = []
+    skipped: list[tuple[str, str]] = []
+    probe_cache: dict[str, list | None] = {}
+    for clip in tl.clips:
+        if clip_filter and clip.name != clip_filter:
+            continue
+        media_path = media_src_to_path(clip.media_path or "")
+        if not media_path or not Path(media_path).is_file():
+            skipped.append((clip.name, "media file missing"))
+            continue
+        if media_path not in probe_cache:
+            if len(probe_cache) >= max_media_probes:
+                skipped.append((clip.name, f"probe cap reached ({max_media_probes} media files)"))
+                continue
+            probe_cache[media_path] = detect_silence(
+                media_path, noise_db=noise_db, min_duration=min_silence
+            )
+        silences = probe_cache[media_path]
+        if silences is None:
+            skipped.append((clip.name, "unanalyzable (ffmpeg missing or media unreadable)"))
+            continue
+        source_start = clip.source_start.seconds if clip.source_start else 0.0
+        mapped = map_silence_to_timeline(
+            silences, source_start, clip.duration.seconds, clip.start.seconds
+        )
+        findings.extend((clip.name, start, end) for start, end in mapped)
+
+    total_silence = sum(end - start for _, start, end in findings)
+    result = f"""# Media Silence Detection (real audio analysis)
+
+## Summary
+- **Threshold**: {noise_db} dB for >= {min_silence}s
+- **Media Files Probed**: {len(probe_cache)}
+- **Silence Spans Found**: {len(findings)} ({format_duration(total_silence)} total)
+"""
+    if findings:
+        result += "\n## Silence Spans (timeline time)\n"
+        result += _markdown_table(
+            ["Clip", "Start", "End", "Duration"],
+            [[name, f"{start:.2f}s", f"{end:.2f}s", f"{end - start:.2f}s"]
+             for name, start, end in findings],
+        ) + "\n"
+        result += "\n*To remove: `split_clip` at each boundary, then `delete_clips` with ripple.*"
+    if skipped:
+        result += "\n## Skipped Clips\n"
+        result += _markdown_table(
+            ["Clip", "Reason"], [[name, reason] for name, reason in skipped]
+        ) + "\n"
+    if not findings and not skipped:
+        result += "\nNo silence detected in any clip's source audio."
+    return _text_result(result)
+
+
 async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextContent]:
     filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
     modifier = FCPXMLModifier(filepath)
@@ -3153,6 +3237,7 @@ TOOL_HANDLERS = {
     # Social Media Reformat (v0.5.0)
     "reformat_timeline": handle_reformat_timeline,
     # Silence Detection (v0.5.0)
+    "detect_media_silence": handle_detect_media_silence,
     "detect_silence_candidates": handle_detect_silence_candidates,
     "remove_silence_candidates": handle_remove_silence_candidates,
     # NLE Export (v0.5.0)
