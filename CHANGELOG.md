@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-09
+
+### Added — Media Intelligence slice 2: silence auto-removal
+
+- **`remove_media_silence` (58th tool)** — detects real silence in each clip's source audio (same ffmpeg analysis as `detect_media_silence`) and **cuts it out of the timeline with ripple**: clips are split around silence, silent middles removed, everything after shifts earlier. `padding` (default 0.05s) keeps a breath of silence on each side of every cut; cut boundaries snap to the frame grid in the 2400-tick timebase. Non-destructive — writes a `_silence_removed` copy, and writes nothing at all when no silence is found.
+- **`FCPXMLModifier.cut_clip_ranges`** — new element-based writer primitive: removes clip-relative time ranges from a spine clip (merging overlapping ranges, clamping out-of-bounds), rebuilds the clip as its kept segments with correct source in-points, filters markers/keywords per segment, and ripples subsequent clips. Element-based on purpose — immune to the duplicate-name ambiguity that name-keyed `delete_clip`/`split_clip` composition would hit when cutting a clip into same-named segments.
+
+Tests: 976 → 984.
+
 ## [0.10.0] - 2026-07-09
 
 ### Added — Media Intelligence v1 (the moat work begins)

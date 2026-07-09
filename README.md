@@ -1,13 +1,13 @@
 # FCPXML MCP
 
-**The bridge between Final Cut Pro and AI. 57 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
+**The bridge between Final Cut Pro and AI. 58 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
 
 [![CI](https://github.com/DareDev256/fcpxml-mcp-server/actions/workflows/test.yml/badge.svg)](https://github.com/DareDev256/fcpxml-mcp-server/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4%E2%80%9312.x-purple.svg)](https://www.apple.com/final-cut-pro/)
-[![Tests](https://img.shields.io/badge/tests-976_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-984_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-23-blue.svg)](#testing)
 [![Source](https://img.shields.io/badge/source-~9.7k_LOC-informational.svg)](#architecture)
 
@@ -265,7 +265,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ---
 
-## All 57 Tools
+## All 58 Tools
 
 | Category | Tools | What It Does |
 |----------|------:|--------------|
@@ -278,7 +278,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | **Comparison** | 1 | Diff two timelines — added/removed/moved/trimmed |
 | **Reformat** | 1 | Aspect ratio conversion (9:16, 1:1, 4:5, custom) |
 | **Silence** | 2 | Detect and remove silence candidates (XML heuristics) |
-| **Media Intelligence** | 1 | Real silence detection from source audio (ffmpeg), mapped to timeline time |
+| **Media Intelligence** | 2 | Real silence detection from source audio (ffmpeg) + automatic silence removal with ripple |
 | **NLE Export** | 2 | DaVinci Resolve v1.9, FCP7 XMEML v5 |
 | **Generation** | 3 | Rough cuts, montages, A/B roll |
 | **Beat Sync** | 2 | Import beat markers, snap cuts to beats |
@@ -289,7 +289,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 | **Effects** | 1 | List FCP transition effects with UUIDs |
 | **Media** | 1 | Bulk relink moved/renamed media (rewrite `media-rep` src paths) |
 | **Live (macOS)** | 2 | Push FCPXML into the running FCP (zero-click Apple-event import); list open libraries |
-| | **57** | |
+| | **58** | |
 
 <details>
 <summary><strong>Full tool reference (click to expand)</strong></summary>
@@ -333,8 +333,8 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 #### v0.8.0 — Media — 1 tool
 `relink_media` (bulk-rewrite `asset`/`media-rep` src paths with `dry_run` preview — relink a moved drive without opening FCP)
 
-#### v0.10.0 — Media Intelligence — 1 tool
-`detect_media_silence` (analyzes each clip's real source audio with ffmpeg silencedetect and maps silence spans into timeline time — requires ffmpeg, degrades gracefully without it)
+#### v0.10–0.11 — Media Intelligence — 2 tools
+`detect_media_silence` (analyzes each clip's real source audio with ffmpeg silencedetect and maps silence spans into timeline time) · `remove_media_silence` (cuts detected silence out of the timeline with ripple — clips split around silence, padding keeps edits breathing, non-destructive output) — both require ffmpeg, degrade gracefully without it
 
 #### v0.9.0 — Live Mode (macOS + Final Cut Pro) — 2 tools
 `push_to_fcp` (zero-click FCPXML import into the running FCP via Apple event) · `list_fcp_libraries` (enumerate open libraries/events/projects)
@@ -370,7 +370,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ```
 fcp-mcp-server/           ~9.4k lines Python
-├── server.py              MCP entry point — 57 tools, 5 prompts, resource discovery
+├── server.py              MCP entry point — 58 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
 │                          _raw_markers_to_batch()
@@ -390,7 +390,7 @@ fcp-mcp-server/           ~9.4k lines Python
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection) + serialize_xml()
 │   ├── dtd.py             Validate output against Apple's official DTDs (located in the FCP app bundle)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 976 tests across 23 suites
+├── tests/                 984 tests across 23 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -506,7 +506,7 @@ Before v0.6.20, the 4-part SMPTE parser silently dropped frames — `01:00:10:12
 | **Rational time, never floats** | All durations are fractions (`600/2400s`) matching FCPXML's native format — zero rounding errors across trim, split, speed |
 | **Non-destructive by default** | Modified files get `_modified`, `_chapters` suffixes. Originals are never overwritten |
 | **Single source of truth** | `MarkerType` enum owns serialization: `from_string()` for input, `from_xml_element()` for parsing, `xml_attrs` for writing. `INCOMPLETE` is canonical; `TODO` is a backward-compat alias (same object) |
-| **Security-first** | 10-layer defense-in-depth across all 57 handlers — see [Security](#security) for the full matrix |
+| **Security-first** | 10-layer defense-in-depth across all 58 handlers — see [Security](#security) for the full matrix |
 | **Dispatch, not conditionals** | `TOOL_HANDLERS` dict maps names → async handlers. No 1000-line if/elif |
 
 ---
@@ -528,7 +528,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-976 tests across 23 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, real media silence detection (parser, timeline mapping, real-WAV ffmpeg integration), and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
+984 tests across 23 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, real media silence detection (parser, timeline mapping, real-WAV ffmpeg integration), and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
 
 ---
 
@@ -580,7 +580,8 @@ The full ecosystem analysis and the dual-mode architecture plan live in
 - [x] **Live mode v1** — zero-click push-to-FCP via Apple events, AppleScript library inspection — *v0.9.0*
 - [ ] Watch-folder round-trip + backend Protocol refactor (operation layer shared by XML and Live)
 - [x] **Media intelligence v1** — real silence detection from source audio (`detect_media_silence`) — *v0.10.0*
-- [ ] **Media intelligence** — transcript-driven editing, scene/beat detection, silence auto-removal, preview-without-FCP
+- [x] **Silence auto-removal** — `remove_media_silence` cuts real silence with ripple — *v0.11.0*
+- [ ] **Media intelligence** — transcript-driven editing, scene/beat detection, preview-without-FCP
 - [ ] **Live bridges** — optional SpliceKit / CommandPost adapters for in-app control when installed
 - [ ] Audio sync detection
 - [ ] Premiere Pro native XML support

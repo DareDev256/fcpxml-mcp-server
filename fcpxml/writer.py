@@ -34,7 +34,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import (
     _FCPXML_STANDARD_TIMEBASES,
@@ -1898,6 +1898,96 @@ class FCPXMLModifier:
             self.clips[new_id] = new_clip
 
         return new_clips
+
+    def cut_clip_ranges(
+        self,
+        clip: ET.Element,
+        cut_ranges: List[Tuple['TimeValue', 'TimeValue']],
+    ) -> 'TimeValue':
+        """Remove clip-relative time ranges from a spine clip, rippling after.
+
+        Element-based on purpose: callers that walk the spine (e.g. media
+        silence removal) pass the exact element, so duplicate-named clips are
+        never ambiguous the way name-keyed operations are.
+
+        Args:
+            clip: The spine clip element to cut (must be a direct spine child).
+            cut_ranges: (start, end) TimeValue pairs measured from the clip's
+                own head. Overlapping/unsorted ranges are merged; portions
+                outside [0, clip duration] are clamped. A cut covering the
+                whole clip removes it entirely.
+
+        Returns:
+            Total removed duration (zero if no effective ranges).
+        """
+        spine = self._get_spine()
+        clip_start, clip_duration, clip_offset = self._get_clip_times(clip)
+        clip_index = list(spine).index(clip)
+        zero = TimeValue.zero()
+
+        # Clamp, sort, merge.
+        clamped = []
+        for start, end in cut_ranges:
+            start = start if start > zero else zero
+            end = end if end < clip_duration else clip_duration
+            if end > start:
+                clamped.append((start, end))
+        clamped.sort(key=lambda r: r[0])
+        merged: List[Tuple[TimeValue, TimeValue]] = []
+        for start, end in clamped:
+            if merged and start <= merged[-1][1]:
+                if end > merged[-1][1]:
+                    merged[-1] = (merged[-1][0], end)
+            else:
+                merged.append((start, end))
+        if not merged:
+            return zero
+
+        # Keep ranges = complement of the merged cuts.
+        keeps: List[Tuple[TimeValue, TimeValue]] = []
+        cursor = zero
+        for start, end in merged:
+            if start > cursor:
+                keeps.append((cursor, start))
+            cursor = end
+        if cursor < clip_duration:
+            keeps.append((cursor, clip_duration))
+
+        spine.remove(clip)
+        new_clips: List[ET.Element] = []
+        current_offset = clip_offset
+        kept_total = zero
+        for keep_start, keep_end in keeps:
+            seg_duration = keep_end - keep_start
+            seg_start = clip_start + keep_start
+            new_clip = copy.deepcopy(clip)
+            new_clip.set('offset', current_offset.to_fcpxml())
+            new_clip.set('start', seg_start.to_fcpxml())
+            new_clip.set('duration', seg_duration.to_fcpxml())
+            self._filter_children_for_segment(new_clip, seg_start, seg_duration)
+            spine.insert(clip_index + len(new_clips), new_clip)
+            new_clips.append(new_clip)
+            current_offset = current_offset + seg_duration
+            kept_total = kept_total + seg_duration
+
+        removed = clip_duration - kept_total
+        self._ripple_from_index(spine, clip_index + len(new_clips), zero - removed)
+
+        # Keep the name index coherent, mirroring delete_clip/split_clip.
+        name = clip.get('id') or clip.get('name') or ''
+        if name and self.clips.get(name) is clip:
+            if new_clips:
+                self.clips[name] = new_clips[0]
+            else:
+                remaining = [
+                    sc for _, sc in self._iter_spine_clips()
+                    if (sc.get('id') or sc.get('name') or '') == name
+                ]
+                if remaining:
+                    self.clips[name] = remaining[0]
+                else:
+                    self.clips.pop(name, None)
+        return removed
 
     def delete_clip(
         self,

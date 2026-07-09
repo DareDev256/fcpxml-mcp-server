@@ -39,6 +39,7 @@ from fcpxml.models import (
     MarkerType,
     SegmentSpec,
     Timecode,
+    TimeValue,
 )
 from fcpxml.parser import FCPXMLParser
 from fcpxml.rough_cut import RoughCutGenerator
@@ -1379,6 +1380,23 @@ async def list_tools() -> list[Tool]:
                     "noise_db": {"type": "number", "default": -30.0, "description": "Silence threshold in dBFS, -120 to 0 (default -30)"},
                     "min_silence": {"type": "number", "default": 0.5, "description": "Minimum silence duration in seconds to report (default 0.5)"},
                     "clip_name": {"type": "string", "description": "Only analyze the clip with this name"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        Tool(
+            name="remove_media_silence",
+            description="Detect REAL silence in each clip's source audio (ffmpeg) and CUT it out of the timeline with ripple. Clips are split around silence; the silent middles are removed and everything after shifts earlier. Non-destructive: writes a _silence_removed copy. Preview with detect_media_silence first.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "noise_db": {"type": "number", "default": -30.0, "description": "Silence threshold in dBFS, -120 to 0 (default -30)"},
+                    "min_silence": {"type": "number", "default": 0.5, "description": "Minimum silence duration in seconds to cut (default 0.5)"},
+                    "padding": {"type": "number", "default": 0.05, "description": "Seconds of silence to keep on each side of a cut so edits breathe (default 0.05, max 5)"},
+                    "clip_name": {"type": "string", "description": "Only cut silence in the clip with this name"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _silence_removed suffix)"},
                 },
                 "required": ["filepath"]
             }
@@ -2894,6 +2912,98 @@ async def handle_detect_media_silence(arguments: dict) -> Sequence[TextContent]:
     return _text_result(result)
 
 
+async def handle_remove_media_silence(arguments: dict) -> Sequence[TextContent]:
+    noise_db = float(arguments.get("noise_db", -30.0))
+    min_silence = float(arguments.get("min_silence", 0.5))
+    padding = float(arguments.get("padding", 0.05))
+    if not (-120.0 <= noise_db <= 0.0):
+        raise ValueError(f"noise_db must be between -120 and 0 dB, got {noise_db}")
+    if not (0 < min_silence <= 3600):
+        raise ValueError(f"min_silence must be between 0 and 3600 seconds, got {min_silence}")
+    if not (0 <= padding <= 5):
+        raise ValueError(f"padding must be between 0 and 5 seconds, got {padding}")
+
+    filepath, output_path, modifier = _setup_modifier(arguments, "_silence_removed")
+    clip_filter = arguments.get("clip_name")
+    fps = modifier._detect_fps()
+
+    def to_frame_timevalue(seconds: float) -> TimeValue:
+        # Snap cut boundaries to the frame grid in the 2400-tick timebase so
+        # output stays frame-aligned and DTD-friendly.
+        return TimeValue(int(round(seconds * fps) * round(2400 / fps)), 2400)
+
+    max_media_probes = 100
+    cuts_made: list[tuple[str, int, float]] = []
+    skipped: list[tuple[str, str]] = []
+    probe_cache: dict[str, list | None] = {}
+    spine_clips = [el for _, el in modifier._iter_spine_clips()]
+    for el in spine_clips:
+        name = el.get("name", "")
+        if clip_filter and name != clip_filter:
+            continue
+        src = modifier.resources.get(el.get("ref", ""), {}).get("src", "")
+        media_path = media_src_to_path(src)
+        if not media_path or not Path(media_path).is_file():
+            skipped.append((name, "media file missing"))
+            continue
+        if media_path not in probe_cache:
+            if len(probe_cache) >= max_media_probes:
+                skipped.append((name, f"probe cap reached ({max_media_probes} media files)"))
+                continue
+            probe_cache[media_path] = detect_silence(
+                media_path, noise_db=noise_db, min_duration=min_silence
+            )
+        silences = probe_cache[media_path]
+        if silences is None:
+            skipped.append((name, "unanalyzable (ffmpeg missing or media unreadable)"))
+            continue
+
+        clip_source_start = modifier._parse_time(el.get("start", "0s")).to_seconds()
+        clip_duration = modifier._parse_time(el.get("duration", "0s")).to_seconds()
+        cut_ranges = []
+        for sil_start, sil_end in silences:
+            # Source time -> clip-relative, padded so cuts breathe.
+            cut_start = max(sil_start, clip_source_start) - clip_source_start + padding
+            cut_end = min(sil_end, clip_source_start + clip_duration) - clip_source_start - padding
+            if cut_end > cut_start:
+                cut_ranges.append((to_frame_timevalue(cut_start), to_frame_timevalue(cut_end)))
+        if not cut_ranges:
+            continue
+        removed = modifier.cut_clip_ranges(el, cut_ranges)
+        if removed > TimeValue.zero():
+            cuts_made.append((name, len(cut_ranges), removed.to_seconds()))
+
+    if not cuts_made:
+        text = "# Media Silence Removal\n\nNo silence found to remove — file unchanged (nothing saved)."
+        if skipped:
+            text += "\n\n## Skipped Clips\n" + _markdown_table(
+                ["Clip", "Reason"], [[name, reason] for name, reason in skipped]
+            )
+        return _text_result(text)
+
+    modifier.save(output_path)
+    total_removed = sum(seconds for _, _, seconds in cuts_made)
+    result = f"""# Media Silence Removal (real audio analysis)
+
+## Summary
+- **Threshold**: {noise_db} dB for >= {min_silence}s, padding {padding}s
+- **Clips Cut**: {len(cuts_made)}
+- **Total Removed**: {format_duration(total_removed)}
+
+## Cuts
+"""
+    result += _markdown_table(
+        ["Clip", "Silence Spans Cut", "Removed"],
+        [[name, str(count), f"{seconds:.2f}s"] for name, count, seconds in cuts_made],
+    ) + "\n"
+    if skipped:
+        result += "\n## Skipped Clips\n" + _markdown_table(
+            ["Clip", "Reason"], [[name, reason] for name, reason in skipped]
+        ) + "\n"
+    result += f"\nSaved to: {output_path}\n\n*Preview first next time with `detect_media_silence`. Original file untouched.*"
+    return _text_result(result)
+
+
 async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextContent]:
     filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
     modifier = FCPXMLModifier(filepath)
@@ -3238,6 +3348,7 @@ TOOL_HANDLERS = {
     "reformat_timeline": handle_reformat_timeline,
     # Silence Detection (v0.5.0)
     "detect_media_silence": handle_detect_media_silence,
+    "remove_media_silence": handle_remove_media_silence,
     "detect_silence_candidates": handle_detect_silence_candidates,
     "remove_silence_candidates": handle_remove_silence_candidates,
     # NLE Export (v0.5.0)

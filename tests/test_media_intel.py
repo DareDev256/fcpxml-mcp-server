@@ -197,6 +197,180 @@ class TestDetectMediaSilenceHandler:
             await handle_detect_media_silence({"filepath": filepath, "noise_db": 40.0})
 
 
+TWO_CLIP_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<fcpxml version="1.13">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p24" frameDuration="1/24s" width="1920" height="1080"/>
+    <asset id="r2" name="interview" start="0s" duration="10s" hasVideo="0" hasAudio="1">
+      <media-rep kind="original-media" src="file:///media/interview.wav"/>
+    </asset>
+    <asset id="r3" name="broll" start="0s" duration="10s" hasVideo="1" hasAudio="1">
+      <media-rep kind="original-media" src="file:///media/broll.mov"/>
+    </asset>
+  </resources>
+  <library>
+    <event name="Test">
+      <project name="CutTest">
+        <sequence format="r1" duration="6s" tcStart="0s">
+          <spine>
+            <asset-clip ref="r2" offset="0s" name="interview" start="0s" duration="4s">
+              <marker start="0.5s" duration="1/24s" value="Keep"/>
+              <marker start="2s" duration="1/24s" value="Drop"/>
+            </asset-clip>
+            <asset-clip ref="r3" offset="4s" name="broll" start="0s" duration="2s"/>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>
+"""
+
+
+class TestCutClipRanges:
+    """FCPXMLModifier.cut_clip_ranges — rebuild a clip without the given
+    clip-relative ranges, rippling everything after it."""
+
+    def _make_modifier(self, tmp_path: Path):
+        from fcpxml.writer import FCPXMLModifier
+
+        fcpxml_path = tmp_path / "cut.fcpxml"
+        fcpxml_path.write_text(TWO_CLIP_XML)
+        return FCPXMLModifier(str(fcpxml_path))
+
+    def _spine_clips(self, mod):
+        spine = mod.root.find(".//spine")
+        return [el for el in spine if el.tag == "asset-clip"]
+
+    def test_middle_cut_splits_clip_and_ripples(self, tmp_path):
+        from fcpxml.models import TimeValue
+
+        mod = self._make_modifier(tmp_path)
+        clip = self._spine_clips(mod)[0]
+        removed = mod.cut_clip_ranges(clip, [(TimeValue(1, 1), TimeValue(3, 1))])
+
+        assert removed.to_seconds() == pytest.approx(2.0)
+        clips = self._spine_clips(mod)
+        assert len(clips) == 3  # interview x2 + broll
+        seg1, seg2, broll = clips
+        assert seg1.get("offset") == "0s"
+        assert mod._parse_time(seg1.get("duration")).to_seconds() == pytest.approx(1.0)
+        assert mod._parse_time(seg2.get("offset")).to_seconds() == pytest.approx(1.0)
+        assert mod._parse_time(seg2.get("start")).to_seconds() == pytest.approx(3.0)
+        assert mod._parse_time(seg2.get("duration")).to_seconds() == pytest.approx(1.0)
+        # broll rippled 4s -> 2s
+        assert mod._parse_time(broll.get("offset")).to_seconds() == pytest.approx(2.0)
+
+    def test_head_cut_trims_in_place(self, tmp_path):
+        from fcpxml.models import TimeValue
+
+        mod = self._make_modifier(tmp_path)
+        clip = self._spine_clips(mod)[0]
+        removed = mod.cut_clip_ranges(clip, [(TimeValue(0, 1), TimeValue(1, 1))])
+
+        assert removed.to_seconds() == pytest.approx(1.0)
+        clips = self._spine_clips(mod)
+        assert len(clips) == 2
+        seg, broll = clips
+        assert seg.get("offset") == "0s"
+        assert mod._parse_time(seg.get("start")).to_seconds() == pytest.approx(1.0)
+        assert mod._parse_time(seg.get("duration")).to_seconds() == pytest.approx(3.0)
+        assert mod._parse_time(broll.get("offset")).to_seconds() == pytest.approx(3.0)
+
+    def test_full_span_cut_removes_clip(self, tmp_path):
+        from fcpxml.models import TimeValue
+
+        mod = self._make_modifier(tmp_path)
+        clip = self._spine_clips(mod)[0]
+        removed = mod.cut_clip_ranges(clip, [(TimeValue(0, 1), TimeValue(4, 1))])
+
+        assert removed.to_seconds() == pytest.approx(4.0)
+        clips = self._spine_clips(mod)
+        assert len(clips) == 1
+        assert clips[0].get("name") == "broll"
+        assert clips[0].get("offset") == "0s"
+
+    def test_overlapping_ranges_are_merged_and_clamped(self, tmp_path):
+        from fcpxml.models import TimeValue
+
+        mod = self._make_modifier(tmp_path)
+        clip = self._spine_clips(mod)[0]
+        removed = mod.cut_clip_ranges(clip, [
+            (TimeValue(2, 1), TimeValue(9, 1)),    # clamped to 4s
+            (TimeValue(1, 1), TimeValue(5, 2)),    # 1..2.5 overlaps
+            (TimeValue(-1, 1), TimeValue(1, 2)),   # -1..0.5 clamped to 0..0.5
+        ])
+        # merged cuts: 0..0.5 and 1..4 -> removed 3.5, kept 0.5..1
+        assert removed.to_seconds() == pytest.approx(3.5)
+        clips = self._spine_clips(mod)
+        seg = clips[0]
+        assert mod._parse_time(seg.get("start")).to_seconds() == pytest.approx(0.5)
+        assert mod._parse_time(seg.get("duration")).to_seconds() == pytest.approx(0.5)
+
+    def test_markers_follow_their_segment(self, tmp_path):
+        from fcpxml.models import TimeValue
+
+        mod = self._make_modifier(tmp_path)
+        clip = self._spine_clips(mod)[0]
+        mod.cut_clip_ranges(clip, [(TimeValue(1, 1), TimeValue(3, 1))])
+
+        clips = self._spine_clips(mod)
+        seg1_markers = [m.get("value") for m in clips[0].findall("marker")]
+        seg2_markers = [m.get("value") for m in clips[1].findall("marker")]
+        assert seg1_markers == ["Keep"]   # 0.5s is in kept 0..1
+        assert seg2_markers == []         # 2s was inside the cut
+
+
+class TestRemoveMediaSilenceHandler:
+    """The remove_media_silence MCP tool: detects real silence and cuts it
+    out of the timeline with ripple."""
+
+    def _write_project(self, tmp_path: Path, media_src: str) -> str:
+        fcpxml_path = tmp_path / "project.fcpxml"
+        fcpxml_path.write_text(PROJECT_XML.format(src=media_src))
+        return str(fcpxml_path)
+
+    @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+    async def test_cuts_silence_and_saves_output(self, tmp_path):
+        from fcpxml.parser import FCPXMLParser
+        from server import handle_remove_media_silence
+
+        wav_path = tmp_path / "interview.wav"
+        _write_tone_silence_tone_wav(str(wav_path))
+        filepath = self._write_project(tmp_path, f"file://{wav_path}")
+
+        result = await handle_remove_media_silence(
+            {"filepath": filepath, "noise_db": -40.0, "min_silence": 0.5, "padding": 0}
+        )
+        text = result[0].text
+        assert "_silence_removed" in text
+
+        out = str(tmp_path / "project_silence_removed.fcpxml")
+        project = FCPXMLParser().parse_file(out)
+        segments = [c for c in project.primary_timeline.clips if c.name == "interview"]
+        # tone(1s) silence(2s) tone(1s) -> two 1s segments
+        assert len(segments) == 2
+        assert segments[0].duration.seconds == pytest.approx(1.0, abs=0.05)
+        assert segments[1].duration.seconds == pytest.approx(1.0, abs=0.05)
+        assert segments[1].source_start.seconds == pytest.approx(3.0, abs=0.05)
+
+    async def test_missing_media_makes_no_changes(self, tmp_path):
+        from server import handle_remove_media_silence
+
+        filepath = self._write_project(tmp_path, "file:///nonexistent/interview.wav")
+        result = await handle_remove_media_silence({"filepath": filepath})
+        text = result[0].text
+        assert "skipped" in text.lower() or "missing" in text.lower()
+        assert not (tmp_path / "project_silence_removed.fcpxml").exists()
+
+    async def test_rejects_out_of_bounds_padding(self, tmp_path):
+        from server import handle_remove_media_silence
+
+        filepath = self._write_project(tmp_path, "file:///nonexistent/interview.wav")
+        with pytest.raises(ValueError):
+            await handle_remove_media_silence({"filepath": filepath, "padding": -1})
+
+
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
 class TestDetectSilenceIntegration:
     def test_detects_silence_in_real_wav(self):
