@@ -2969,7 +2969,7 @@ async def handle_list_templates(arguments: dict) -> Sequence[TextContent]:
 async def handle_apply_template(arguments: dict) -> Sequence[TextContent]:
     template_name = arguments["template_name"]
     clips_raw = arguments["clips"]
-    output_path = _validate_output_path(arguments["output_path"])
+    output_path = _validate_output_path(arguments["output_path"], anchor_dir=PROJECTS_DIR)
     fps = arguments.get("fps", 24)
 
     # Convert raw clips dict to ClipSpec objects
