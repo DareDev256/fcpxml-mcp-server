@@ -7,9 +7,9 @@ name = "fcp-mcp-server"
 
 
 
-version = "0.11.0"
+version = "0.12.0"
 
-description = "MCP server for Final Cut Pro XML. 57 tools for timeline analysis, batch editing, QC, generation, multi-track support, NLE export, templates, media relink, .fcpxmld bundles, and real media analysis (silence detection + auto-removal) via Claude."
+description = "MCP server for Final Cut Pro XML. 59 tools for timeline analysis, batch editing, QC, generation, multi-track support, NLE export, templates, media relink, .fcpxmld bundles, and real media analysis (silence detection + auto-removal, beat detection) via Claude."
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -34,6 +34,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+intelligence = [
+    "librosa>=0.10.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",

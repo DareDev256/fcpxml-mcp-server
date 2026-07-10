@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-07-09
+
+### Added — Media Intelligence slice 3: beat detection
+
+- **`detect_beats` (59th tool)** — detects musical beats and tempo in an audio/video file via librosa's beat tracker and writes a beats JSON next to the media file in exactly the format `import_beat_markers` consumes, so *detect → mark → snap-to-beats* chains with zero glue. Analysis duration capped (20 min) to bound memory; media path validated against an audio/video extension whitelist.
+- **`[intelligence]` optional extra** — `pip install 'fcp-mcp-server[intelligence]'` adds librosa. The core install stays 2 dependencies; without the extra, `detect_beats` degrades to an install hint (lazy import, never crashes). CI installs it so beat tests run on every push.
+
+### Fixed
+
+- **`import_beat_markers` no longer crashes when beats run past the timeline end** — songs are routinely longer than edits; out-of-range beats are now skipped and counted in the report instead of raising `No spine clip at position`. Found by end-to-end verification of the detect → import → snap chain.
+
+Tests: 984 → 990.
+
 ## [0.11.0] - 2026-07-09
 
 ### Added — Media Intelligence slice 2: silence auto-removal

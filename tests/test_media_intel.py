@@ -371,6 +371,118 @@ class TestRemoveMediaSilenceHandler:
             await handle_remove_media_silence({"filepath": filepath, "padding": -1})
 
 
+try:
+    import librosa  # noqa: F401
+    LIBROSA = True
+except ImportError:
+    LIBROSA = False
+
+
+def _write_click_track_wav(path: str, bpm: float = 120.0, seconds: float = 8.0,
+                           rate: int = 22050) -> None:
+    """Clicks (10ms 1kHz bursts) on the beat grid, silence between."""
+    interval = 60.0 / bpm
+    total = int(seconds * rate)
+    samples = [0] * total
+    burst = int(0.010 * rate)
+    t = 0.0
+    while t < seconds:
+        start = int(t * rate)
+        for i in range(burst):
+            if start + i < total:
+                samples[start + i] = int(28000 * math.sin(2 * math.pi * 1000 * i / rate))
+        t += interval
+    with wave.open(path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(b"".join(struct.pack("<h", s) for s in samples))
+
+
+class TestDetectBeats:
+    def test_missing_file_returns_none(self):
+        from fcpxml.media_intel import detect_beats
+
+        assert detect_beats("/nonexistent/song.wav") is None
+
+    @pytest.mark.skipif(not LIBROSA, reason="librosa not installed")
+    def test_detects_click_track_grid(self, tmp_path):
+        from fcpxml.media_intel import detect_beats
+
+        wav = tmp_path / "click.wav"
+        _write_click_track_wav(str(wav), bpm=120.0, seconds=8.0)
+        result = detect_beats(str(wav))
+        assert result is not None
+        beats = result["beats"]
+        assert result["bpm"] > 0
+        assert len(beats) >= 10
+        # median inter-beat interval must sit on the 0.5s grid
+        intervals = sorted(b - a for a, b in zip(beats, beats[1:]))
+        median = intervals[len(intervals) // 2]
+        assert median == pytest.approx(0.5, abs=0.06)
+
+
+@pytest.mark.skipif(not LIBROSA, reason="librosa not installed")
+class TestDetectBeatsHandler:
+    async def test_writes_beats_json_and_reports(self, tmp_path):
+        import json as jsonlib
+
+        from server import handle_detect_beats
+
+        wav = tmp_path / "song.wav"
+        _write_click_track_wav(str(wav), bpm=120.0, seconds=8.0)
+        result = await handle_detect_beats({"media_path": str(wav)})
+        text = result[0].text
+        assert "BPM" in text
+        json_path = tmp_path / "song_beats.json"
+        assert str(json_path) in text
+        data = jsonlib.loads(json_path.read_text())
+        assert len(data["beats"]) >= 10
+        assert data["bpm"] > 0
+        assert data["downbeats"] == data["beats"][::4]
+
+    async def test_rejects_disallowed_extension(self, tmp_path):
+        from server import handle_detect_beats
+
+        bad = tmp_path / "song.txt"
+        bad.write_text("not audio")
+        with pytest.raises(ValueError):
+            await handle_detect_beats({"media_path": str(bad)})
+
+    async def test_reports_when_librosa_unavailable(self, tmp_path, monkeypatch):
+        import server as server_mod
+        from server import handle_detect_beats
+
+        wav = tmp_path / "song.wav"
+        _write_click_track_wav(str(wav), seconds=2.0)
+        monkeypatch.setattr(server_mod, "detect_beats", lambda *a, **k: None)
+        result = await handle_detect_beats({"media_path": str(wav)})
+        assert "librosa" in result[0].text.lower()
+
+
+class TestImportBeatMarkersBeyondTimeline:
+    """detect_beats output routinely spans longer than the edit (songs are
+    longer than timelines) — import must skip out-of-range beats, not crash."""
+
+    async def test_out_of_range_beats_are_skipped_not_fatal(self, tmp_path):
+        import json as jsonlib
+
+        from server import handle_import_beat_markers
+
+        proj = tmp_path / "edit.fcpxml"
+        proj.write_text(TWO_CLIP_XML)  # timeline is 6s total
+        beats = tmp_path / "beats.json"
+        beats.write_text(jsonlib.dumps({"beats": [0.5, 2.0, 5.5, 7.0, 9.5]}))
+
+        result = await handle_import_beat_markers(
+            {"filepath": str(proj), "beats_path": str(beats)}
+        )
+        text = result[0].text
+        assert "3" in text          # 3 in-range markers placed
+        assert "skipped" in text.lower()
+        assert "2" in text          # 2 beyond-timeline beats skipped
+
+
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
 class TestDetectSilenceIntegration:
     def test_detects_silence_in_real_wav(self):

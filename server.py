@@ -30,7 +30,12 @@ from mcp.types import (
 
 from fcpxml.diff import compare_timelines
 from fcpxml.export import DaVinciExporter
-from fcpxml.media_intel import detect_silence, map_silence_to_timeline, media_src_to_path
+from fcpxml.media_intel import (
+    detect_beats,
+    detect_silence,
+    map_silence_to_timeline,
+    media_src_to_path,
+)
 from fcpxml.models import (
     DuplicateGroup,
     FlashFrame,
@@ -1386,6 +1391,17 @@ async def list_tools() -> list[Tool]:
         ),
 
         Tool(
+            name="detect_beats",
+            description="Detect musical beats and tempo in an audio/video file (librosa beat tracker). Writes a beats JSON next to the media file that plugs directly into import_beat_markers + snap_to_beats for beat-synced editing. Requires the optional [intelligence] extra (librosa); degrades to an install hint without it.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "media_path": {"type": "string", "description": "Path to audio/video file (.wav, .mp3, .m4a, .aac, .aif, .flac, .mov, .mp4)"},
+                },
+                "required": ["media_path"]
+            }
+        ),
+        Tool(
             name="remove_media_silence",
             description="Detect REAL silence in each clip's source audio (ffmpeg) and CUT it out of the timeline with ripple. Clips are split around silence; the silent middles are removed and everything after shifts earlier. Non-destructive: writes a _silence_removed copy. Preview with detect_media_silence first.",
             inputSchema={
@@ -2388,15 +2404,26 @@ async def handle_import_beat_markers(arguments: dict) -> Sequence[TextContent]:
             })
 
     modifier = FCPXMLModifier(filepath)
-    added = modifier.batch_add_markers(markers=markers)
+
+    # Songs routinely run longer than the edit — beats past the timeline's
+    # end are skipped (add_marker_at_timeline would raise on them).
+    timeline_end = modifier._timeline_duration().to_seconds()
+    in_range = [m for m in markers if float(m['timecode'].rstrip('s')) < timeline_end]
+    skipped_count = len(markers) - len(in_range)
+
+    added = modifier.batch_add_markers(markers=in_range)
     modifier.save(output_path)
 
+    skipped_note = (
+        f"- **Skipped**: {skipped_count} beat(s) beyond the timeline end "
+        f"({format_duration(timeline_end)})\n" if skipped_count else ""
+    )
     return _text_result(f"""# Beat Markers Imported
 
 ## Summary
 - **Beats Found**: {len(beat_times)}
 - **Markers Added**: {len(added)}
-- **Filter**: {beat_filter}
+{skipped_note}- **Filter**: {beat_filter}
 - **Marker Type**: {marker_type}
 
 ## Output
@@ -3004,6 +3031,58 @@ async def handle_remove_media_silence(arguments: dict) -> Sequence[TextContent]:
     return _text_result(result)
 
 
+AUDIO_MEDIA_EXTENSIONS = (
+    '.wav', '.aif', '.aiff', '.mp3', '.m4a', '.aac', '.flac', '.mov', '.mp4',
+)
+
+
+async def handle_detect_beats(arguments: dict) -> Sequence[TextContent]:
+    media_path = _validate_filepath(arguments["media_path"], AUDIO_MEDIA_EXTENSIONS)
+
+    result = detect_beats(media_path)
+    if result is None:
+        return _text_result(
+            "Beat detection unavailable — librosa is not installed or the file "
+            "could not be analyzed.\n\nInstall the optional media-intelligence "
+            "extra:\n\n    pip install 'fcp-mcp-server[intelligence]'"
+        )
+
+    bpm, beats = result["bpm"], result["beats"]
+    beats_data = {
+        "source": str(Path(media_path).name),
+        "bpm": round(bpm, 2),
+        "beats": [round(b, 4) for b in beats],
+        "downbeats": [round(b, 4) for b in beats[::4]],
+    }
+    json_path = _validate_output_path(
+        str(Path(media_path).with_name(Path(media_path).stem + "_beats.json")),
+        anchor_dir=str(Path(media_path).parent),
+    )
+    with open(json_path, "w") as f:
+        json.dump(beats_data, f, indent=2)
+
+    preview = beats[:16]
+    result_text = f"""# Beat Detection
+
+## Summary
+- **Source**: {Path(media_path).name}
+- **Estimated Tempo**: {bpm:.1f} BPM
+- **Beats Detected**: {len(beats)} ({format_duration(beats[-1]) if beats else '0s'} span)
+- **Beats JSON**: {json_path}
+
+## First Beats
+"""
+    result_text += _markdown_table(
+        ["#", "Time"],
+        [[str(i + 1), f"{b:.3f}s"] for i, b in enumerate(preview)],
+    ) + "\n"
+    result_text += (
+        f"\n*Next: `import_beat_markers` with beats_path=\"{json_path}\" to place "
+        "markers, then `snap_to_beats` to align your cuts.*"
+    )
+    return _text_result(result_text)
+
+
 async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextContent]:
     filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
     modifier = FCPXMLModifier(filepath)
@@ -3349,6 +3428,7 @@ TOOL_HANDLERS = {
     # Silence Detection (v0.5.0)
     "detect_media_silence": handle_detect_media_silence,
     "remove_media_silence": handle_remove_media_silence,
+    "detect_beats": handle_detect_beats,
     "detect_silence_candidates": handle_detect_silence_candidates,
     "remove_silence_candidates": handle_remove_silence_candidates,
     # NLE Export (v0.5.0)

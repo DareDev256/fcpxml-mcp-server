@@ -79,6 +79,39 @@ def map_silence_to_timeline(
     return mapped
 
 
+def detect_beats(
+    path: str, max_analysis_seconds: float = 1200.0
+) -> Optional[dict]:
+    """Detect musical beats in an audio file via librosa's beat tracker.
+
+    librosa is an optional dependency (``pip install 'fcp-mcp-server[intelligence]'``);
+    without it, or when the file is missing/unreadable, this returns ``None``
+    so callers can degrade to a helpful message instead of crashing.
+
+    Returns:
+        ``{'bpm': float, 'beats': [seconds, ...]}`` or ``None``.
+    """
+    file_path = Path(path)
+    if not file_path.is_file():
+        return None
+    try:
+        import librosa
+    except ImportError:
+        logger.info("librosa not installed; beat detection unavailable")
+        return None
+    try:
+        # duration cap bounds memory on adversarially long media
+        y, sr = librosa.load(str(file_path), sr=None, mono=True,
+                             duration=max_analysis_seconds)
+        tempo, frames = librosa.beat.beat_track(y=y, sr=sr)
+        beats = librosa.frames_to_time(frames, sr=sr)
+    except Exception:
+        logger.warning("librosa beat analysis failed for %s", file_path)
+        return None
+    bpm = float(tempo[0] if hasattr(tempo, "__len__") else tempo)
+    return {"bpm": bpm, "beats": [float(b) for b in beats]}
+
+
 def media_src_to_path(src: str) -> str:
     """Convert an FCPXML media src (``file://`` URL or plain path) to a filesystem path."""
     if src.startswith("file://"):
