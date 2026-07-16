@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.12.1] - 2026-07-16
+
+Docs fix. No code changes.
+
+### Fixed
+- **`[intelligence]` install command didn't work.** The README told users to run
+  `pip install 'fcp-mcp-server[intelligence]'` to enable `detect_beats`, but the
+  package isn't published to PyPI — in a clean venv that errors with
+  *"No matching distribution found for fcp-mcp-server[intelligence]"*. Since the
+  documented install flow is `git clone` + `pip install -e .`, the extra is now
+  `pip install -e '.[intelligence]'`, with a note that it must run from the cloned
+  repo. This blocked the headline feature of v0.12.0.
+- **Clone URL and paths use the canonical repo name.** `git clone .../fcp-mcp-server.git`
+  still resolves via GitHub's rename redirect, but it created a directory whose name
+  didn't match the `cd` on the next line, and the `/path/to/fcp-mcp-server` placeholders
+  in the Claude Desktop config didn't match what `git clone` produces. (The *package*
+  name in `pyproject.toml` is legitimately `fcp-mcp-server` — only the repo is
+  `fcpxml-mcp-server`. Left alone.)
+
+### Verified unchanged
+Audited every headline claim against the source — all accurate, nothing to correct:
+59 tools (all 59 documented, 0 undocumented), 990 tests (pytest collects exactly 990),
+23 suites, v0.12.0 consistent across pyproject/CHANGELOG/README.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

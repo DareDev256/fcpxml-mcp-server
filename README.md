@@ -142,8 +142,8 @@ the optional SpliceKit/CommandPost bridges planned for v1.0.
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/DareDev256/fcp-mcp-server.git
-cd fcp-mcp-server
+git clone https://github.com/DareDev256/fcpxml-mcp-server.git
+cd fcpxml-mcp-server
 pip install -e .
 ```
 
@@ -157,7 +157,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "fcpxml": {
       "command": "uv",
-      "args": ["--directory", "/path/to/fcp-mcp-server", "run", "server.py"],
+      "args": ["--directory", "/path/to/fcpxml-mcp-server", "run", "server.py"],
       "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
     }
   }
@@ -170,7 +170,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "fcpxml": {
       "command": "python",
-      "args": ["/path/to/fcp-mcp-server/server.py"],
+      "args": ["/path/to/fcpxml-mcp-server/server.py"],
       "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
     }
   }
@@ -369,7 +369,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 ## Architecture
 
 ```
-fcp-mcp-server/           ~9.4k lines Python
+fcpxml-mcp-server/        ~9.4k lines Python
 ├── server.py              MCP entry point — 59 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
@@ -537,7 +537,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 - **Python 3.10+** · **Final Cut Pro 10.4+** (FCPXML 1.8+) · **Claude Desktop** or any MCP client
 - **Dependencies** (auto-installed): `mcp`, `defusedxml`
 - **ffmpeg** (optional) — needed for silence analysis (`detect_media_silence`, `remove_media_silence`)
-- **`pip install 'fcp-mcp-server[intelligence]'`** (optional) — adds librosa for `detect_beats`; everything else works without it
+- **`pip install -e '.[intelligence]'`** (optional) — adds librosa for `detect_beats`; everything else works without it. (Run it from the cloned repo — the package isn't published to PyPI.)
 - See [Compatibility](#compatibility) for full version matrix
 
 ---
