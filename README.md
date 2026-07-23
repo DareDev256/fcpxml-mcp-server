@@ -1,6 +1,6 @@
 # FCPXML MCP
 
-**The bridge between Final Cut Pro and AI. 59 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
+**The bridge between Final Cut Pro and AI. 62 tools that turn timeline XML into structured data Claude can read, edit, and generate.**
 
 [![CI](https://github.com/DareDev256/fcpxml-mcp-server/actions/workflows/test.yml/badge.svg)](https://github.com/DareDev256/fcpxml-mcp-server/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,8 +8,8 @@
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4%E2%80%9312.x-purple.svg)](https://www.apple.com/final-cut-pro/)
 [![PyPI](https://img.shields.io/pypi/v/fcp-mcp-server.svg)](https://pypi.org/project/fcp-mcp-server/)
-[![Tests](https://img.shields.io/badge/tests-990_passing-brightgreen.svg)](#testing)
-[![Suites](https://img.shields.io/badge/suites-23-blue.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1032_passing-brightgreen.svg)](#testing)
+[![Suites](https://img.shields.io/badge/suites-24-blue.svg)](#testing)
 
 **Hardened for real libraries:** 132 adversarial-input security tests, `defusedxml` everywhere, sandboxed writes, no patched binaries, no private APIs — plus a [private disclosure channel](SECURITY.md) with externally reported fixes already credited and merged.
 
@@ -161,10 +161,10 @@ Or project-scoped — commit a `.mcp.json` so your whole team gets it:
 }
 ```
 
-With media intelligence (silence removal + beat detection):
+With media intelligence (beat detection) and transcript editing (local Whisper):
 
 ```bash
-claude mcp add fcpxml -e FCP_PROJECTS_DIR=~/Movies -- uvx --from "fcp-mcp-server[intelligence]" fcp-mcp-server
+claude mcp add fcpxml -e FCP_PROJECTS_DIR=~/Movies -- uvx --from "fcp-mcp-server[intelligence,transcribe]" fcp-mcp-server
 ```
 
 ### Claude Desktop
@@ -298,7 +298,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ---
 
-## All 59 Tools
+## All 62 Tools
 
 | Category | Tools | What It Does |
 |----------|------:|--------------|
@@ -369,6 +369,9 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 #### v0.10–0.12 — Media Intelligence — 3 tools
 `detect_media_silence` (analyzes each clip's real source audio with ffmpeg silencedetect and maps silence spans into timeline time) · `remove_media_silence` (cuts detected silence out of the timeline with ripple — clips split around silence, padding keeps edits breathing, non-destructive output) — both require ffmpeg, degrade gracefully without it · `detect_beats` (musical beat + tempo detection via librosa, writes a beats JSON that chains into `import_beat_markers` + `snap_to_beats`; needs the optional `[intelligence]` extra)
 
+#### v0.13.0 — Transcript Intelligence — 3 tools
+`transcribe_media` · `edit_by_transcript` · `remove_filler_words`
+
 #### v0.9.0 — Live Mode (macOS + Final Cut Pro) — 2 tools
 `push_to_fcp` (zero-click FCPXML import into the running FCP via Apple event) · `list_fcp_libraries` (enumerate open libraries/events/projects)
 
@@ -403,7 +406,7 @@ Select these from Claude's prompt menu (⌘/) — they chain multiple tools auto
 
 ```
 fcpxml-mcp-server/        ~9.4k lines Python
-├── server.py              MCP entry point — 59 tools, 5 prompts, resource discovery
+├── server.py              MCP entry point — 62 tools, 5 prompts, resource discovery
 │                          _resolve_io_paths() / _setup_modifier() / _setup_generator()
 │                          _format_clip_table() / _markdown_table() / _format_batch_result()
 │                          _raw_markers_to_batch()
@@ -423,7 +426,7 @@ fcpxml-mcp-server/        ~9.4k lines Python
 │   ├── safe_xml.py        Centralized defusedxml wrappers (XXE/entity-bomb protection) + serialize_xml()
 │   ├── dtd.py             Validate output against Apple's official DTDs (located in the FCP app bundle)
 │   └── templates.py       Template system (intro/outro, lower thirds, music video)
-├── tests/                 990 tests across 23 suites
+├── tests/                 1032 tests across 24 suites
 │   ├── test_models.py     TimeValue math, Timecode formatting, MarkerType contracts
 │   ├── test_parser.py     FCPXML parsing, connected clips, edge cases
 │   ├── test_writer.py     Clip editing, marker writing, speed changes
@@ -561,7 +564,7 @@ uv run --extra dev pytest tests/ -v    # or: python3 -m pytest tests/ -v
 ruff check . --exclude docs/           # lint — must pass before committing
 ```
 
-990 tests across 23 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, real media silence detection (parser, timeline mapping, real-WAV ffmpeg integration), and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
+1032 tests across 24 suites covering models, parser, writer, FCPXMLWriter generation, server handlers, rough cut generation, speed cutting & pacing curves, marker pipeline, refactored helper functions, regression fixes, security hardening (XXE, entity expansion, path traversal, sandbox boundaries, minidom defense-in-depth, JSON depth limits, input validation, ffmpeg bounds, write-handler sandboxing), connected clips, roles, diff, export, compound clip flattening, audio track generation, templates, effects, `.fcpxmld` bundles with sidecar preservation, bulk media relink, real media silence detection (parser, timeline mapping, real-WAV ffmpeg integration), and DTD validation against Apple's official DTDs (auto-skipped on machines without Final Cut Pro).
 
 ---
 
@@ -616,7 +619,8 @@ The full ecosystem analysis and the dual-mode architecture plan live in
 - [x] **Media intelligence v1** — real silence detection from source audio (`detect_media_silence`) — *v0.10.0*
 - [x] **Silence auto-removal** — `remove_media_silence` cuts real silence with ripple — *v0.11.0*
 - [x] **Beat detection** — `detect_beats` (librosa) chains into beat markers + snap-to-beats — *v0.12.0*
-- [ ] **Media intelligence** — transcript-driven editing, scene detection, preview-without-FCP
+- [x] **Transcript-based editing** — local Whisper transcription, edit_by_transcript (remove/keep_only), filler-word removal — *v0.13.0*
+- [ ] **Media intelligence** — scene detection, shot understanding, preview-without-FCP
 - [ ] **Live bridges** — optional SpliceKit / CommandPost adapters for in-app control when installed
 - [ ] Audio sync detection
 - [ ] Premiere Pro native XML support

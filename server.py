@@ -49,9 +49,18 @@ from fcpxml.models import (
 from fcpxml.parser import FCPXMLParser
 from fcpxml.rough_cut import RoughCutGenerator
 from fcpxml.templates import ClipSpec, apply_template, list_templates
+from fcpxml.transcribe import (
+    DEFAULT_FILLERS,
+    find_filler_spans,
+    find_phrase_spans,
+    invert_ranges,
+    merge_ranges,
+    segments_to_srt,
+    transcribe,
+)
 from fcpxml.writer import FCPXMLModifier, list_effects
 
-__version__ = "0.12.2"
+__version__ = "0.13.0"
 
 server = Server("fcp-mcp-server", version=__version__)
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
@@ -1415,6 +1424,56 @@ async def list_tools() -> list[Tool]:
                     "padding": {"type": "number", "default": 0.05, "description": "Seconds of silence to keep on each side of a cut so edits breathe (default 0.05, max 5)"},
                     "clip_name": {"type": "string", "description": "Only cut silence in the clip with this name"},
                     "output_path": {"type": "string", "description": "Output path (default: adds _silence_removed suffix)"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+
+        # ===== TRANSCRIPT INTELLIGENCE (v0.13.0) =====
+        Tool(
+            name="transcribe_media",
+            description="Transcribe each clip's source media locally with word-level timestamps (faster-whisper). Writes a _transcript.json next to each media file (reused by edit_by_transcript / remove_filler_words so media is only transcribed once) and optionally an SRT for captions. Requires the optional [transcribe] extra; degrades to an install hint without it.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "clip_name": {"type": "string", "description": "Only transcribe the clip with this name"},
+                    "model": {"type": "string", "default": "base", "description": "Whisper model size: tiny, base, small, medium, large-v3 (default base; larger = slower + more accurate)"},
+                    "language": {"type": "string", "description": "ISO language code hint (e.g. 'en'); auto-detected if omitted"},
+                    "write_srt": {"type": "boolean", "default": False, "description": "Also write a _transcript.srt next to each media file (plugs into import_srt_markers)"},
+                },
+                "required": ["filepath"]
+            }
+        ),
+        Tool(
+            name="edit_by_transcript",
+            description="Text-based editing: cut timeline content by what was SAID. mode=remove cuts every occurrence of the given phrases (with ripple); mode=keep_only keeps only the matched phrases and cuts everything else in each matched clip (clips with no matches are left untouched). Uses each media file's _transcript.json (auto-transcribes if missing). Non-destructive: writes a _transcript_edit copy.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "phrases": {"type": "array", "items": {"type": "string"}, "description": "Spoken phrases to match (case/punctuation-insensitive)"},
+                    "mode": {"type": "string", "enum": ["remove", "keep_only"], "default": "remove", "description": "remove=cut matches out; keep_only=keep only matches"},
+                    "clip_name": {"type": "string", "description": "Only edit the clip with this name"},
+                    "model": {"type": "string", "default": "base", "description": "Whisper model size if transcription is needed"},
+                    "padding": {"type": "number", "default": 0.0, "description": "Seconds to widen each cut on both sides (0-2, default 0)"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _transcript_edit suffix)"},
+                },
+                "required": ["filepath", "phrases"]
+            }
+        ),
+        Tool(
+            name="remove_filler_words",
+            description="Cut filler words (um, uh, erm...) out of the timeline with ripple, using word-level transcripts of the real source audio. Conservative default filler list — words like 'like' and 'so' are only cut if you pass them explicitly. Uses each media file's _transcript.json (auto-transcribes if missing). Non-destructive: writes a _defillered copy.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "Path to FCPXML file"},
+                    "fillers": {"type": "array", "items": {"type": "string"}, "description": "Filler words/phrases to cut (default: um, uh, uhh, umm, erm, ehm, mmm, hmm, mhm)"},
+                    "clip_name": {"type": "string", "description": "Only clean the clip with this name"},
+                    "model": {"type": "string", "default": "base", "description": "Whisper model size if transcription is needed"},
+                    "padding": {"type": "number", "default": 0.02, "description": "Seconds to widen each cut on both sides (0-2, default 0.02)"},
+                    "output_path": {"type": "string", "description": "Output path (default: adds _defillered suffix)"},
                 },
                 "required": ["filepath"]
             }
@@ -3085,6 +3144,281 @@ async def handle_detect_beats(arguments: dict) -> Sequence[TextContent]:
     return _text_result(result_text)
 
 
+# ===== TRANSCRIPT INTELLIGENCE (v0.13.0) =====
+
+TRANSCRIBE_MAX_MEDIA = 10
+
+_TRANSCRIBE_INSTALL_HINT = (
+    "\n\nInstall the optional transcription extra:\n\n"
+    "    pip install 'fcp-mcp-server[transcribe]'\n\n"
+    "or run via uvx:\n\n"
+    "    uvx --from \"fcp-mcp-server[transcribe]\" fcp-mcp-server"
+)
+
+
+def _transcript_json_path(media_path: str) -> Path:
+    p = Path(media_path)
+    return p.with_name(p.stem + "_transcript.json")
+
+
+def _load_or_transcribe(media_path: str, model: str, language: str | None) -> tuple[dict | None, str]:
+    """Load a cached ``_transcript.json`` for a media file, else transcribe and cache it.
+
+    Returns ``(transcript, "")`` or ``(None, reason)``. The cache makes
+    transcription a one-time cost per media file across all transcript tools.
+    """
+    json_path = _transcript_json_path(media_path)
+    if json_path.is_file():
+        try:
+            with open(json_path) as f:
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("words"), list):
+                return data, ""
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            pass  # unreadable cache falls through to re-transcribe
+    result = transcribe(media_path, model_size=model, language=language)
+    if result is None:
+        return None, "untranscribable (faster-whisper not installed or media unreadable)"
+    out_path = _validate_output_path(str(json_path), anchor_dir=str(Path(media_path).parent))
+    with open(out_path, "w") as f:
+        json.dump({"source": Path(media_path).name, **result}, f, indent=2)
+    return result, ""
+
+
+def _cut_transcript_spans(modifier, clip_filter, model, language, padding, spans_fn, keep_only=False):
+    """Shared cut engine for transcript-driven editing.
+
+    ``spans_fn(words) -> [(start, end), ...]`` in source seconds. Spans are
+    padded, clamped to each clip's used source window, optionally inverted
+    (keep_only), snapped to the frame grid, and cut with ripple.
+    """
+    fps = modifier._detect_fps()
+    tick = round(2400 / fps)
+
+    def to_frame(seconds: float) -> TimeValue:
+        return TimeValue(int(round(seconds * fps) * tick), 2400)
+
+    cache: dict[str, tuple] = {}
+    cuts_made: list[tuple[str, int, float]] = []
+    skipped: list[tuple[str, str]] = []
+    spine_clips = [el for _, el in modifier._iter_spine_clips()]
+    for el in spine_clips:
+        name = el.get("name", "")
+        if clip_filter and name != clip_filter:
+            continue
+        src = modifier.resources.get(el.get("ref", ""), {}).get("src", "")
+        media_path = media_src_to_path(src)
+        if not media_path or not Path(media_path).is_file():
+            skipped.append((name, "media file missing"))
+            continue
+        if media_path not in cache:
+            if len(cache) >= TRANSCRIBE_MAX_MEDIA:
+                skipped.append((name, f"transcription cap reached ({TRANSCRIBE_MAX_MEDIA} media files)"))
+                continue
+            cache[media_path] = _load_or_transcribe(media_path, model, language)
+        data, reason = cache[media_path]
+        if data is None:
+            skipped.append((name, reason))
+            continue
+
+        clip_source_start = modifier._parse_time(el.get("start", "0s")).to_seconds()
+        clip_duration = modifier._parse_time(el.get("duration", "0s")).to_seconds()
+        window_start = clip_source_start
+        window_end = clip_source_start + clip_duration
+
+        spans = spans_fn(data.get("words", []))
+        padded = merge_ranges([(s - padding, e + padding) for s, e in spans])
+        clamped = [
+            (max(s, window_start), min(e, window_end))
+            for s, e in padded
+            if min(e, window_end) > max(s, window_start)
+        ]
+        if keep_only:
+            if not clamped:
+                # Never delete a whole clip just because nothing matched in it.
+                skipped.append((name, "no phrase matches — left untouched (keep_only)"))
+                continue
+            cut_source = invert_ranges(clamped, window_start, window_end)
+        else:
+            cut_source = clamped
+        cut_ranges = [
+            (to_frame(s - clip_source_start), to_frame(e - clip_source_start))
+            for s, e in cut_source
+        ]
+        cut_ranges = [(a, b) for a, b in cut_ranges if b > a]
+        if not cut_ranges:
+            continue
+        removed = modifier.cut_clip_ranges(el, cut_ranges)
+        if removed > TimeValue.zero():
+            cuts_made.append((name, len(cut_ranges), removed.to_seconds()))
+    return cuts_made, skipped
+
+
+def _transcript_cut_report(title, summary_lines, cuts_made, skipped, output_path, footer):
+    if not cuts_made:
+        text = f"# {title}\n\nNo cuts to make — file unchanged (nothing saved)."
+        if skipped:
+            text += "\n\n## Skipped Clips\n" + _markdown_table(
+                ["Clip", "Reason"], [[name, reason] for name, reason in skipped]
+            )
+        if any("faster-whisper" in reason for _, reason in skipped):
+            text += _TRANSCRIBE_INSTALL_HINT
+        return _text_result(text)
+    total_removed = sum(seconds for _, _, seconds in cuts_made)
+    result = f"# {title}\n\n## Summary\n"
+    result += "\n".join(summary_lines) + "\n"
+    result += f"- **Clips Cut**: {len(cuts_made)}\n- **Total Removed**: {format_duration(total_removed)}\n"
+    result += "\n## Cuts\n"
+    result += _markdown_table(
+        ["Clip", "Ranges Cut", "Removed"],
+        [[name, str(count), f"{seconds:.2f}s"] for name, count, seconds in cuts_made],
+    ) + "\n"
+    if skipped:
+        result += "\n## Skipped Clips\n" + _markdown_table(
+            ["Clip", "Reason"], [[name, reason] for name, reason in skipped]
+        ) + "\n"
+    result += f"\nSaved to: {output_path}\n\n{footer}"
+    return _text_result(result)
+
+
+async def handle_transcribe_media(arguments: dict) -> Sequence[TextContent]:
+    model = arguments.get("model", "base")
+    language = arguments.get("language")
+    write_srt = bool(arguments.get("write_srt", False))
+    _, tl = _require_timeline(arguments["filepath"])
+    clip_filter = arguments.get("clip_name")
+
+    done: dict[str, dict | None] = {}
+    skipped: list[tuple[str, str]] = []
+    rows: list[list[str]] = []
+    srt_paths: list[str] = []
+    for clip in tl.clips:
+        if clip_filter and clip.name != clip_filter:
+            continue
+        media_path = media_src_to_path(clip.media_path or "")
+        if not media_path or not Path(media_path).is_file():
+            skipped.append((clip.name, "media file missing"))
+            continue
+        if media_path in done:
+            continue
+        if len(done) >= TRANSCRIBE_MAX_MEDIA:
+            skipped.append((clip.name, f"transcription cap reached ({TRANSCRIBE_MAX_MEDIA} media files)"))
+            continue
+        data, reason = _load_or_transcribe(media_path, model, language)
+        done[media_path] = data
+        if data is None:
+            skipped.append((clip.name, reason))
+            continue
+        if write_srt and data.get("segments"):
+            srt_path = _validate_output_path(
+                str(Path(media_path).with_name(Path(media_path).stem + "_transcript.srt")),
+                anchor_dir=str(Path(media_path).parent),
+            )
+            with open(srt_path, "w") as f:
+                f.write(segments_to_srt(data["segments"]))
+            srt_paths.append(srt_path)
+        preview = data.get("text", "")[:160]
+        rows.append([
+            Path(media_path).name,
+            data.get("language", "?"),
+            str(len(data.get("words", []))),
+            format_duration(float(data.get("duration", 0.0))),
+            preview + ("…" if len(data.get("text", "")) > 160 else ""),
+        ])
+
+    result = f"""# Media Transcription (local Whisper)
+
+## Summary
+- **Model**: {model}
+- **Media Files Transcribed**: {len(rows)}
+"""
+    if rows:
+        result += "\n## Transcripts (saved as _transcript.json next to each media file)\n"
+        result += _markdown_table(
+            ["Media", "Language", "Words", "Duration", "Preview"], rows
+        ) + "\n"
+        result += (
+            "\n*Next: `edit_by_transcript` to cut by what was said, or "
+            "`remove_filler_words` to clean ums/uhs. Transcripts are cached — "
+            "media is only transcribed once.*"
+        )
+    if srt_paths:
+        result += "\n\n## SRT Files\n" + "\n".join(f"- {p}" for p in srt_paths)
+    if skipped:
+        result += "\n## Skipped Clips\n" + _markdown_table(
+            ["Clip", "Reason"], [[name, reason] for name, reason in skipped]
+        ) + "\n"
+    if not rows and any("faster-whisper" in reason for _, reason in skipped):
+        result += _TRANSCRIBE_INSTALL_HINT
+    return _text_result(result)
+
+
+async def handle_edit_by_transcript(arguments: dict) -> Sequence[TextContent]:
+    phrases = arguments.get("phrases") or []
+    if not isinstance(phrases, list) or not all(isinstance(p, str) for p in phrases):
+        raise ValueError("phrases must be a list of strings")
+    phrases = [p for p in phrases if p.strip()]
+    if not phrases:
+        raise ValueError("phrases must contain at least one non-empty string")
+    mode = arguments.get("mode", "remove")
+    if mode not in ("remove", "keep_only"):
+        raise ValueError(f"mode must be 'remove' or 'keep_only', got {mode!r}")
+    padding = float(arguments.get("padding", 0.0))
+    if not (0 <= padding <= 2):
+        raise ValueError(f"padding must be between 0 and 2 seconds, got {padding}")
+    model = arguments.get("model", "base")
+    language = arguments.get("language")
+
+    filepath, output_path, modifier = _setup_modifier(arguments, "_transcript_edit")
+
+    def spans_fn(words):
+        return merge_ranges(
+            [span for phrase in phrases for span in find_phrase_spans(words, phrase)]
+        )
+
+    cuts_made, skipped = _cut_transcript_spans(
+        modifier, arguments.get("clip_name"), model, language, padding,
+        spans_fn, keep_only=(mode == "keep_only"),
+    )
+    if cuts_made:
+        modifier.save(output_path)
+    verb = "kept only" if mode == "keep_only" else "removed"
+    return _transcript_cut_report(
+        "Transcript Edit",
+        [f"- **Mode**: {mode} ({verb} the matched phrases)",
+         f"- **Phrases**: {', '.join(repr(p) for p in phrases)}",
+         f"- **Padding**: {padding}s"],
+        cuts_made, skipped, output_path,
+        "*Transcripts are cached as _transcript.json. Original file untouched.*",
+    )
+
+
+async def handle_remove_filler_words(arguments: dict) -> Sequence[TextContent]:
+    fillers = arguments.get("fillers") or list(DEFAULT_FILLERS)
+    if not isinstance(fillers, list) or not all(isinstance(f, str) for f in fillers):
+        raise ValueError("fillers must be a list of strings")
+    padding = float(arguments.get("padding", 0.02))
+    if not (0 <= padding <= 2):
+        raise ValueError(f"padding must be between 0 and 2 seconds, got {padding}")
+    model = arguments.get("model", "base")
+    language = arguments.get("language")
+
+    filepath, output_path, modifier = _setup_modifier(arguments, "_defillered")
+
+    cuts_made, skipped = _cut_transcript_spans(
+        modifier, arguments.get("clip_name"), model, language, padding,
+        lambda words: merge_ranges(find_filler_spans(words, fillers)),
+    )
+    if cuts_made:
+        modifier.save(output_path)
+    return _transcript_cut_report(
+        "Filler Word Removal",
+        [f"- **Fillers**: {', '.join(fillers)}", f"- **Padding**: {padding}s"],
+        cuts_made, skipped, output_path,
+        "*Transcripts are cached as _transcript.json. Original file untouched.*",
+    )
+
+
 async def handle_detect_silence_candidates(arguments: dict) -> Sequence[TextContent]:
     filepath = _validate_filepath(arguments["filepath"], ('.fcpxml', '.fcpxmld'))
     modifier = FCPXMLModifier(filepath)
@@ -3430,6 +3764,9 @@ TOOL_HANDLERS = {
     # Silence Detection (v0.5.0)
     "detect_media_silence": handle_detect_media_silence,
     "remove_media_silence": handle_remove_media_silence,
+    "transcribe_media": handle_transcribe_media,
+    "edit_by_transcript": handle_edit_by_transcript,
+    "remove_filler_words": handle_remove_filler_words,
     "detect_beats": handle_detect_beats,
     "detect_silence_candidates": handle_detect_silence_candidates,
     "remove_silence_candidates": handle_remove_silence_candidates,

@@ -2,12 +2,12 @@
 
 ## What This Is
 
-MCP server that reads/writes Final Cut Pro XML (FCPXML) files. 59 tools for timeline analysis, batch editing, QC, generation, multi-track support, media relink, NLE export, and LIVE FCP control (push_to_fcp / list_fcp_libraries via Apple events). Reads FCPXML 1.8–1.14 (incl. `.fcpxmld` bundles with sidecar preservation), writes 1.13 by default. Dual-mode (XML + Live) direction: `docs/CAPABILITY-AUDIT-2026-06.md`.
+MCP server that reads/writes Final Cut Pro XML (FCPXML) files. 62 tools for timeline analysis, batch editing, QC, generation, multi-track support, media relink, NLE export, transcript-based editing (local Whisper), and LIVE FCP control (push_to_fcp / list_fcp_libraries via Apple events). Reads FCPXML 1.8–1.14 (incl. `.fcpxmld` bundles with sidecar preservation), writes 1.13 by default. Dual-mode (XML + Live) direction: `docs/CAPABILITY-AUDIT-2026-06.md`.
 
 ## Architecture
 
 ```
-server.py           — MCP server entry point. All 59 tool definitions, handlers, resources, prompts.
+server.py           — MCP server entry point. All 62 tool definitions, handlers, resources, prompts.
                       Dispatch dict pattern: TOOL_HANDLERS maps tool names → async handler functions.
 
 fcpxml/parser.py    — Reads FCPXML → Python objects (Timeline, Clip, ConnectedClip, Marker, etc.)
@@ -54,7 +54,7 @@ CI runs both on every push to main. If either fails, the commit gets an X on Git
 
 ## Testing
 
-990 tests across 23 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. `test_features_v05.py` covers connected clips, roles, timeline diff, reformat, silence detection, export, and backward compatibility. `test_marker_pipeline.py` covers build_marker_element shared builder, batch auto-modes, clip index duplicate-name behavior, and write_fcpxml output format. `test_refactored_helpers.py` covers _index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _resolve_clip_duration, _make_asset_clip, _format_batch_result, and serialize_xml edge cases. `test_media_intel.py` covers silencedetect stderr parsing, source-to-timeline mapping, parameter bounds, and real-WAV ffmpeg integration (skips without ffmpeg; CI installs it). Tests use `examples/sample.fcpxml` as fixture data and inline XML fixtures. Tests create temp files and clean up after.
+1032 tests across 24 files. `test_models.py` covers TimeValue arithmetic, Timecode parsing/formatting, Clip properties, validation models, and Timeline helpers. `test_writer.py` covers insert_clip, add_marker (all types), trim_clip, delete_clip, split_clip, and change_speed operations. `test_server.py` covers MCP tool handlers, parsers, and dispatch. `test_rough_cut.py` covers RoughCutGenerator. `test_features_v05.py` covers connected clips, roles, timeline diff, reformat, silence detection, export, and backward compatibility. `test_marker_pipeline.py` covers build_marker_element shared builder, batch auto-modes, clip index duplicate-name behavior, and write_fcpxml output format. `test_refactored_helpers.py` covers _index_elements, _iter_spine_clips, _find_spine_clip_at_seconds, _resolve_clip_duration, _make_asset_clip, _format_batch_result, and serialize_xml edge cases. `test_transcribe.py` covers phrase/filler span matching, range merge/invert algebra, whisper graceful degradation, and transcript-driven handler cuts against cached transcripts. `test_media_intel.py` covers silencedetect stderr parsing, source-to-timeline mapping, parameter bounds, and real-WAV ffmpeg integration (skips without ffmpeg; CI installs it). Tests use `examples/sample.fcpxml` as fixture data and inline XML fixtures. Tests create temp files and clean up after.
 
 ## FCPXML Gotchas
 

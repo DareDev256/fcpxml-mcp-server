@@ -41,3 +41,4 @@ htmlcov/
 # macOS
 .DS_Store
 *.fcpbundle/
+uv.lock

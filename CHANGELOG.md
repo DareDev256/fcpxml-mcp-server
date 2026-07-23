@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.13.0] - 2026-07-23
+
+**Transcript Intelligence** — text-based editing lands. 59 → 62 tools.
+
+Apple put FCP's AI (Transcript Search, Generate Captions) behind the Creator
+Studio subscription; this release brings the agentic version to everyone, free,
+via local Whisper — and goes further: the transcript doesn't just *search*, it
+*cuts*.
+
+### Added
+- **`transcribe_media`** — transcribes each clip's source media locally with
+  word-level timestamps (faster-whisper, new optional `[transcribe]` extra).
+  Writes a `_transcript.json` next to each media file — transcription is a
+  one-time cost, reused by every transcript tool. Optional `write_srt` emits
+  an SRT that plugs straight into `import_srt_markers`.
+- **`edit_by_transcript`** — cut timeline content by what was SAID.
+  `mode=remove` cuts every occurrence of the given phrases with ripple;
+  `mode=keep_only` keeps only the matched phrases (clips with no matches are
+  left untouched — never deletes a clip because nothing matched). Matching is
+  case/punctuation-insensitive. Non-destructive `_transcript_edit` copy.
+- **`remove_filler_words`** — cuts um/uh/erm out of the timeline with ripple
+  using word-level timestamps from the real source audio. The default filler
+  list is deliberately conservative: words like "like" and "so" are speech,
+  not noise, and are only cut when passed explicitly.
+- New `fcpxml/transcribe.py` module: pure, dependency-free matching helpers
+  (`find_phrase_spans`, `find_filler_spans`, `merge_ranges`, `invert_ranges`,
+  `segments_to_srt`) + the faster-whisper integration behind the same
+  graceful-degradation contract as ffmpeg/librosa (returns `None` → tools
+  answer with an install hint, never a crash).
+- 42 new tests (1032 total): span matching, range algebra, keep_only inversion
+  edge cases, degradation without faster-whisper, and full handler integration
+  against cached transcripts (head-trim vs split behavior, SRT output,
+  transcription caps, missing-media reporting).
+
+### Notes
+- Whisper model names are allowlist-validated (they resolve to downloads).
+- Per-call transcription is capped at 10 distinct media files; cached
+  transcripts don't count against the cap.
+
 ## [0.12.2] - 2026-07-23
 
 Distribution release — the server is now on PyPI. No tool changes.
