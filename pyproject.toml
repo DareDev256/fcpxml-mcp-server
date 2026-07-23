@@ -7,7 +7,7 @@ name = "fcp-mcp-server"
 
 
 
-version = "0.12.1"
+version = "0.12.2"
 
 description = "MCP server for Final Cut Pro XML. 59 tools for timeline analysis, batch editing, QC, generation, multi-track support, NLE export, templates, media relink, .fcpxmld bundles, and real media analysis (silence detection + auto-removal, beat detection) via Claude."
 readme = "README.md"
@@ -45,16 +45,20 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/DareDev256/fcp-mcp-server"
-Repository = "https://github.com/DareDev256/fcp-mcp-server.git"
-Issues = "https://github.com/DareDev256/fcp-mcp-server/issues"
+Homepage = "https://github.com/DareDev256/fcpxml-mcp-server"
+Repository = "https://github.com/DareDev256/fcpxml-mcp-server.git"
+Issues = "https://github.com/DareDev256/fcpxml-mcp-server/issues"
+Changelog = "https://github.com/DareDev256/fcpxml-mcp-server/blob/main/CHANGELOG.md"
 
 [project.scripts]
 fcp-mcp-server = "server:main_sync"
 
+[tool.setuptools]
+py-modules = ["server"]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["fcpxml*", "tools*"]
+include = ["fcpxml*"]
 
 [tool.black]
 line-length = 100

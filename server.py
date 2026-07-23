@@ -51,7 +51,9 @@ from fcpxml.rough_cut import RoughCutGenerator
 from fcpxml.templates import ClipSpec, apply_template, list_templates
 from fcpxml.writer import FCPXMLModifier, list_effects
 
-server = Server("fcp-mcp-server")
+__version__ = "0.12.2"
+
+server = Server("fcp-mcp-server", version=__version__)
 PROJECTS_DIR = os.environ.get("FCP_PROJECTS_DIR", os.path.expanduser("~/Movies"))
 # When set explicitly via env var, enforce sandbox boundaries on list_projects.
 _SANDBOX_ENABLED = "FCP_PROJECTS_DIR" in os.environ

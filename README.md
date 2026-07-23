@@ -7,9 +7,11 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-1.0-green.svg)](https://modelcontextprotocol.io/)
 [![Final Cut Pro](https://img.shields.io/badge/Final%20Cut%20Pro-10.4%E2%80%9312.x-purple.svg)](https://www.apple.com/final-cut-pro/)
+[![PyPI](https://img.shields.io/pypi/v/fcp-mcp-server.svg)](https://pypi.org/project/fcp-mcp-server/)
 [![Tests](https://img.shields.io/badge/tests-990_passing-brightgreen.svg)](#testing)
 [![Suites](https://img.shields.io/badge/suites-23-blue.svg)](#testing)
-[![Source](https://img.shields.io/badge/source-~9.7k_LOC-informational.svg)](#architecture)
+
+**Hardened for real libraries:** 132 adversarial-input security tests, `defusedxml` everywhere, sandboxed writes, no patched binaries, no private APIs — plus a [private disclosure channel](SECURITY.md) with externally reported fixes already credited and merged.
 
 ---
 
@@ -139,47 +141,60 @@ the optional SpliceKit/CommandPost bridges planned for v1.0.
 
 ## Quick Start
 
-### 1. Clone & Install
+### Claude Code (fastest)
+
+```bash
+claude mcp add fcpxml -e FCP_PROJECTS_DIR=~/Movies -- uvx fcp-mcp-server
+```
+
+Or project-scoped — commit a `.mcp.json` so your whole team gets it:
+
+```json
+{
+  "mcpServers": {
+    "fcpxml": {
+      "command": "uvx",
+      "args": ["fcp-mcp-server"],
+      "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
+    }
+  }
+}
+```
+
+With media intelligence (silence removal + beat detection):
+
+```bash
+claude mcp add fcpxml -e FCP_PROJECTS_DIR=~/Movies -- uvx --from "fcp-mcp-server[intelligence]" fcp-mcp-server
+```
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "fcpxml": {
+      "command": "uvx",
+      "args": ["fcp-mcp-server"],
+      "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
+    }
+  }
+}
+```
+
+### From source (contributors)
 
 ```bash
 git clone https://github.com/DareDev256/fcpxml-mcp-server.git
 cd fcpxml-mcp-server
 pip install -e .
+# then point your MCP client at: python /path/to/fcpxml-mcp-server/server.py
 ```
 
-### 2. Configure Claude Desktop
+### Use It
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-**Using uv (recommended):**
-```json
-{
-  "mcpServers": {
-    "fcpxml": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/fcpxml-mcp-server", "run", "server.py"],
-      "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
-    }
-  }
-}
-```
-
-**Using pip:**
-```json
-{
-  "mcpServers": {
-    "fcpxml": {
-      "command": "python",
-      "args": ["/path/to/fcpxml-mcp-server/server.py"],
-      "env": { "FCP_PROJECTS_DIR": "/Users/you/Movies" }
-    }
-  }
-}
-```
-
-### 3. Use It
-
-Export XML from Final Cut Pro, open Claude Desktop, and ask it to work with your timeline.
+Export XML from Final Cut Pro (`File → Export XML…`), open your MCP client, and ask it to work with your timeline.
 
 ---
 
@@ -193,6 +208,24 @@ Export XML from Final Cut Pro, open Claude Desktop, and ask it to work with your
 | Template generation (rough cuts from tagged clips) | Anything visual (color, framing, motion) |
 | Automated assembly (montages from keywords + pacing) | |
 | Timeline health checks (validation, stats, scoring) | |
+
+---
+
+## How It Compares
+
+Three projects have connected AI agents to Final Cut Pro. They make different trade-offs:
+
+| | **FCPXML MCP** (this) | [SpliceKit](https://github.com/elliotttate/SpliceKit) | [CommandPost](https://commandpost.fcp.cafe/) |
+|---|---|---|---|
+| Approach | Parses/writes FCPXML + official Apple events only | Patches FCP's binary to expose internal APIs | Accessibility scripting + Lua |
+| Raw live control | Push-to-FCP, library inspection | Deepest (full internal API) | Deep (UI-level) |
+| Survives FCP updates | **Yes — no patching** | Re-patch per FCP version | Mostly |
+| Works on managed/corporate Macs | **Yes** | No (requires binary patching) | Varies (Accessibility perms) |
+| Works without FCP installed | **Yes** (pure XML mode) | No | No |
+| MCP server | **Yes, active** (this repo) | Yes (last release Apr 2026) | Planned, [PR unmerged](https://github.com/CommandPost/CommandPost/pull/3514) |
+| Requires | Python 3.10+ | Patched FCP binary | CommandPost app |
+
+SpliceKit's runtime depth is genuinely impressive — if you're on your own Mac and comfortable patching FCP, it can do things XML never will. This project stays on the no-patch side so it runs anywhere, survives every FCP update, and can be trusted with client libraries. Full ecosystem analysis: [capability audit](docs/CAPABILITY-AUDIT-2026-06.md).
 
 ---
 
@@ -537,7 +570,7 @@ ruff check . --exclude docs/           # lint — must pass before committing
 - **Python 3.10+** · **Final Cut Pro 10.4+** (FCPXML 1.8+) · **Claude Desktop** or any MCP client
 - **Dependencies** (auto-installed): `mcp`, `defusedxml`
 - **ffmpeg** (optional) — needed for silence analysis (`detect_media_silence`, `remove_media_silence`)
-- **`pip install -e '.[intelligence]'`** (optional) — adds librosa for `detect_beats`; everything else works without it. (Run it from the cloned repo — the package isn't published to PyPI.)
+- **`[intelligence]` extra** (optional) — adds librosa for `detect_beats`; everything else works without it. Install via `uvx --from "fcp-mcp-server[intelligence]" fcp-mcp-server` or `pip install "fcp-mcp-server[intelligence]"` (from source: `pip install -e '.[intelligence]'`).
 - See [Compatibility](#compatibility) for full version matrix
 
 ---
@@ -601,7 +634,9 @@ The full ecosystem analysis and the dual-mode architecture plan live in
 
 ---
 
-## Contributing
+## Status & Contributing
+
+**Actively maintained** — live-verified against FCP 12.2, with external contributions already merged and credited: [@mikegrant25](https://github.com/mikegrant25) (sandbox security fix, #6) and [@jardelapp](https://github.com/jardelapp) (audio duration probing, #7).
 
 PRs welcome. If you're a video editor who codes (or a coder who edits), let's build this together.
 

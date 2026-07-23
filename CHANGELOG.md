@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.12.2] - 2026-07-23
+
+Distribution release — the server is now on PyPI. No tool changes.
+
+### Added
+- **Published to PyPI as [`fcp-mcp-server`](https://pypi.org/project/fcp-mcp-server/).**
+  `uvx fcp-mcp-server` now works, which unbreaks the install path that `server.json`
+  (official MCP registry) and `smithery.yaml` have been advertising, and makes the
+  `[intelligence]` extra installable without cloning.
+- **Claude Code install path** in the README (`claude mcp add` one-liner + project-scoped
+  `.mcp.json` example) alongside the existing Claude Desktop instructions.
+- **"How It Compares" section** — honest trade-off table vs SpliceKit (runtime patching)
+  and CommandPost (accessibility scripting): raw live power there, no-patch portability,
+  managed-Mac compatibility, and works-without-FCP here.
+- Security posture surfaced at the top of the README (132 adversarial-input tests,
+  defusedxml, sandboxed writes, disclosure channel).
+
+### Fixed
+- **Packaging: `server.py` was missing from the wheel.** `[tool.setuptools]` only
+  included the `fcpxml*` and `tools*` packages, so a built wheel had no entry-point
+  module and `fcp-mcp-server` failed to launch. Added `py-modules = ["server"]`,
+  dropped the empty `tools` stub package from the distribution, and verified the
+  wheel end-to-end in a clean venv (MCP initialize handshake answers correctly).
+- **Server now reports its own version** over MCP (`serverInfo.version` said `1.28.1` —
+  the SDK's version — instead of the package's).
+- `server.json` refreshed: version 0.9.0 → 0.12.2, tool count 56 → 59, description
+  includes media intelligence.
+- `pyproject.toml` URLs point at the canonical repo (`fcpxml-mcp-server`), and a
+  Changelog URL was added.
+
 ## [0.12.1] - 2026-07-16
 
 Docs fix. No code changes.
