@@ -13,6 +13,10 @@
 
 **Hardened for real libraries:** 132 adversarial-input security tests, `defusedxml` everywhere, sandboxed writes, no patched binaries, no private APIs — plus a [private disclosure channel](SECURITY.md) with externally reported fixes already credited and merged.
 
+![FCPXML MCP demo — transcript-based editing](docs/assets/demo.gif)
+
+*Real v0.13.0 output: local Whisper transcription, filler-word removal, and phrase-based cutting on a podcast timeline.*
+
 ---
 
 ## Why This Exists
